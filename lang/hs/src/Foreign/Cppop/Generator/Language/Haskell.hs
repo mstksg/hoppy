@@ -19,21 +19,11 @@ import Language.Haskell.Pretty (prettyPrint)
 import Language.Haskell.Syntax (
   HsAsst,
   HsContext,
-  HsDecl (HsClassDecl, HsFunBind, HsPatBind, HsTypeSig),
-  HsExp (HsApp, HsDo, HsInfixApp, HsLit, HsParen, HsVar),
-  HsLiteral (HsString),
-  HsMatch (HsMatch),
-  HsName (HsIdent, HsSymbol),
-  HsPat (HsPVar),
-  HsQName (Qual, Special, UnQual),
-  HsQOp (HsQVarOp),
+  HsName (HsIdent),
+  HsQName (Special, UnQual),
   HsQualType (HsQualType),
-  HsRhs (HsUnGuardedRhs),
   HsSpecialCon (HsUnitCon),
-  HsStmt (HsQualifier),
   HsType (HsTyApp, HsTyCon, HsTyFun, HsTyVar),
-  Module (Module),
-  SrcLoc (SrcLoc),
   )
 
 data Generation = Generation { generatedSource :: String }
@@ -100,7 +90,6 @@ sayExport export = case export of
   ExportFn fn ->
     (sayExportFn <$> fnExtName <*> pure False <*> fnPurity <*> fnParams <*> fnReturn) fn
   ExportClass cls -> sayExportClass cls
-  --ExportClass cls -> mapM_ (sayLn . prettyPrint) =<< classToHaskell cls
 
 sayExportFn :: ExtName -> Bool -> Purity -> [Type] -> Type -> Generator ()
 sayExportFn name isMethod purity paramTypes retType = do
@@ -108,12 +97,6 @@ sayExportFn name isMethod purity paramTypes retType = do
   ln
 
   -- Print the type signature.
-  --hsFnType <- fmap (\rest -> maybe rest (flip HsTyFun rest) maybeThisType) $
-  --            maybe (abort $ "Couldn't construct Haskell type of function with param types " ++
-  --                   show paramTypes ++ " and returning " ++ show retType ++ ".")
-  --                  return $
-  --            cppFnTypeToHsType paramTypes retType
-  --saysLn [hsFnName, " :: FCRC.Client -> ", prettyPrint hsFnType]
   hsType <-
     maybe (abort $ "Couldn't create Haskell type signature for export \"" ++
            fromExtName name ++ "\".")
@@ -135,66 +118,6 @@ sayExportFn name isMethod purity paramTypes retType = do
       saysLn ["FCRB.hput $ FCRB.CString ", show $ fromExtName name]
       forM_ argNamesWithThis $ \argName ->
         saysLn ["FCRB.hput ", argName]
-  --say "P.mapM_ FCRB.hput ["
-  --says $ intersperse ", " argNamesWithThis
-  --sayLn "]"
-
-{-
-classToHaskell :: Class -> Generator [HsDecl]
-classToHaskell cls = sequence
-  [ classToHsClass cls Const
-  , classToHsClass cls Nonconst
-  ]
-
-classToHsClass :: Class -> Constness -> Generator HsDecl
-classToHsClass cls cst = do
-  let hsClassName = toHsClassName cst cls
-      hsTypeName = toHsTypeName cst $ classExtName cls
-      thisTyVar = HsTyVar $ HsIdent "this"
-      supers = classSuperclasses cls
-      context =
-        map (\x -> (UnQual $ HsIdent x, [thisTyVar])) $
-        (\xs -> if null xs then ["Ptr"] else xs) $
-        case cst of
-          Const -> map (toHsClassName Const) supers
-          Nonconst -> toHsClassName Const cls : map (toHsClassName Nonconst) supers
-
-  let methods = filter (\x -> methodConst x == cst &&
-                              methodStatic x == Nonstatic) $
-                classMethods cls
-  methodDecls <- fmap concat $ forM methods $ \method -> do
-    let mExtName = methodExtName method
-        methodHsName = HsIdent $ toHsFnName mExtName
-    typeSig <-
-      fmap (HsTypeSig nullSrcLoc [methodHsName]) $
-      maybe (abort $ "Couldn't create Haskell type signature for method \"" ++
-             fromExtName mExtName ++ "\" in class \"" ++
-             fromExtName (classExtName cls) ++ "\".")
-            return $
-      methodToHsType method
-    let hsParams = map HsIdent $
-                   "this" : zipWith const (map toArgName [1..]) (methodParams method)
-        e1 $$ e2 = HsInfixApp e1 (HsQVarOp $ UnQual $ HsSymbol "$") e2
-        body = HsUnGuardedRhs $
-               HsApp (HsVar e_fmap) $
-                     (HsParen $ HsApp (HsVar e_runGet) (HsVar e_hget)) $$
-               HsApp (HsVar e_send)
-                     (HsVar $ UnQual $ HsIdent "client") $$
-               HsVar e_runPut $$
-               HsDo (HsQualifier (HsVar e_hput $$
-                                  HsApp (HsVar e_CString) (HsLit $ HsString $ fromExtName mExtName)) :
-                     map (\param -> HsQualifier $ HsApp (HsVar e_hput) $ HsVar $ UnQual param) hsParams)
-        decl = HsFunBind
-               [HsMatch nullSrcLoc methodHsName (map HsPVar (HsIdent "client" : hsParams)) body []]
-    return [typeSig, decl]
-
-  let decls = castTypeSig : castDecl : methodDecls
-      castMethodName = toHsCastMethodName cst cls
-      castTypeSig = HsTypeSig nullSrcLoc [HsIdent castMethodName] $
-                    HsQualType [] $ HsTyFun thisTyVar $ HsTyCon $ UnQual $ HsIdent hsTypeName
-      castDecl = HsPatBind nullSrcLoc (HsPVar $ HsIdent castMethodName) (HsUnGuardedRhs $ HsVar e_cast) []
-  return $ HsClassDecl nullSrcLoc context (HsIdent hsClassName) [HsIdent "this"] decls
--}
 
 sayExportClass :: Class -> Generator ()
 sayExportClass cls = do
@@ -211,22 +134,6 @@ sayExportClass cls = do
 
   sayExportClassHsNull cls
   sayExportClassHsCtors cls
-
-  --ln
-  --saysLn ["newtype ", clsHsTypeName, " = ", clsHsTypeName, " FCT.CIntPtr"]
-  --ln
-  --saysLn ["instance FCRB.Ptr ", clsHsTypeName, " where"]
-  --saysLn ["  toPtr (", clsHsTypeName, " ptr) = ptr"]
-  --saysLn ["  fromPtr = ", clsHsTypeName]
-  --ln
-  --saysLn ["instance FCRB.HostBinary ", clsHsTypeName, " where"]
-  --saysLn ["  hget = P.fmap ", clsHsTypeName, " FCRB.hget"]
-  --saysLn ["  hput (", clsHsTypeName, " ptr) = FCRB.hput ptr"]
-
-  --forM_ (classCtors cls) $ \ctor ->
-  --  (sayExportFn <$> ctorExtName <*> pure Nothing <*> ctorParams <*> pure (TPtr $ TObj cls)) ctor
-  --forM_ (classMethods cls) $ \method ->
-  --  (sayExportFn <$> methodExtName <*> pure (if methodStatic method == Nonstatic then Just clsHsType else Nothing) <*> methodParams <*> methodReturn) method
 
 sayExportClassHsClass :: Class -> Constness -> Generator ()
 sayExportClassHsClass cls cst = do
@@ -245,27 +152,15 @@ sayExportClassHsClass cls cst = do
     "class (" :
     intersperse ", " (map (++ " this") hsSupers) ++
     [") => ", hsClassName, " this where"]
-  --case cst of
-  --  Const -> say $ toHsConstClassName cls  -- TODO Superclasses.
-  --  Nonconst -> says [toHsConstClassName cls, " this => ", toHsClassName cls]
-  --sayLn " this where"
   indent $ do
     saysLn [hsCastMethodName, " :: this -> ", hsTypeName]
     saysLn [hsCastMethodName, " = FCRB.cast"]
 
     let methods = filter ((cst ==) . methodConst) $ classMethods cls
     forM_ methods $ \method ->
-      when (methodStatic method == Nonstatic) $ do
-        --methodHsType <-
-        --  maybe (abort $ "Couldn't create Haskell type signature for method \"" ++
-        --         fromExtName (methodExtName method) ++ "\" in class \"" ++
-        --         fromExtName (classExtName cls) ++ "\".")
-        --        return $
-        --  methodToHsType method
-        --let methodHsName = toHsFnName $ methodExtName method
-        --saysLn [methodHsName, " :: ", prettyPrint methodHsType]
-        (sayExportFn <$> methodExtName <*> pure True <*> methodPurity <*>
-         methodParams <*> methodReturn) method
+      when (methodStatic method == Nonstatic) $
+      (sayExportFn <$> methodExtName <*> pure True <*> methodPurity <*>
+       methodParams <*> methodReturn) method
 
 sayExportClassHsStaticMethods :: Class -> Generator ()
 sayExportClassHsStaticMethods cls = do
@@ -381,39 +276,6 @@ cppFnTypeToHsType purity params ret =
     cppTypeToHsType ret) <*>
   mapM cppTypeToHsType params
 
---getHaskellPrimitiveType :: Type -> Generator String
---getHaskellPrimitiveType t =
---  maybe (abort $ "Don't know how to represent this type in Haskell: " ++ show t)
---        return $
---  getHaskellPrimitiveType' t
---
---getHaskellPrimitiveType' :: Type -> Maybe String
---getHaskellPrimitiveType' t = case t of
---  TVoid -> Just "()"
---  TBool -> Just "Bool"
---  TChar -> Just "CChar"
---  TUChar -> Just "CUChar"
---  TShort -> Just "CShort"
---  TUShort -> Just "CUShort"
---  TInt -> Just "CInt"
---  TUInt -> Just "CUInt"
---  TLong -> Just "CLong"
---  TULong -> Just "CULong"
---  TLLong -> Just "CLLong"
---  TULLong -> Just "CULLong"
---  TFloat -> Just "Float"
---  TDouble -> Just "Double"
---  TSize -> Just "CSize"
---  TSSize -> Nothing
---  TArray {} -> Nothing
---  TPtr _ -> Just "Ptr ()"
---  TRef {} -> Nothing
---  TFn {} -> Nothing
---  TObj {} -> Nothing
---  TOpaque {} -> Nothing
---  TBlob -> Nothing
---  TConst t' -> getHaskellPrimitiveType' t'
-
 sayLn :: String -> Generator ()
 sayLn x = tell [x]
 
@@ -425,49 +287,3 @@ ln = sayLn ""
 
 indent :: Generator () -> Generator ()
 indent = censor $ map $ \x -> ' ':' ':x
-
---nullSrcLoc :: SrcLoc
---nullSrcLoc = SrcLoc "" 0 0
---
----- Qualified module import names.
---
---i_Cppop_Binary :: Module
---i_Cppop_Binary = Module "FCRB"
---
---i_Cppop_Client :: Module
---i_Cppop_Client = Module "FCRC"
---
---i_Data_Binary_Get :: Module
---i_Data_Binary_Get = Module "DBG"
---
---i_Data_Binary_Put :: Module
---i_Data_Binary_Put = Module "DBP"
---
---i_Prelude :: Module
---i_Prelude = Module "P"
---
----- Qualified names of external definitions.
---
---e_cast :: HsQName
---e_cast = Qual i_Cppop_Binary $ HsIdent "cast"
---
---e_CString :: HsQName
---e_CString = Qual i_Cppop_Binary $ HsIdent "CString"
---
---e_fmap :: HsQName
---e_fmap = Qual i_Prelude $ HsIdent "fmap"
---
---e_hget :: HsQName
---e_hget = Qual i_Cppop_Binary $ HsIdent "hget"
---
---e_hput :: HsQName
---e_hput = Qual i_Cppop_Binary $ HsIdent "hput"
---
---e_runGet :: HsQName
---e_runGet = Qual i_Data_Binary_Get $ HsIdent "runGet"
---
---e_runPut :: HsQName
---e_runPut = Qual i_Data_Binary_Put $ HsIdent "runPut"
---
---e_send :: HsQName
---e_send = Qual i_Cppop_Client $ HsIdent "send"

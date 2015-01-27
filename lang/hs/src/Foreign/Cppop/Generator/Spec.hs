@@ -5,10 +5,7 @@ module Foreign.Cppop.Generator.Spec (
   interfaceName,
   interfaceIncludes,
   interfaceExports,
-  --interfaceConvs,
   interfaceExportsByName,
-  --interfaceConvsByName,
-  --interfaceDefaultConvsByFromType,
   -- * C++ includes
   Include,
   includeStd,
@@ -33,9 +30,6 @@ module Foreign.Cppop.Generator.Spec (
   ident5,
   -- * Basic types
   Type (..),
-  --EType (..),
-  --etypeFrom,
-  --etypeTo,
   Purity (..),
   Function (..),
   Class (..),
@@ -53,8 +47,6 @@ module Foreign.Cppop.Generator.Spec (
   classEncodingNone,
   classModifyEncoding,
   classCopyEncodingFrom,
-  ---- * Conversions
-  --Conv (..),
   ) where
 
 import Control.Arrow ((&&&))
@@ -74,10 +66,7 @@ data Interface = Interface
   { interfaceName :: String
   , interfaceIncludes :: [Include]
   , interfaceExports :: [Export]
-  --, interfaceConvs :: [Conv]
   , interfaceExportsByName :: Map ExtName Export
-  --, interfaceConvsByName :: Map ExtName Conv
-  --, interfaceDefaultConvsByFromType :: Map Type Conv
   } deriving (Show)
 
 data Include = Include { includeToString :: String }
@@ -115,10 +104,7 @@ interface ifName includes exports = do
     { interfaceName = ifName
     , interfaceIncludes = includes
     , interfaceExports = exports
-    --, interfaceConvs = convs
     , interfaceExportsByName = Map.fromList $ map (exportExtName &&& id) exports
-    --, interfaceConvsByName = Map.fromList $ map (convExtName &&& id) namedConvs
-    --, interfaceDefaultConvsByFromType = Map.fromList $ map (convFrom &&& id) convs
     }
 
 -- | An external name is a string that Cppop clients use to uniquely identify an
@@ -208,55 +194,6 @@ data Type =
   | TConst Type
   deriving (Eq, Show)
 
---instance Eq Type where
---  TVoid == TVoid = True
---  TBool == TBool = True
---  TChar == TChar = True
---  TUChar == TUChar = True
---  TShort == TShort = True
---  TUShort == TUShort = True
---  TInt == TInt = True
---  TUInt == TUInt = True
---  TLong == TLong = True
---  TULong == TULong = True
---  TLLong == TLLong = True
---  TULLong == TULLong = True
---  TFloat == TFloat = True
---  TDouble == TDouble = True
---  TArray n t == TArray n' t' = n == n' && t == t'
---  TPtr t == TPtr t' = t == t'
---  TRef t == TRef t' = t == t'
---  TFn ps r == TFn ps' r' = ps == ps' && r == r'
---  TObj cls == TObj cls' = classIdentifier cls == classIdentifier cls'
---  TOpaque str == TOpaque str' = str == str'
---  TBlob == TBlob = True
---  TConst t == TConst t' = t == t'
---  _ == _ = False
-
----- | Effective type: Either a regular (unconverted) or a converted type.
----- Exported functions return and take as paramters 'EType's to allow conversion
----- between types that Cppop knows how to serialize, and types it doesn't.  When
----- an 'EConv' is given as a function parameter type, then the from-type is the
----- type of then wire type, and the to-type is the type that the C++ function
----- accepts.  In a return type it's the reverse: the from-type is the type the
----- function returns and the to-type is the wire type.
---data EType = EType Type | EConv Conv
---           deriving (Eq, Show)
---
----- | The from-type of a converted type, or the type itself in the case of an
----- unconverted type.
---etypeFrom :: EType -> Type
---etypeFrom et = case et of
---  EType t -> t
---  EConv c -> convFrom c
---
----- | The to-type of a converted type, or the type itself in the case of an
----- unconverted type.
---etypeTo :: EType -> Type
---etypeTo et = case et of
---  EType t -> t
---  EConv c -> convTo c
-
 data Purity = Nonpure | Pure
             deriving (Eq, Show)
 
@@ -283,9 +220,6 @@ data Class = Class
 
 instance Eq Class where
   (==) = (==) `on` classIdentifier
-
---instance Ord Class where
---  compare = comparing (idToString . classIdentifier)
 
 makeClass :: Identifier -> [Class] -> [Ctor] -> [Method] -> Class
 makeClass identifier supers ctors methods = Class
@@ -354,56 +288,3 @@ methodStatic :: Method -> Staticness
 methodStatic method = case methodApplicability method of
   MStatic -> Static
   _ -> Nonstatic
-
----- | A conversion between C++ types.
---data Conv =
---    -- | Conversion via existing function.
---    ConvFn
---    { convFrom :: Type
---    , convTo :: Type
---    , convId :: Identifier
---    }
---  | -- | Conversion via a inline string.  The name of a variable containing the
---    -- value to convert will be interspersed between each code segment to do the
---    -- conversion.
---    ConvInline
---    { convFrom :: Type
---    , convTo :: Type
---    , convSegments :: [String]
---    }
---  | -- | Conversion via custom function definition.
---    ConvCustom
---    { convFrom :: Type
---    , convTo :: Type
---    , convExtName :: ExtName
---    , convBody :: String
---    }
---  deriving (Show)
---
---instance Eq Conv where
---  (==) = const $ const False  -- TODO
-
---data Decoder = Decoder
---  { decoderType :: Type
---  , decoderFunction :: Identifier
---  }
---
---data Encoder = Encoder
---  { encoderType :: Type
---  , encoderFunction :: Identifier
---  }
-
---data ConvPair = ConvPair
---  { deserializingConv :: Conv
---  , serializingConv :: Conv
---  }
---
---deserialierSerializerPair :: Conv -> Conv -> Either ErrorMsg ConvPair
---deserialierSerializerPair deserializer serializer =
---  if (convFrom deserializer /= convTo serializer ||
---        convFrom serializer /= convTo deserializer)
---  then Left $ "Conv types are not inverses.  Deserializer: " ++
---       show (convFrom deserializer) ++ " -> " ++ show (convTo deserializer) ++
---       "Serializer: " ++ show (convFrom serializer) ++ " -> " ++
---       show (convTo serializer) ++ "."
---  else Right $ ConvPair deserializer serializer

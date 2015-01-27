@@ -1,22 +1,3 @@
--- putStrLn $ generate [ExportFn $ Function (ident "sin") "sin" [EType TDouble] $ EType TDouble]
---
--- void genpop__sin(BArray const&args) {
---     BArrayIterator it = args.iterator();
---     double arg0 = it.read().asDouble();
---     sin(arg0);
--- }
-
--- putStrLn $ generate [ExportFn $ Function (ident "sin") "sin" [EConv $ ConvI TDouble (TOpaque "dbldbl") ["doubleitup(", ", ", ")"]] $ EType TDouble]
---
--- void genpop__sin(BArray const&args, int fd) {
---     BArrayIterator it = args.iterator();
---     double preconv0 = it.read().asDouble();
---     dbldbl arg0 = doubleitup(preconv0, preconv0);
---     sin(arg0);
--- }
-
--- let { g = either undefined id $ generate $ either undefined id $ interface "test" [ExportFn $ Function (ident "sin") (either undefined id $ toExtName "sin") [EType TDouble] $ EType TDouble] [] } in mapM_ putStrLn ["HEADER", generatedHeader g, "SOURCE", generatedSource g]
-
 module Foreign.Cppop.Generator.Language.Cpp (
   Generation,
   generate,
@@ -56,14 +37,6 @@ externalNameToCpp :: ExtName -> String
 externalNameToCpp extName =
   makeCppName [externalNamePrefix, fromExtName extName]
 
----- | "genconv" is used for converters.
---externalConvNamePrefix :: String
---externalConvNamePrefix = "genconv"
---
---externalConvNameToCpp :: ExtName -> String
---externalConvNameToCpp extName =
---  makeCppName [externalConvNamePrefix, fromExtName extName]
-
 -- | A chunk is a string that contains an arbitrary portion of C++ code.  The
 -- only requirement is that chunk boundaries are also C++ token boundaries,
 -- because the generator monad automates the process of inserting whitespace
@@ -86,9 +59,6 @@ askIncludes = fmap (interfaceIncludes . envInterface) ask
 
 askExports :: Generator [Export]
 askExports = fmap (interfaceExports . envInterface) ask
-
---askConvs :: Generator [Conv]
---askConvs = fmap (interfaceConvs . envInterface) ask
 
 -- | Halts generation and returns the given error message.
 abort :: String -> Generator a
@@ -136,7 +106,6 @@ sayInterfaceSource :: Generator ()
 sayInterfaceSource = do
   sayCommonIncludes
   mapM_ (say . includeToString) =<< askIncludes
-  --mapM_ sayConv =<< askConvs
   mapM_ sayExport =<< askExports
   sayInterfaceFunction
 
@@ -173,18 +142,6 @@ sayInterfaceFunction = do
                , externalNameToCpp extName
                , ");\n"
                ]
-
---sayConv :: Conv -> Generator ()
---sayConv conv = case conv of
---  ConvFn {} -> return ()
---  ConvInline {} -> return ()
---  ConvCustom { convExtName = extName
---             , convFrom = from
---             , convTo = to
---             , convBody = body
---             } ->
---    sayFunction (externalConvNameToCpp extName) ["value"] (TFn [from] to) $
---    say body
 
 sayFunction :: String -> [String] -> Type -> Generator () -> Generator ()
 sayFunction name paramNames t body = do
@@ -420,15 +377,3 @@ primitiveTypeName' nonPrimitiveOkay t = case t of
   TOpaque _  -> Nothing
   TBlob -> Nothing  -- TODO Hmm.
   TConst t' -> ("const " ++) <$> primitiveTypeName' nonPrimitiveOkay t'
-
---applyConv :: Conv -> String -> String
---applyConv conv varName = case conv of
---  ConvFn {} -> undefined
---  ConvInline {} -> intercalate varName $ convSegments conv
---  ConvCustom {} -> undefined
-
---spaces :: Int -> String -> String
---spaces n = (replicate n ' ' ++)
---
---indent :: Int -> String -> String
---indent = spaces . (* 4)

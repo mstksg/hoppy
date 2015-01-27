@@ -11,8 +11,6 @@ import Data.Text (pack, unpack)
 import Data.Text.Encoding (decodeUtf8, encodeUtf8)
 import Data.Word (Word8, Word16, Word32, Word64)
 import Foreign.C.Types (
-  CDouble,
-  CFloat,
   CInt,
   CIntPtr,
   CLLong,

@@ -15,15 +15,13 @@ SOURCES += \
     buffers.cpp \
     server.cpp \
     interface.cpp \
-    driver.cpp \
-    callback.cpp
+    driver.cpp
 
 HEADERS +=\
     buffers.h \
     server.h \
     interface.h \
     driver.h \
-    callback.h \
     common.h
 
 LIBS += -lboost_thread
