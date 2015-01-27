@@ -151,7 +151,7 @@ void Server::wait() {
 }
 
 void Server::run(const unsigned int threadNum) {
-    seq_num_t seqNum;
+    request_id_t requestId;
     size_t recvSize;
     SizedBuffer recvBuffer;
     WritableBuffer sendBuffer;
@@ -164,7 +164,7 @@ void Server::run(const unsigned int threadNum) {
             boost::lock_guard<boost::mutex> readLock(readMutex_);
 
             // First read the header (sequence number and request body size).
-            recvSize = sizeof(seqNum) + sizeof(recvSize);
+            recvSize = sizeof(requestId) + sizeof(recvSize);
             recvBuffer.ensureSize(recvSize);  // TODO Lift this out of the loop (the buffer doesn't shrink).
             n = fread(recvBuffer.buffer(), recvSize, 1, inputReadFile_);
             if (n < 1) {
@@ -179,18 +179,18 @@ void Server::run(const unsigned int threadNum) {
             // Decode the header.
             {
                 BufferReader* const reader = recvBuffer.reader(recvSize);
-                seqNum = *(seq_num_t*)reader->read(sizeof(seq_num_t));
-                recvSize = *(size_t*)reader->read(sizeof(size_t));
+                requestId = *(request_id_t*)reader->read(sizeof(requestId));
+                recvSize = *(size_t*)reader->read(sizeof(recvSize));
                 if (logFile_ != NULL) {
                     boost::lock_guard<boost::mutex> logLock(logMutex_);
                     fprintf(logFile_,
-                        "\n- Thread#%u: Header received, seq num " PRI_SEQ_NUM ", body size %zu.\n",
-                        threadNum, seqNum, recvSize);
+                        "\n- Thread#%u: Header received, seq num " PRI_REQUEST_ID ", body size %zu.\n",
+                        threadNum, requestId, recvSize);
                     fflush(logFile_);
                 }
                 if (reader->remainingBytes() != 0) {
                     std::cerr << "Server::run: Internal error parsing client request header.\n";
-                    std::cerr << "(Expected " << (sizeof(seqNum) + sizeof(recvSize))
+                    std::cerr << "(Expected " << (sizeof(requestId) + sizeof(recvSize))
                               << " bytes, still have " << reader->remainingBytes() << " left.)\n";
                     break;
                 }
@@ -212,9 +212,9 @@ void Server::run(const unsigned int threadNum) {
             if (logFile_ != NULL) {
                 boost::lock_guard<boost::mutex> logLock(logMutex_);
                 fprintf(logFile_,
-                    "\n- Thread#%u: Request received, seq num " PRI_SEQ_NUM ", body size %zu:\n",
+                    "\n- Thread#%u: Request received, seq num " PRI_REQUEST_ID ", body size %zu:\n",
                     threadNum,
-                    seqNum,
+                    requestId,
                     recvSize);
                 hexDump(logFile_, recvBuffer.buffer(), recvSize);
                 fflush(logFile_);
@@ -236,7 +236,7 @@ void Server::run(const unsigned int threadNum) {
 
         // Call the exported function.
         sendBuffer.resetAlloc();
-        *(seq_num_t*)sendBuffer.alloc(sizeof(seq_num_t)) = seqNum;
+        *(request_id_t*)sendBuffer.alloc(sizeof(request_id_t)) = requestId;
         size_t* const responseSize = (size_t*)sendBuffer.alloc(sizeof(size_t));
         {
             BufferReader* const reader = recvBuffer.reader(recvSize);
@@ -253,12 +253,12 @@ void Server::run(const unsigned int threadNum) {
         {
             boost::lock_guard<boost::mutex> writeLock(writeMutex_);
 
-            *responseSize = sendBuffer.writtenSize() - sizeof(seq_num_t) - sizeof(size_t);
+            *responseSize = sendBuffer.writtenSize() - sizeof(request_id_t) - sizeof(size_t);
             if (logFile_ != NULL) {
                 fprintf(logFile_,
-                    "\n- Thread#%u: Sending response, seq num " PRI_SEQ_NUM ", total size %zu:\n",
+                    "\n- Thread#%u: Sending response, seq num " PRI_REQUEST_ID ", total size %zu:\n",
                     threadNum,
-                    seqNum,
+                    requestId,
                     sendBuffer.writtenSize());
                 hexDump(logFile_, sendBuffer.buffer(), sendBuffer.writtenSize());
                 fflush(logFile_);

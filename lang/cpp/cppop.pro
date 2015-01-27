@@ -15,14 +15,16 @@ SOURCES += \
     buffers.cpp \
     server.cpp \
     interface.cpp \
-    driver.cpp
+    driver.cpp \
+    idspace.cpp
 
 HEADERS +=\
     buffers.h \
     server.h \
     interface.h \
     driver.h \
-    common.h
+    common.h \
+    idspace.h
 
 LIBS += -lboost_thread
 

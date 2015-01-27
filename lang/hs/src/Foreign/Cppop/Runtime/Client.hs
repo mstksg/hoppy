@@ -20,11 +20,14 @@ import qualified Data.Map as Map
 import Data.Map (Map)
 import Data.Maybe (isJust)
 import Data.Monoid (mappend)
-import Foreign.C.Types (CSize)
+import Foreign.C.Types (CInt, CSize)
 import Foreign.Cppop.Runtime.Binary
-import qualified Foreign.Cppop.Runtime.SeqNum as SN
-import Foreign.Storable (sizeOf)
+import qualified Foreign.Cppop.Runtime.IdSpace as I
+import Foreign.Storable (Storable, sizeOf)
 import System.IO (IOMode (ReadMode, WriteMode), Handle, hClose, hFlush, openFile)
+
+newtype ClientRequestId = ClientRequestId CInt
+                        deriving (Eq, HostBinary, Num, Ord, Show, Storable)
 
 data ClientParams = ClientParams
   { paramInPath :: FilePath
@@ -35,8 +38,8 @@ data Client = Client
   { clientInHandle :: Handle
   , clientOutHandle :: Handle
   , clientRequestChannel :: Chan Request
-  , clientRequests :: MVar (Map SN.SeqNum Request)
-  , clientSeqNums :: SN.SeqNums
+  , clientRequests :: MVar (Map ClientRequestId Request)
+  , clientRequestIds :: I.ListIdSpace ClientRequestId
   }
 
 data Request = Request
@@ -47,15 +50,16 @@ data Request = Request
     -- ^ The var into which to stick the response when it arrives.
   }
 
-data ResponseHeader = ResponseHeader
-  { headerSeqNum :: SN.SeqNum
-  , headerBodySize :: CSize
+data ServerResponseHeader = ServerResponseHeader
+  { serverResponseId :: ClientRequestId
+  , serverResponseBodySize :: CSize
   }
 
-parseResponseHeader :: BL.ByteString
-                    -> Either (BL.ByteString, ByteOffset, String)
-                              (BL.ByteString, ByteOffset, ResponseHeader)
-parseResponseHeader input = runGetOrFail (ResponseHeader <$> hget <*> hget) input
+parseServerResponseHeader :: BL.ByteString
+                          -> Either (BL.ByteString, ByteOffset, String)
+                                    (BL.ByteString, ByteOffset, ServerResponseHeader)
+parseServerResponseHeader input =
+  runGetOrFail (ServerResponseHeader <$> hget <*> hget) input
 
 newClient :: ClientParams -> IO Client
 newClient params = do
@@ -63,13 +67,13 @@ newClient params = do
   inh <- openFile (paramInPath params) ReadMode
   requestChannel <- newChan
   requests <- newMVar Map.empty
-  seqNums <- SN.new
+  requestIds <- I.create "client request IDs" 1 2
   let client = Client
         { clientInHandle = inh
         , clientOutHandle = outh
         , clientRequestChannel = requestChannel
         , clientRequests = requests
-        , clientSeqNums = seqNums
+        , clientRequestIds = requestIds
         }
   --forkIO $ runRequestDispatcher client
   forkIO $ runResponseDistributor client
@@ -87,12 +91,13 @@ send client bodyBytes = do
                         }
       -- TODO Potential casting problems!
       requestSize = fromIntegral $ BL.length bodyBytes :: CSize
-  seqNum <- pushRequest client request
+  requestId <- pushRequest client request
   let outh = clientOutHandle client
       headerBytes = runPut $ do
-        hput seqNum
+        hput requestId
         hput requestSize
-  BB.hPutBuilder outh $ BB.lazyByteString headerBytes `mappend` BB.lazyByteString bodyBytes
+  BB.hPutBuilder outh $
+    BB.lazyByteString headerBytes `mappend` BB.lazyByteString bodyBytes
   hFlush outh
   takeMVar responseVar
 
@@ -110,15 +115,16 @@ send client bodyBytes = do
 runResponseDistributor :: Client -> IO ()
 runResponseDistributor client = do
   let inh = clientInHandle client
-      headerSize = sizeOf (undefined :: SN.SeqNum) + sizeOf (undefined :: CSize)
+      headerSize = sizeOf (undefined :: ClientRequestId) +
+                   sizeOf (undefined :: CSize)
       loop = do
         headerBytes <- BL.hGet inh headerSize
         let result = flip runGetOrFail headerBytes $ do
-              seqNum <- hget
+              requestId <- hget
               bodySize <- hget
-              return $ ResponseHeader { headerSeqNum = seqNum
-                                      , headerBodySize = bodySize
-                                      }
+              return $ ServerResponseHeader { serverResponseId = requestId
+                                            , serverResponseBodySize = bodySize
+                                            }
         case result of
           Left (_, _, errorMsg) ->
             putStrLn $ "Received malformed header response (" ++ errorMsg ++ "), ignoring."
@@ -128,13 +134,13 @@ runResponseDistributor client = do
                  show (BL.length headerBytes) ++ " bytes, only consumed " ++
                  show (BL.length headerBytes - BL.length headerRemainder) ++ "."
             else do
-              let seqNum = headerSeqNum header
-                  bodySize = headerBodySize header
+              let requestId = serverResponseId header
+                  bodySize = serverResponseBodySize header
               bodyBytes <- BL.hGet inh $ fromIntegral bodySize  -- TODO Potential casting problems!
-              maybeRequest <- popRequest client seqNum
+              maybeRequest <- popRequest client requestId
               case maybeRequest of
                 Nothing ->
-                  putStrLn $ "Received response for sequence number " ++ show seqNum ++
+                  putStrLn $ "Received response for sequence number " ++ show requestId ++
                   " with no active request."
                 Just request ->
                   putMVar (requestResponseVar request) bodyBytes
@@ -142,23 +148,23 @@ runResponseDistributor client = do
   loop
 
 -- | Adds a new 'Request' to the 'Requests' of a 'Client'.  Allocates and
--- returns a 'SeqNum' for the request.
-pushRequest :: Client -> Request -> IO SN.SeqNum
+-- returns a 'ClientRequestId' for the request.
+pushRequest :: Client -> Request -> IO ClientRequestId
 pushRequest client request = do
-  seqNum <- SN.grabBriefly $ clientSeqNums client
-  modifyMVar_ (clientRequests client) $ return . Map.insert seqNum request
-  return seqNum
+  requestId <- I.request $ clientRequestIds client
+  modifyMVar_ (clientRequests client) $ return . Map.insert requestId request
+  return requestId
 
--- | Retrieves a 'Request' from the 'Requests' of a 'Client' by its 'SeqNum',
--- and removes the request from the requests.
-popRequest :: Client -> SN.SeqNum -> IO (Maybe Request)
-popRequest client seqNum = do
+-- | Retrieves a 'Request' from the 'Requests' of a 'Client' by its
+-- 'ClientRequestId', and removes the request from the requests.
+popRequest :: Client -> ClientRequestId -> IO (Maybe Request)
+popRequest client requestId = do
   request <- modifyMVar (clientRequests client) $ return . \requests ->
-    case Map.lookup seqNum requests of
+    case Map.lookup requestId requests of
       Nothing -> (requests, Nothing)
-      Just request -> (Map.delete seqNum requests, Just request)
+      Just request -> (Map.delete requestId requests, Just request)
   when (isJust request) $
-    SN.release (clientSeqNums client) seqNum
+    I.release (clientRequestIds client) requestId
   return request
 
 {-

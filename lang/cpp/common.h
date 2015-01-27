@@ -3,9 +3,9 @@
 
 namespace cppop {
 
-typedef int seq_num_t;
+typedef int request_id_t;
 
-#define PRI_SEQ_NUM "%d"
+#define PRI_REQUEST_ID "%d"
 
 }
 

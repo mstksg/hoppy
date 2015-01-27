@@ -24,9 +24,12 @@ library
                         Foreign.Cppop.Generator.Std,
                         Foreign.Cppop.Runtime.Binary,
                         Foreign.Cppop.Runtime.Client,
-                        Foreign.Cppop.Runtime.SeqNum
+                        Foreign.Cppop.Runtime.IdSpace
   default-extensions:   ExistentialQuantification,
                         FlexibleInstances,
+                        FunctionalDependencies,
+                        GeneralizedNewtypeDeriving,
+                        MultiParamTypeClasses,
                         ScopedTypeVariables,
                         UndecidableInstances
   -- other-modules:        
