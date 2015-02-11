@@ -1,20 +1,23 @@
 #ifndef CPPOP_SERVER_H
 #define CPPOP_SERVER_H
 
+#include <boost/noncopyable.hpp>
 #include <boost/thread/thread.hpp>
 #include <list>
 #include <map>
 #include <string>
 
 #include "common.h"
+#include "idspace.h"
 #include "interface.h"
+#include "message.h"
+#include "mvar.h"
 
 namespace cppop {
 
-class Server;
-class ServerThreadStarter;
+class Listener;
 
-class Server {
+class Server : private boost::noncopyable {
 public:
     Server();
     virtual ~Server();
@@ -47,17 +50,24 @@ public:
     // function returns immediately.
     void wait();
 
+    void execute(const CalcMessage& message);
+    void execute(const CallMessage& message);
+    void execute(const RetnMessage& message);
+
+    FILE* getLogFile();
+    boost::mutex* getLogMutex();
+
     friend class Callback;
-    friend class ServerThreadStarter;
+    friend class ThreadRequestRegistrationGuard;
 
 private:
-    Server(const Server&);
-
-    void run(unsigned int threadNum);
+    void send(const Message& message);
 
     const Export* lookup(const std::string& name);
 
-    void hexDump(FILE* file, const char* buffer, size_t size) const;
+    void registerThreadRequest(request_id_t requestId);
+
+    void unregisterThreadRequest(request_id_t requestId);
 
     // Interface configuration.
     std::map<std::string, const Interface*> interfaces_;
@@ -73,9 +83,56 @@ private:
     FILE* outputWriteFile_;
     FILE* logFile_;
     boost::thread_group threads_;
+    scoped_ptr<Listener> listener_;
     boost::mutex readMutex_;
     boost::mutex writeMutex_;
     boost::mutex logMutex_;
+
+    // Server requests.
+    boost::mutex serverRequestMutex_;
+    IdSpace<request_id_t> serverRequestIds_;
+    //std::map<request_id_t, ServerRequest*> serverRequests_;
+
+    boost::mutex threadRequestsMutex_;
+    std::map<boost::thread::id, std::list<request_id_t> > threadRequests_;
+};
+
+class ThreadRequestRegistrationGuard : private boost::noncopyable {
+public:
+    ThreadRequestRegistrationGuard(Server* server, request_id_t requestId);
+    ~ThreadRequestRegistrationGuard();
+
+private:
+    Server* const server_;
+    const request_id_t requestId_;
+};
+
+class Listener : private boost::noncopyable {
+public:
+    Listener(Server* server, FILE* inputFile);
+
+    void operator()();
+
+    MVar<MVar<const Message*>*>* getListenerVar() { return &listenerVar_; }
+
+private:
+    Listener(const Listener&);
+
+    Server* const server_;
+    FILE* const inputFile_;
+    MVar<MVar<const Message*>*> listenerVar_;
+};
+
+class Runner : private boost::noncopyable {
+public:
+    Runner(Server* server, MVar<MVar<const Message*>*>* listenerVar);
+
+    void operator()();
+
+private:
+    Server* const server_;
+    MVar<MVar<const Message*>*>* const listenerVar_;
+    MVar<const Message*> messageVar_;
 };
 
 } // namespace cppop

@@ -1,10 +1,10 @@
 #ifndef INTERFACE_H
 #define INTERFACE_H
 
+#include <boost/noncopyable.hpp>
 #include <map>
 #include <string>
-
-#include "buffers.h"
+#include "buffer.h"
 
 namespace cppop {
 
@@ -12,7 +12,7 @@ class Interface;
 
 typedef const Interface* (*InterfaceFn)();
 
-typedef void (*ExportFn)(BufferReader*, WritableBuffer*);
+typedef void (*ExportFn)(const SizedBuffer*, SizedBufferWriter*);
 
 // Export is copyable!
 class Export {
@@ -35,7 +35,7 @@ private:
 
 typedef std::map<std::string, Export> ExportMap;
 
-class Interface {
+class Interface : private boost::noncopyable {
 public:
     explicit Interface(const std::string& name);
 
@@ -55,8 +55,6 @@ public:
     const ExportMap& exportMap() const;
 
 private:
-    Interface(const Interface&);
-
     const std::string& name_;
     ExportMap exportMap_;
     bool finished_;

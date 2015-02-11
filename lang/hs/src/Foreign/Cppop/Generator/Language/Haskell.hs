@@ -112,11 +112,12 @@ sayExportFn name isMethod purity paramTypes retType = do
     sayLn $
       (case purity of
           Nonpure -> id
-          Pure -> ("SIU.unsafePerformIO $ " ++))
-      "P.fmap (DBG.runGet FCRB.hget) $ FCRC.send client $ DBP.runPut $ do"
-    indent $ do
-      saysLn ["FCRB.hput $ FCRB.CString ", show $ fromExtName name]
-      forM_ argNamesWithThis $ \argName ->
+          Pure -> ("SIU.unsafePerformIO $ " ++)) $
+      "P.fmap (DBG.runGet FCRB.hget) $ FCRC.call client " ++ show (fromExtName name) ++
+      if null argNamesWithThis
+      then " $ DBL.empty"
+      else " $ DBP.runPut $ do"
+    indent $ forM_ argNamesWithThis $ \argName ->
         saysLn ["FCRB.hput ", argName]
 
 sayExportClass :: Class -> Generator ()

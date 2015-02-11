@@ -12,19 +12,22 @@ TEMPLATE = lib
 DEFINES += CPPOP_LIBRARY
 
 SOURCES += \
-    buffers.cpp \
     server.cpp \
     interface.cpp \
     driver.cpp \
-    idspace.cpp
+    message.cpp \
+    common.cpp \
+    buffer.cpp
 
 HEADERS +=\
-    buffers.h \
     server.h \
     interface.h \
     driver.h \
     common.h \
-    idspace.h
+    idspace.h \
+    mvar.h \
+    message.h \
+    buffer.h
 
 LIBS += -lboost_thread
 

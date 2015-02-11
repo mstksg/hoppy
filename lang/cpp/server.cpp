@@ -7,32 +7,18 @@
 #include <iostream>
 #include <sys/stat.h>
 #include <unistd.h>
-
-#include "buffers.h"
+#include "buffer.h"
+#include "message.h"
 
 namespace cppop {
-
-class ServerThreadStarter {
-public:
-    ServerThreadStarter(Server* server, unsigned int threadNum) :
-        server_(server),
-        threadNum_(threadNum) {}
-
-    void operator()() {
-        server_->run(threadNum_);
-    }
-
-private:
-    Server* const server_;
-    const int threadNum_;
-};
 
 Server::Server() :
     started_(false),
     inputReadFile_(NULL),
     inputWriteFile_(NULL),
     outputWriteFile_(NULL),
-    logFile_(NULL) {}
+    logFile_(NULL),
+    serverRequestIds_("server request ids", -1, -1) {}
 
 Server::~Server() {
     stop();
@@ -76,6 +62,8 @@ bool Server::start(
     const std::string outputPath,
     const std::string logPath,
     const unsigned int numThreads) {
+    MVar<MVar<const Message*>*>* listenerVar = NULL;
+
     if (numThreads < 1) {
         std::cerr << "Server::start: Number of threads (" << numThreads
                   << ") must be positive.\n";
@@ -121,8 +109,11 @@ bool Server::start(
 
     std::cerr << "Server::start: Everything opened.\n";  //zz
 
+    listener_.assign(new Listener(this, inputReadFile_));
+    threads_.create_thread(boost::ref(*listener_));
+    listenerVar = listener_->getListenerVar();
     for (unsigned int i = 0; i < numThreads; ++i) {
-        threads_.create_thread(ServerThreadStarter(this, i));
+        threads_.create_thread(boost::ref(*new Runner(this, listenerVar)));
     }
 
     started_ = true;
@@ -150,126 +141,70 @@ void Server::wait() {
     threads_.join_all();
 }
 
-void Server::run(const unsigned int threadNum) {
-    request_id_t requestId;
-    size_t recvSize;
-    SizedBuffer recvBuffer;
-    WritableBuffer sendBuffer;
-    size_t n;
+void Server::execute(const CalcMessage&) {
+    std::cerr << "Server::execute: Can't handle CALC, aborting.\n";
+    abort();
+}
 
-    while (true) {
-        boost::this_thread::interruption_point();
+void Server::execute(const CallMessage& message) {
+    ThreadRequestRegistrationGuard registration(this, message.getRequestId());
 
-        {
-            boost::lock_guard<boost::mutex> readLock(readMutex_);
+    // Look up the requested function.
+    const Export* const exp = lookup(message.getFunctionName());
+    if (exp == NULL) {
+        std::cerr << "Server::run: Unknown export \"" << exp->name()
+                  << "\" called, ignoring.\n";
+        return;
+    }
+    std::cerr << "#" << exp->name() << "\n";
 
-            // First read the header (sequence number and request body size).
-            recvSize = sizeof(requestId) + sizeof(recvSize);
-            recvBuffer.ensureSize(recvSize);  // TODO Lift this out of the loop (the buffer doesn't shrink).
-            n = fread(recvBuffer.buffer(), recvSize, 1, inputReadFile_);
-            if (n < 1) {
-                if (feof(inputReadFile_)) {
-                    std::cerr << "Server::run: EOF received, exiting.\n";
-                } else {
-                    std::cerr << "Server::run: Error reading request size; exiting.\n";
-                }
-                break;
-            }
+    // Prepare a response message and call the exported function.
+    RetnMessage reply(new SizedBuffer());
+    reply.setRequestId(message.getRequestId());
+    {
+        SizedBufferWriter writer(reply.getBody());
+        // Add const; the export should not need to modify the argument buffer.
+        exp->exportFn()(const_cast<const SizedBuffer*>(message.getBody()), &writer);
+    }
+    send(reply);
+}
 
-            // Decode the header.
-            {
-                BufferReader* const reader = recvBuffer.reader(recvSize);
-                requestId = *(request_id_t*)reader->read(sizeof(requestId));
-                recvSize = *(size_t*)reader->read(sizeof(recvSize));
-                if (logFile_ != NULL) {
-                    boost::lock_guard<boost::mutex> logLock(logMutex_);
-                    fprintf(logFile_,
-                        "\n- Thread#%u: Header received, seq num " PRI_REQUEST_ID ", body size %zu.\n",
-                        threadNum, requestId, recvSize);
-                    fflush(logFile_);
-                }
-                if (reader->remainingBytes() != 0) {
-                    std::cerr << "Server::run: Internal error parsing client request header.\n";
-                    std::cerr << "(Expected " << (sizeof(requestId) + sizeof(recvSize))
-                              << " bytes, still have " << reader->remainingBytes() << " left.)\n";
-                    break;
-                }
-                delete reader;
-            }
+void Server::execute(const RetnMessage& message) {
+    // TODO Server::execute(const RetnMessage&).
+    std::cerr << "Server::execute: Can't handle a RETN message yet; aborting.\n";
+    abort();
+}
 
-            recvBuffer.ensureSize(recvSize);
-            n = fread(recvBuffer.buffer(), 1, recvSize, inputReadFile_);
-            if (n < recvSize) {
-                if (feof(inputReadFile_)) {
-                    std::cerr << "Server::run: Received EOF after " << n
-                              << " message byte(s), exiting.\n";
-                } else {
-                    std::cerr << "Server::run: Received error after " << n
-                              << " message byte(s), exiting.\n";
-                }
-                break;
-            }
-            if (logFile_ != NULL) {
-                boost::lock_guard<boost::mutex> logLock(logMutex_);
-                fprintf(logFile_,
-                    "\n- Thread#%u: Request received, seq num " PRI_REQUEST_ID ", body size %zu:\n",
-                    threadNum,
-                    requestId,
-                    recvSize);
-                hexDump(logFile_, recvBuffer.buffer(), recvSize);
-                fflush(logFile_);
-            }
-        }
+FILE* Server::getLogFile() {
+    return logFile_;
+}
 
-        // Look up the export.
-        const std::string name(recvBuffer.buffer());
-        if (name.empty()) {  // An empty name can be used to wake the thread up.
-            continue;
-        }
-        const Export* const exp = lookup(name);
-        if (exp == NULL) {
-            std::cerr << "Server::run: Unknown export \"" << name
-                      << "\" called, ignoring.\n";
-            continue;
-        }
-        std::cerr << "#" << name << "\n";
+boost::mutex* Server::getLogMutex() {
+    return &logMutex_;
+}
 
-        // Call the exported function.
-        sendBuffer.resetAlloc();
-        *(request_id_t*)sendBuffer.alloc(sizeof(request_id_t)) = requestId;
-        size_t* const responseSize = (size_t*)sendBuffer.alloc(sizeof(size_t));
-        {
-            BufferReader* const reader = recvBuffer.reader(recvSize);
-            reader->read(name.length() + 1);
-            exp->exportFn()(reader, &sendBuffer);
-            if (reader->remainingBytes() != 0) {
-                std::cerr << "Server::run: " << reader->remainingBytes()
-                          << " argument byte(s) left unread in call to \""
-                          << name << "\".\n";
-            }
-            delete reader;
-        }
+void Server::send(const Message& message) {
+    SizedBuffer buffer;
+    {
+        SizedBufferWriter writer(&buffer);
+        message.write(&writer);
+    }
 
-        {
-            boost::lock_guard<boost::mutex> writeLock(writeMutex_);
+    if (logFile_ != NULL) {
+        boost::lock_guard<boost::mutex> lock(logMutex_);
+        fprintf(logFile_, "Out: ");
+        message.log(logFile_);
+        fflush(logFile_);
+    }
 
-            *responseSize = sendBuffer.writtenSize() - sizeof(request_id_t) - sizeof(size_t);
-            if (logFile_ != NULL) {
-                fprintf(logFile_,
-                    "\n- Thread#%u: Sending response, seq num " PRI_REQUEST_ID ", total size %zu:\n",
-                    threadNum,
-                    requestId,
-                    sendBuffer.writtenSize());
-                hexDump(logFile_, sendBuffer.buffer(), sendBuffer.writtenSize());
-                fflush(logFile_);
-            }
-            n = fwrite(sendBuffer.buffer(), 1, sendBuffer.writtenSize(), outputWriteFile_);
-            if (n < sendBuffer.writtenSize()) {
-                std::cerr << "Server::run: Error writing response, exiting.\n";
-                break;
-            }
-            fflush(outputWriteFile_);  // TODO Check for error.
-        }
+    boost::lock_guard<boost::mutex> lock(writeMutex_);
+    if (fwrite(buffer.buffer(), buffer.size(), 1, outputWriteFile_) != 1) {
+        std::cerr << "Server::send: Failed to send message, aborting.\n";
+        abort();
+    }
+    if (fflush(outputWriteFile_) != 0) {
+        std::cerr << "Server::send: Failed to flush message, aborting.\n";
+        abort();
     }
 }
 
@@ -278,30 +213,79 @@ const Export* Server::lookup(const std::string& name) {
     return it == exports_.end() ? NULL : &it->second;
 }
 
-void Server::hexDump(FILE* file, const char* const buffer, const size_t size) const {
-    const size_t maxBytesOnLine = 16;
-    size_t currentOffset = 0;
+void Server::registerThreadRequest(request_id_t requestId) {
+    boost::lock_guard<boost::mutex> lock(threadRequestsMutex_);
+    threadRequests_[boost::this_thread::get_id()].push_front(requestId);
+}
 
-    while (currentOffset < size) {
-        size_t bytesOnLine = size - currentOffset;
-        if (bytesOnLine > maxBytesOnLine) {
-            bytesOnLine = maxBytesOnLine;
+void Server::unregisterThreadRequest(request_id_t requestId) {
+    boost::lock_guard<boost::mutex> lock(threadRequestsMutex_);
+    const boost::thread::id threadId = boost::this_thread::get_id();
+    std::list<request_id_t>* const thisThreadRequests = &threadRequests_[threadId];
+    const request_id_t head = *thisThreadRequests->begin();
+    if (head != requestId) {
+        std::cerr << "Server::unregisterThreadRequest: Want to unregister request "
+                  << requestId << ", but is currently on request " << head << ".  Aborting.\n";
+        abort();
+    }
+    if (thisThreadRequests->size() == 1) {
+        threadRequests_.erase(threadId);
+    } else {
+        thisThreadRequests->pop_front();
+    }
+}
+
+ThreadRequestRegistrationGuard::ThreadRequestRegistrationGuard(
+    Server* server, request_id_t requestId) :
+    server_(server), requestId_(requestId) {
+    server_->registerThreadRequest(requestId_);
+}
+
+ThreadRequestRegistrationGuard::~ThreadRequestRegistrationGuard() {
+    server_->unregisterThreadRequest(requestId_);
+}
+
+Listener::Listener(Server* server, FILE* inputFile) :
+    server_(server), inputFile_(inputFile) {}
+
+void Listener::operator()() {
+    SizedBuffer buffer;
+
+    while (true) {
+        MVar<const Message*>* const runnerVar = listenerVar_.take();
+        size_t messageSize;
+        if (fread(&messageSize, sizeof(size_t), 1, inputFile_) != 1) {
+            std::cerr << "Listener: Failed to read size from pipe.  Aborting.\n";
+            abort();
         }
 
-        fprintf(file, "%08lx ", currentOffset);
-        for (size_t i = 0; i < bytesOnLine; ++i) {
-            fprintf(file, " %02hhx", buffer[currentOffset + i]);
+        buffer.ensureSize(messageSize);
+        if (fread(buffer.buffer(), messageSize, 1, inputFile_) != 1) {
+            std::cerr << "Listener: Failed to read message from pipe.  Aborting.\n";
+            abort();
         }
-        for (size_t i = 0, end = (maxBytesOnLine - bytesOnLine) * 3 + 2; i < end; ++i) {
-            fputc(' ', file);
-        }
-        for (size_t i = 0; i < bytesOnLine; ++i) {
-            const char c = buffer[currentOffset + i];
-            fputc(c >= 0x20 && c <= 0x7e ? c : '.', file);
-        }
-        fputc('\n', file);
 
-        currentOffset += bytesOnLine;
+        SizedBufferReader reader(buffer);
+        const Message* const message = Message::read(&reader);
+        FILE* const logFile = server_->getLogFile();
+        if (logFile != NULL) {
+            boost::lock_guard<boost::mutex> lock(*server_->getLogMutex());
+            fprintf(logFile, "In : ");
+            message->log(logFile);
+            fflush(logFile);
+        }
+        runnerVar->put(message);
+    }
+}
+
+Runner::Runner(Server* server, MVar<MVar<const Message*>*>* listenerVar) :
+    server_(server), listenerVar_(listenerVar) {}
+
+void Runner::operator()() {
+    while (true) {
+        listenerVar_->put(&messageVar_);
+        const scoped_ptr<const Message> message(messageVar_.take());
+        message->executeOn(server_);
     }
 }
 

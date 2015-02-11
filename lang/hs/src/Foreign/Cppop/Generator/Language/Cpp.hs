@@ -13,6 +13,7 @@ import Control.Monad.Writer (WriterT, runWriterT, tell)
 import Control.Monad.Trans (lift)
 import Data.Foldable (forM_)
 import Data.List (intercalate, intersperse)
+import Data.Maybe (isJust)
 import Data.Tuple (swap)
 import Foreign.Cppop.Generator.Spec
 
@@ -113,7 +114,7 @@ sayCommonIncludes :: Generator ()
 sayCommonIncludes = do
   say "#include <map>\n"
   say "#include <string>\n"
-  say "#include \"buffers.h\"\n"
+  say "#include \"buffer.h\"\n"
   say "#include \"interface.h\"\n"
 
 sayInterfaceFunction :: Generator ()
@@ -216,12 +217,17 @@ sayExport export = case export of
 sayExportFn :: ExtName -> Generator () -> Maybe Type -> [Type] -> Type -> Generator ()
 sayExportFn extName sayCppName maybeThisType paramTypes retType = do
   let paramCount = length paramTypes
+      hasParams = isJust maybeThisType || not (null paramTypes)
+      returnsData = retType /= TVoid
   sayFunction (externalNameToCpp extName)
-              ["args", "out"]
-              (TFn [ TPtr $ TOpaque "::cppop::BufferReader"
-                   , TPtr $ TOpaque "::cppop::WritableBuffer"
+              [if hasParams then "argBuffer" else "",
+               if returnsData then "out" else ""]
+              (TFn [ TConst $ TPtr $ TConst $ TOpaque "::cppop::SizedBuffer"
+                   , TConst $ TPtr $ TOpaque "::cppop::SizedBufferWriter"
                    ]
                    TVoid) $ do
+    when hasParams $
+      say "::cppop::SizedBufferReader args(*argBuffer);\n"
     -- Maybe extract a this-pointer for a method call.
     forM_ maybeThisType $ \thisType ->
       sayArgRead extName "self" thisType
@@ -229,7 +235,6 @@ sayExportFn extName sayCppName maybeThisType paramTypes retType = do
     forM_ (zip [0..] paramTypes) $ \(paramIdx, paramType) -> do
       sayArgRead extName ("arg" ++ show paramIdx) paramType
     -- Call the exported function or method.
-    let returnsData = retType /= TVoid
     when returnsData $ do
       sayVar "result" Nothing retType
       say " = "
@@ -251,7 +256,7 @@ sayExportFn extName sayCppName maybeThisType paramTypes retType = do
                                " for export \"" ++ fromExtName extName ++ "\".")
                               return $
                         primitiveTypeName retType
-        says ["*(", primTypeName, "*)out->alloc(sizeof(", primTypeName, ")) = result;\n"]
+        says ["*reinterpret_cast< ", primTypeName, "*>(out->allocPointer(sizeof(", primTypeName, "))) = result;\n"]
 
 sayArgRead :: ExtName -> String -> Type -> Generator ()
 sayArgRead extName paramVarName paramType = case paramType of
@@ -262,14 +267,14 @@ sayArgRead extName paramVarName paramType = case paramType of
       sayVar paramVarName Nothing paramType
       say "("
       sayIdentifier decoderId
-      say "(args));\n"
+      say "(&args));\n"
   _ -> do
     primTypeName <- maybe (abort $ "Can't decode argument of type " ++ show paramType ++
                            " for export \"" ++ fromExtName extName ++ "\".")
                           return $
                     primitiveTypeName paramType
     sayVar paramVarName Nothing paramType
-    says [" = *(", primTypeName, "*)args->read(sizeof(", primTypeName, "));\n"]
+    says [" = *reinterpret_cast< ", primTypeName, "const*>(args.read(sizeof(", primTypeName, ")));\n"]
 
 sayArgNames :: Int -> Generator ()
 sayArgNames count =
