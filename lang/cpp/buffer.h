@@ -60,9 +60,9 @@ private:
 
 class SizedBufferWriter : private boost::noncopyable {
 public:
-    SizedBufferWriter(SizedBuffer* buffer);
+    SizedBufferWriter(SizedBuffer& buffer);
 
-    SizedBuffer* buffer();
+    SizedBuffer& buffer();
 
     size_t writtenSize() const;
 
@@ -70,7 +70,7 @@ public:
 
     size_t alloc(size_t bytes);
 
-    // The poiner returned from this function is only valid until the next alloc
+    // The pointer returned from this function is only valid until the next alloc
     // call is made.
     char* allocPointer(size_t bytes);
 
@@ -81,17 +81,17 @@ public:
     template <typename T>
     void writeLiteral(const T& object) {
         size_t offset = alloc(sizeof(object));
-        *(T*)buffer_->at(offset) = object;
+        *(T*)buffer_.at(offset) = object;
     }
 
 private:
-    SizedBuffer* const buffer_;
+    SizedBuffer& buffer_;
     size_t offset_;
 };
 
-std::string decodeStdString(SizedBufferReader* reader);
+std::string decodeStdString(SizedBufferReader& reader);
 
-void encodeStdString(const std::string& str, SizedBufferWriter* buf);
+void encodeStdString(const std::string& str, SizedBufferWriter& buf);
 
 }
 

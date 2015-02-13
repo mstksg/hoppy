@@ -222,12 +222,12 @@ sayExportFn extName sayCppName maybeThisType paramTypes retType = do
   sayFunction (externalNameToCpp extName)
               [if hasParams then "argBuffer" else "",
                if returnsData then "out" else ""]
-              (TFn [ TConst $ TPtr $ TConst $ TOpaque "::cppop::SizedBuffer"
-                   , TConst $ TPtr $ TOpaque "::cppop::SizedBufferWriter"
+              (TFn [ TRef $ TConst $ TOpaque "::cppop::SizedBuffer"
+                   , TRef $ TOpaque "::cppop::SizedBufferWriter"
                    ]
                    TVoid) $ do
     when hasParams $
-      say "::cppop::SizedBufferReader args(*argBuffer);\n"
+      say "::cppop::SizedBufferReader args(argBuffer);\n"
     -- Maybe extract a this-pointer for a method call.
     forM_ maybeThisType $ \thisType ->
       sayArgRead extName "self" thisType
@@ -256,7 +256,7 @@ sayExportFn extName sayCppName maybeThisType paramTypes retType = do
                                " for export \"" ++ fromExtName extName ++ "\".")
                               return $
                         primitiveTypeName retType
-        says ["*reinterpret_cast< ", primTypeName, "*>(out->allocPointer(sizeof(", primTypeName, "))) = result;\n"]
+        says ["*reinterpret_cast< ", primTypeName, "*>(out.allocPointer(sizeof(", primTypeName, "))) = result;\n"]
 
 sayArgRead :: ExtName -> String -> Type -> Generator ()
 sayArgRead extName paramVarName paramType = case paramType of
@@ -267,7 +267,7 @@ sayArgRead extName paramVarName paramType = case paramType of
       sayVar paramVarName Nothing paramType
       say "("
       sayIdentifier decoderId
-      say "(&args));\n"
+      say "(args));\n"
   _ -> do
     primTypeName <- maybe (abort $ "Can't decode argument of type " ++ show paramType ++
                            " for export \"" ++ fromExtName extName ++ "\".")

@@ -7,7 +7,7 @@
 namespace cppop {
 
 SizedBuffer::SizedBuffer() :
-    buffer_((char*) malloc(DEFAULT_CAPACITY)),
+    buffer_(static_cast<char*>(malloc(DEFAULT_CAPACITY))),
     capacity_(DEFAULT_CAPACITY),
     size_(0) {
     if (buffer_.get() == NULL) {
@@ -18,7 +18,7 @@ SizedBuffer::SizedBuffer() :
 }
 
 SizedBuffer::SizedBuffer(size_t initialSize) :
-    buffer_((char*) malloc(initialSize)),
+    buffer_(static_cast<char*>(malloc(initialSize))),
     capacity_(initialSize),
     size_(initialSize) {
     if (buffer_.get() == NULL) {
@@ -74,10 +74,10 @@ void SizedBufferReader::readTo(char* const target, size_t size) {
     memcpy(target, read(size), size);
 }
 
-SizedBufferWriter::SizedBufferWriter(SizedBuffer* buffer) :
+SizedBufferWriter::SizedBufferWriter(SizedBuffer& buffer) :
     buffer_(buffer), offset_(0) {}
 
-SizedBuffer* SizedBufferWriter::buffer() {
+SizedBuffer& SizedBufferWriter::buffer() {
     return buffer_;
 }
 
@@ -91,13 +91,13 @@ void SizedBufferWriter::reset() {
 
 size_t SizedBufferWriter::alloc(size_t bytes) {
     const size_t start = offset_;
-    buffer_->ensureSize(offset_ + bytes);
+    buffer_.ensureSize(offset_ + bytes);
     offset_ += bytes;
     return start;
 }
 
 char* SizedBufferWriter::allocPointer(size_t bytes) {
-    return buffer_->at(alloc(bytes));
+    return buffer_.at(alloc(bytes));
 }
 
 void SizedBufferWriter::write(const char* bytes, size_t size) {
@@ -108,16 +108,16 @@ void SizedBufferWriter::write(const SizedBuffer& source) {
     write(source.buffer(), source.size());
 }
 
-std::string decodeStdString(SizedBufferReader* reader) {
-    size_t size = reader->readLiteral<size_t>();
+std::string decodeStdString(SizedBufferReader& reader) {
+    size_t size = reader.readLiteral<size_t>();
     std::cerr << "Reading string of size 0x" << std::hex << (size & 0xff) << ".\n";
-    const char* p = reader->read(size);
+    const char* p = reader.read(size);
     return std::string(p, size);
 }
 
-void encodeStdString(const std::string& str, SizedBufferWriter* buf) {
+void encodeStdString(const std::string& str, SizedBufferWriter& buf) {
     size_t size = str.size();
-    char* p = buf->allocPointer(sizeof(size_t) + size);
+    char* p = buf.allocPointer(sizeof(size_t) + size);
     *(size_t*)p = size;
     p += sizeof(size_t);
     memcpy(p, str.c_str(), size);

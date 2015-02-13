@@ -29,7 +29,7 @@ Server::~Server() {
     }
 }
 
-bool Server::addInterface(const Interface *interface) {
+bool Server::addInterface(const Interface* interface) {
     const std::map<std::string, const Interface*>::const_iterator existingInterface =
         interfaces_.find(interface->name());
     if (existingInterface != interfaces_.end()) {
@@ -47,7 +47,7 @@ bool Server::addInterface(const Interface *interface) {
         if (existingExport != exports_.end()) {
             std::cerr << "Server::addInterface: Duplicate export \""
                       << exp.name() << "\" from interfaces \""
-                      << existingExport->second.interface()->name()
+                      << existingExport->second.interface().name()
                       << "\" and \"" << interface->name() << "\".\n";
             return false;
         }
@@ -62,8 +62,6 @@ bool Server::start(
     const std::string outputPath,
     const std::string logPath,
     const unsigned int numThreads) {
-    MVar<MVar<const Message*>*>* listenerVar = NULL;
-
     if (numThreads < 1) {
         std::cerr << "Server::start: Number of threads (" << numThreads
                   << ") must be positive.\n";
@@ -109,11 +107,13 @@ bool Server::start(
 
     std::cerr << "Server::start: Everything opened.\n";  //zz
 
-    listener_.assign(new Listener(this, inputReadFile_));
+    listener_.assign(new Listener(*this, inputReadFile_));
     threads_.create_thread(boost::ref(*listener_));
-    listenerVar = listener_->getListenerVar();
-    for (unsigned int i = 0; i < numThreads; ++i) {
-        threads_.create_thread(boost::ref(*new Runner(this, listenerVar)));
+    {
+        MVar<MVar<const Message*>*>& listenerVar = listener_->getListenerVar();
+        for (unsigned int i = 0; i < numThreads; ++i) {
+            threads_.create_thread(boost::ref(*new Runner(*this, listenerVar)));
+        }
     }
 
     started_ = true;
@@ -147,12 +147,12 @@ void Server::execute(const CalcMessage&) {
 }
 
 void Server::execute(const CallMessage& message) {
-    ThreadRequestRegistrationGuard registration(this, message.getRequestId());
+    ThreadRequestRegistrationGuard registration(*this, message.getRequestId());
 
     // Look up the requested function.
-    const Export* const exp = lookup(message.getFunctionName());
-    if (exp == NULL) {
-        std::cerr << "Server::run: Unknown export \"" << exp->name()
+    boost::optional<const Export&> exp = lookup(message.getFunctionName());
+    if (!exp) {
+        std::cerr << "Server::run: Unknown export \"" << message.getFunctionName()
                   << "\" called, ignoring.\n";
         return;
     }
@@ -164,7 +164,7 @@ void Server::execute(const CallMessage& message) {
     {
         SizedBufferWriter writer(reply.getBody());
         // Add const; the export should not need to modify the argument buffer.
-        exp->exportFn()(const_cast<const SizedBuffer*>(message.getBody()), &writer);
+        exp->exportFn()(const_cast<const SizedBuffer&>(message.getBody()), writer);
     }
     send(reply);
 }
@@ -179,15 +179,15 @@ FILE* Server::getLogFile() {
     return logFile_;
 }
 
-boost::mutex* Server::getLogMutex() {
-    return &logMutex_;
+boost::mutex& Server::getLogMutex() {
+    return logMutex_;
 }
 
 void Server::send(const Message& message) {
     SizedBuffer buffer;
     {
-        SizedBufferWriter writer(&buffer);
-        message.write(&writer);
+        SizedBufferWriter writer(buffer);
+        message.write(writer);
     }
 
     if (logFile_ != NULL) {
@@ -208,9 +208,13 @@ void Server::send(const Message& message) {
     }
 }
 
-const Export* Server::lookup(const std::string& name) {
+boost::optional<const Export&> Server::lookup(const std::string& name) {
     std::map<std::string, const Export>::iterator it = exports_.find(name);
-    return it == exports_.end() ? NULL : &it->second;
+    if (it == exports_.end()) {
+        return boost::none;
+    } else {
+        return it->second;
+    }
 }
 
 void Server::registerThreadRequest(request_id_t requestId) {
@@ -221,31 +225,31 @@ void Server::registerThreadRequest(request_id_t requestId) {
 void Server::unregisterThreadRequest(request_id_t requestId) {
     boost::lock_guard<boost::mutex> lock(threadRequestsMutex_);
     const boost::thread::id threadId = boost::this_thread::get_id();
-    std::list<request_id_t>* const thisThreadRequests = &threadRequests_[threadId];
-    const request_id_t head = *thisThreadRequests->begin();
+    std::list<request_id_t>& thisThreadRequests = threadRequests_[threadId];
+    const request_id_t head = *thisThreadRequests.begin();
     if (head != requestId) {
         std::cerr << "Server::unregisterThreadRequest: Want to unregister request "
                   << requestId << ", but is currently on request " << head << ".  Aborting.\n";
         abort();
     }
-    if (thisThreadRequests->size() == 1) {
+    if (thisThreadRequests.size() == 1) {
         threadRequests_.erase(threadId);
     } else {
-        thisThreadRequests->pop_front();
+        thisThreadRequests.pop_front();
     }
 }
 
 ThreadRequestRegistrationGuard::ThreadRequestRegistrationGuard(
-    Server* server, request_id_t requestId) :
+    Server& server, request_id_t requestId) :
     server_(server), requestId_(requestId) {
-    server_->registerThreadRequest(requestId_);
+    server_.registerThreadRequest(requestId_);
 }
 
 ThreadRequestRegistrationGuard::~ThreadRequestRegistrationGuard() {
-    server_->unregisterThreadRequest(requestId_);
+    server_.unregisterThreadRequest(requestId_);
 }
 
-Listener::Listener(Server* server, FILE* inputFile) :
+Listener::Listener(Server& server, FILE* inputFile) :
     server_(server), inputFile_(inputFile) {}
 
 void Listener::operator()() {
@@ -266,10 +270,10 @@ void Listener::operator()() {
         }
 
         SizedBufferReader reader(buffer);
-        const Message* const message = Message::read(&reader);
-        FILE* const logFile = server_->getLogFile();
+        const Message* const message = Message::read(reader);
+        FILE* const logFile = server_.getLogFile();
         if (logFile != NULL) {
-            boost::lock_guard<boost::mutex> lock(*server_->getLogMutex());
+            boost::lock_guard<boost::mutex> lock(server_.getLogMutex());
             fprintf(logFile, "In : ");
             message->log(logFile);
             fflush(logFile);
@@ -278,12 +282,12 @@ void Listener::operator()() {
     }
 }
 
-Runner::Runner(Server* server, MVar<MVar<const Message*>*>* listenerVar) :
+Runner::Runner(Server& server, MVar<MVar<const Message*>*>& listenerVar) :
     server_(server), listenerVar_(listenerVar) {}
 
 void Runner::operator()() {
     while (true) {
-        listenerVar_->put(&messageVar_);
+        listenerVar_.put(&messageVar_);
         const scoped_ptr<const Message> message(messageVar_.take());
         message->executeOn(server_);
     }

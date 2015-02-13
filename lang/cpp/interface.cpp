@@ -24,7 +24,7 @@ bool Interface::define(const std::string& name, ExportFn exportFn) {
         return false;
     }
 
-    exportMap_.insert(std::make_pair(name, Export(this, name, exportFn)));
+    exportMap_.insert(std::make_pair(name, Export(*this, name, exportFn)));
     return true;
 }
 
@@ -36,9 +36,13 @@ bool Interface::finish() {
     return true;
 }
 
-Export* Interface::lookup(const std::string &name) {
+boost::optional<Export&> Interface::lookup(const std::string &name) {
     ExportMap::iterator it = exportMap_.find(name);
-    return it == exportMap_.end() ? NULL : &it->second;
+    if (it == exportMap_.end()) {
+        return boost::none;
+    } else {
+        return it->second;
+    }
 }
 
 const ExportMap& Interface::exportMap() const {

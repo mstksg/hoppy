@@ -2,6 +2,7 @@
 #define CPPOP_SERVER_H
 
 #include <boost/noncopyable.hpp>
+#include <boost/optional.hpp>
 #include <boost/thread/thread.hpp>
 #include <list>
 #include <map>
@@ -55,7 +56,7 @@ public:
     void execute(const RetnMessage& message);
 
     FILE* getLogFile();
-    boost::mutex* getLogMutex();
+    boost::mutex& getLogMutex();
 
     friend class Callback;
     friend class ThreadRequestRegistrationGuard;
@@ -63,7 +64,7 @@ public:
 private:
     void send(const Message& message);
 
-    const Export* lookup(const std::string& name);
+    boost::optional<const Export&> lookup(const std::string& name);
 
     void registerThreadRequest(request_id_t requestId);
 
@@ -99,39 +100,39 @@ private:
 
 class ThreadRequestRegistrationGuard : private boost::noncopyable {
 public:
-    ThreadRequestRegistrationGuard(Server* server, request_id_t requestId);
+    ThreadRequestRegistrationGuard(Server& server, request_id_t requestId);
     ~ThreadRequestRegistrationGuard();
 
 private:
-    Server* const server_;
+    Server& server_;
     const request_id_t requestId_;
 };
 
 class Listener : private boost::noncopyable {
 public:
-    Listener(Server* server, FILE* inputFile);
+    Listener(Server& server, FILE* inputFile);
 
     void operator()();
 
-    MVar<MVar<const Message*>*>* getListenerVar() { return &listenerVar_; }
+    MVar<MVar<const Message*>*>& getListenerVar() { return listenerVar_; }
 
 private:
     Listener(const Listener&);
 
-    Server* const server_;
+    Server& server_;
     FILE* const inputFile_;
     MVar<MVar<const Message*>*> listenerVar_;
 };
 
 class Runner : private boost::noncopyable {
 public:
-    Runner(Server* server, MVar<MVar<const Message*>*>* listenerVar);
+    Runner(Server& server, MVar<MVar<const Message*>*>& listenerVar);
 
     void operator()();
 
 private:
-    Server* const server_;
-    MVar<MVar<const Message*>*>* const listenerVar_;
+    Server& server_;
+    MVar<MVar<const Message*>*>& listenerVar_;
     MVar<const Message*> messageVar_;
 };
 
