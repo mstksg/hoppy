@@ -1,13 +1,13 @@
 #ifndef IDSPACE_H
 #define IDSPACE_H
 
+#include <boost/thread.hpp>
 #include <boost/noncopyable.hpp>
 #include <cstdlib>
 #include <iostream>
 #include <set>
 #include <string>
 
-// NOT THREAD-SAFE!
 template <typename I>
 class IdSpace : private boost::noncopyable {
 public:
@@ -24,6 +24,7 @@ private:
     const I base_;
     const I step_;
     std::set<I> usedIds_;
+    boost::mutex mutex_;
 };
 
 template <typename I>
@@ -42,6 +43,7 @@ const std::string& IdSpace<I>::name() const {
 
 template <typename I>
 I IdSpace<I>::request() {
+    boost::lock_guard<boost::mutex> lock(mutex_);
     I id;
     if (usedIds_.empty()) {
         id = base_;
@@ -56,6 +58,7 @@ I IdSpace<I>::request() {
 
 template <typename I>
 void IdSpace<I>::release(I id) {
+    boost::lock_guard<boost::mutex> lock(mutex_);
     typename std::set<I>::iterator it = usedIds_.find(id);
     if (it == usedIds_.end()) {
         std::cerr << "Trying to free unused id " << id << " in space \""

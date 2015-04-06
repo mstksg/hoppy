@@ -9,20 +9,24 @@
 
 namespace cppop {
 
+class Callback;
+class Server;
 class SizedBufferWriter;
 
-class SizedBuffer : private boost::noncopyable {
+class SizedBuffer {
 public:
     SizedBuffer();
+    SizedBuffer(const SizedBuffer& other);
     explicit SizedBuffer(size_t initialSize);
+
+    SizedBuffer& operator=(const SizedBuffer& other);
+
     char* buffer() const;
     char* at(size_t offset) const;
     size_t size() const;
     void ensureSize(size_t bytes);
 
 private:
-    SizedBuffer(const SizedBuffer&);
-
     static const size_t DEFAULT_CAPACITY = 256;
 
     scoped_ptr<char> buffer_;
@@ -89,9 +93,13 @@ private:
     size_t offset_;
 };
 
-std::string decodeStdString(SizedBufferReader& reader);
+std::string decodeStdString(Server&, SizedBufferReader& reader);
 
-void encodeStdString(const std::string& str, SizedBufferWriter& buf);
+void encodeStdString(const std::string& str, SizedBufferWriter& writer);
+
+Callback decodeCallback(Server& server, SizedBufferReader& reader);
+
+void encodeCallback(Callback callback, SizedBufferWriter& writer);
 
 }
 

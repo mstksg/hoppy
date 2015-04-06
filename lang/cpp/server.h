@@ -18,6 +18,14 @@ namespace cppop {
 
 class Listener;
 
+class ServerRequest {
+public:
+    MVar<const Message*>& getResponseVar();
+
+private:
+    MVar<const Message*> responseVar_;
+};
+
 class Server : private boost::noncopyable {
 public:
     Server();
@@ -51,14 +59,20 @@ public:
     // function returns immediately.
     void wait();
 
+    // Takes ownership of the argument buffer.
+    void invokeCallback(callback_id_t callbackId, SizedBuffer* args, SizedBuffer& outResult);
+
     void execute(const CalcMessage& message);
     void execute(const CallMessage& message);
     void execute(const RetnMessage& message);
+
+    boost::optional<ServerRequest*> findServerRequest(request_id_t requestId);
 
     FILE* getLogFile();
     boost::mutex& getLogMutex();
 
     friend class Callback;
+    friend class ServerRequestRegistrationGuard;
     friend class ThreadRequestRegistrationGuard;
 
 private:
@@ -66,7 +80,12 @@ private:
 
     boost::optional<const Export&> lookup(const std::string& name);
 
-    void registerThreadRequest(request_id_t requestId);
+    void registerServerRequest(request_id_t requestId, ServerRequest& request);
+
+    void unregisterServerRequest(request_id_t requestId);
+
+    // Returns the parent request id for the thread, if there is one.
+    boost::optional<request_id_t> registerThreadRequest(request_id_t requestId);
 
     void unregisterThreadRequest(request_id_t requestId);
 
@@ -90,12 +109,23 @@ private:
     boost::mutex logMutex_;
 
     // Server requests.
-    boost::mutex serverRequestMutex_;
     IdSpace<request_id_t> serverRequestIds_;
-    //std::map<request_id_t, ServerRequest*> serverRequests_;
+    boost::mutex serverRequestsMutex_;  // This mutex is for the map below.
+    std::map<request_id_t, ServerRequest*> serverRequests_;
 
     boost::mutex threadRequestsMutex_;
     std::map<boost::thread::id, std::list<request_id_t> > threadRequests_;
+};
+
+class ServerRequestRegistrationGuard : private boost::noncopyable {
+public:
+    ServerRequestRegistrationGuard(
+        Server& server, request_id_t requestId, ServerRequest& serverRequest);
+    ~ServerRequestRegistrationGuard();
+
+private:
+    Server& server_;
+    const request_id_t requestId_;
 };
 
 class ThreadRequestRegistrationGuard : private boost::noncopyable {
@@ -103,9 +133,12 @@ public:
     ThreadRequestRegistrationGuard(Server& server, request_id_t requestId);
     ~ThreadRequestRegistrationGuard();
 
+    boost::optional<request_id_t> getParentRequestId() const;
+
 private:
     Server& server_;
     const request_id_t requestId_;
+    const boost::optional<request_id_t> parentRequestId_;
 };
 
 class Listener : private boost::noncopyable {

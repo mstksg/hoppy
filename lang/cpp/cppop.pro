@@ -17,7 +17,8 @@ SOURCES += \
     driver.cpp \
     message.cpp \
     common.cpp \
-    buffer.cpp
+    buffer.cpp \
+    callback.cpp
 
 HEADERS +=\
     server.h \
@@ -27,7 +28,8 @@ HEADERS +=\
     idspace.h \
     mvar.h \
     message.h \
-    buffer.h
+    buffer.h \
+    callback.h
 
 LIBS += -lboost_thread
 

@@ -40,14 +40,22 @@ void CalcMessage::log(FILE* file) const {
     fprintf(file,
         "CALC, rid=" PRI_REQUEST_ID ", rpid=" PRI_REQUEST_ID ", cid=" PRI_CALLBACK_ID
         ", %zu-byte body:\n",
-        requestId_, parentRequestId_, callbackId_, body_->size());
+        requestId_, parentRequestId_.get_value_or(0), callbackId_, body_->size());
     hexDump(file, body_->buffer(), body_->size());
 }
 
 void CalcMessage::readContents(SizedBufferReader& reader) {
     reader.readLiteralTo(&requestId_);
-    reader.readLiteralTo(&parentRequestId_);
+
+    const request_id_t parentRequestId = reader.readLiteral<request_id_t>();
+    if (parentRequestId == 0) {
+        parentRequestId_ = boost::none;
+    } else {
+        parentRequestId_ = parentRequestId;
+    }
+
     reader.readLiteralTo(&callbackId_);
+
     const size_t bodySize = reader.remainingBytes();
     body_->ensureSize(bodySize);
     reader.readTo(body_->buffer(), bodySize);
@@ -59,7 +67,7 @@ void CalcMessage::writeContents(SizedBufferWriter& writer) const {
     writer.writeLiteral('L');
     writer.writeLiteral('C');
     writer.writeLiteral(requestId_);
-    writer.writeLiteral(parentRequestId_);
+    writer.writeLiteral(parentRequestId_.get_value_or(0));
     writer.writeLiteral(callbackId_);
     writer.write(*body_);
 }
@@ -71,13 +79,19 @@ void CallMessage::executeOn(Server& server) const {
 void CallMessage::log(FILE* file) const {
     fprintf(file,
         "CALL, rid=" PRI_REQUEST_ID ", rpid=" PRI_REQUEST_ID ", name=%s, %zu-byte body:\n",
-        requestId_, parentRequestId_, functionName_.c_str(), body_->size());
+        requestId_, parentRequestId_.get_value_or(0), functionName_.c_str(), body_->size());
     hexDump(file, body_->buffer(), body_->size());
 }
 
 void CallMessage::readContents(SizedBufferReader& reader) {
     reader.readLiteralTo(&requestId_);
-    reader.readLiteralTo(&parentRequestId_);
+
+    const request_id_t parentRequestId = reader.readLiteral<request_id_t>();
+    if (parentRequestId == 0) {
+        parentRequestId_ = boost::none;
+    } else {
+        parentRequestId_ = parentRequestId;
+    }
 
     const char* name = reader.cursor();
     size_t nameSize = 0;
@@ -97,7 +111,7 @@ void CallMessage::writeContents(SizedBufferWriter& writer) const {
     writer.writeLiteral('L');
     writer.writeLiteral('L');
     writer.writeLiteral(requestId_);
-    writer.writeLiteral(parentRequestId_);
+    writer.writeLiteral(parentRequestId_.get_value_or(0));
     writer.write(functionName_.c_str(), functionName_.length());
     writer.writeLiteral('\0');
     writer.write(*body_);

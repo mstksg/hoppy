@@ -22,7 +22,9 @@ module Foreign.Cppop.Runtime.Client (
   killClient,
   call,
   -- * Callbacks
-  Callback,
+  -- TODO Don't actually expose callbackId, make Callback serializable instead.
+  Callback (callbackId),
+  CallbackId,
   newCallback,
   deleteCallback,
   ) where

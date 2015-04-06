@@ -13,7 +13,7 @@ class Interface;
 
 typedef const Interface* (*InterfaceFn)();
 
-typedef void (*ExportFn)(const SizedBuffer&, SizedBufferWriter&);
+typedef void (*ExportFn)(Server&, const SizedBuffer&, SizedBufferWriter&);
 
 // Export is copyable!
 class Export {

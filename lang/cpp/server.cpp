@@ -1,5 +1,6 @@
 #include "server.h"
 
+#include <boost/noncopyable.hpp>
 #include <cerrno>
 #include <cstdio>
 #include <cstring>
@@ -10,7 +11,33 @@
 #include "buffer.h"
 #include "message.h"
 
+namespace {
+
+template <typename T>
+class WithId : private boost::noncopyable {
+public:
+    WithId(IdSpace<T>& space) :
+        space_(space),
+        id_(space_.request()) {}
+
+    ~WithId() {
+        space_.release(id_);
+    }
+
+    T id() const { return id_; }
+
+private:
+    IdSpace<T>& space_;
+    const T id_;
+};
+
+}
+
 namespace cppop {
+
+MVar<const Message*>& ServerRequest::getResponseVar() {
+    return responseVar_;
+}
 
 Server::Server() :
     started_(false),
@@ -76,19 +103,16 @@ bool Server::start(
     outputPath_ = outputPath;
     logPath_ = logPath;
 
-    std::cerr << "Server::start: Opening input for read.\n";  //zz
     inputReadFile_ = fopen(inputPath.c_str(), "r");
     if (inputReadFile_ == NULL) {
         std::cerr << "Server::start: Failed to open \"" << inputPath_ << "\" for reading.\n";
         goto failOpenInputRead;
     }
-    std::cerr << "Server::start: Opening input for write.\n";  //zz
     inputWriteFile_ = fopen(inputPath.c_str(), "w");
     if (inputWriteFile_ == NULL) {
         std::cerr << "Server::start: Failed to open \"" << inputPath_ << "\" for writing.\n";
         goto failOpenInputWrite;
     }
-    std::cerr << "Server::start: Opening output for write.\n";  //zz
     outputWriteFile_ = fopen(outputPath.c_str(), "w");
     if (outputWriteFile_ == NULL) {
         std::cerr << "Server::start: Failed to open \"" << outputPath_ << "\" for writing.\n";
@@ -96,7 +120,6 @@ bool Server::start(
     }
 
     if (!logPath.empty()) {
-        std::cerr << "Server::start: Opening log file for append.\n";  //zz
         logFile_ = fopen(logPath.c_str(), "a");
         if (logFile_ == NULL) {
             std::cerr << "Server::start: Failed to open \"" << logPath
@@ -105,7 +128,7 @@ bool Server::start(
         }
     }
 
-    std::cerr << "Server::start: Everything opened.\n";  //zz
+    std::cerr << "Server::start: Cppop running.\n";
 
     listener_.assign(new Listener(*this, inputReadFile_));
     threads_.create_thread(boost::ref(*listener_));
@@ -141,6 +164,31 @@ void Server::wait() {
     threads_.join_all();
 }
 
+void Server::invokeCallback(
+    callback_id_t callbackId, SizedBuffer* args, SizedBuffer& outResult) {
+    WithId<request_id_t> withId(serverRequestIds_);
+    const request_id_t requestId = withId.id();
+    ThreadRequestRegistrationGuard threadRegistration(*this, requestId);
+    ServerRequest request;
+    ServerRequestRegistrationGuard requestRegistration(*this, requestId, request);
+
+    CalcMessage message(args);
+    message.setCallbackId(callbackId);
+    message.setRequestId(requestId);
+    message.setParentRequestId(threadRegistration.getParentRequestId());
+    send(message);
+    while (true) {
+        const Message* const response = request.getResponseVar().take();
+        const RetnMessage* const retnResponse = dynamic_cast<const RetnMessage*>(response);
+        if (retnResponse != NULL) {
+            outResult = retnResponse->getBody();
+            return;
+        } else {
+            response->executeOn(*this);
+        }
+    }
+}
+
 void Server::execute(const CalcMessage&) {
     std::cerr << "Server::execute: Can't handle CALC, aborting.\n";
     abort();
@@ -164,15 +212,24 @@ void Server::execute(const CallMessage& message) {
     {
         SizedBufferWriter writer(reply.getBody());
         // Add const; the export should not need to modify the argument buffer.
-        exp->exportFn()(const_cast<const SizedBuffer&>(message.getBody()), writer);
+        exp->exportFn()(*this, const_cast<const SizedBuffer&>(message.getBody()), writer);
     }
     send(reply);
 }
 
-void Server::execute(const RetnMessage& message) {
-    // TODO Server::execute(const RetnMessage&).
-    std::cerr << "Server::execute: Can't handle a RETN message yet; aborting.\n";
+void Server::execute(const RetnMessage&) {
+    std::cerr << "Server::execute: Can't handle a top-level RETN message; aborting.\n";
     abort();
+}
+
+boost::optional<ServerRequest*> Server::findServerRequest(const request_id_t requestId) {
+    boost::lock_guard<boost::mutex> lock(serverRequestsMutex_);
+    std::map<request_id_t, ServerRequest*>::iterator it = serverRequests_.find(requestId);
+    if (it == serverRequests_.end()) {
+        return boost::none;
+    } else {
+        return it->second;
+    }
 }
 
 FILE* Server::getLogFile() {
@@ -217,12 +274,30 @@ boost::optional<const Export&> Server::lookup(const std::string& name) {
     }
 }
 
-void Server::registerThreadRequest(request_id_t requestId) {
-    boost::lock_guard<boost::mutex> lock(threadRequestsMutex_);
-    threadRequests_[boost::this_thread::get_id()].push_front(requestId);
+void Server::registerServerRequest(const request_id_t requestId, ServerRequest& request) {
+    boost::lock_guard<boost::mutex> lock(serverRequestsMutex_);
+    serverRequests_[requestId] = &request;
 }
 
-void Server::unregisterThreadRequest(request_id_t requestId) {
+void Server::unregisterServerRequest(const request_id_t requestId) {
+    boost::lock_guard<boost::mutex> lock(serverRequestsMutex_);
+    serverRequests_.erase(requestId);
+}
+
+boost::optional<request_id_t> Server::registerThreadRequest(const request_id_t requestId) {
+    boost::lock_guard<boost::mutex> lock(threadRequestsMutex_);
+    boost::optional<request_id_t> parentId;
+    std::list<request_id_t>& thisThreadRequests = threadRequests_[boost::this_thread::get_id()];
+    if (thisThreadRequests.empty()) {
+        parentId = boost::none;
+    } else {
+        parentId = *thisThreadRequests.begin();
+    }
+    thisThreadRequests.push_front(requestId);
+    return parentId;
+}
+
+void Server::unregisterThreadRequest(const request_id_t requestId) {
     boost::lock_guard<boost::mutex> lock(threadRequestsMutex_);
     const boost::thread::id threadId = boost::this_thread::get_id();
     std::list<request_id_t>& thisThreadRequests = threadRequests_[threadId];
@@ -239,14 +314,31 @@ void Server::unregisterThreadRequest(request_id_t requestId) {
     }
 }
 
-ThreadRequestRegistrationGuard::ThreadRequestRegistrationGuard(
-    Server& server, request_id_t requestId) :
+ServerRequestRegistrationGuard::ServerRequestRegistrationGuard(
+    Server& server,
+    request_id_t requestId,
+    ServerRequest& request) :
     server_(server), requestId_(requestId) {
-    server_.registerThreadRequest(requestId_);
+    server_.registerServerRequest(requestId_, request);
 }
+
+ServerRequestRegistrationGuard::~ServerRequestRegistrationGuard() {
+    server_.unregisterServerRequest(requestId_);
+}
+
+
+ThreadRequestRegistrationGuard::ThreadRequestRegistrationGuard(
+    Server& server, const request_id_t requestId) :
+    server_(server),
+    requestId_(requestId),
+    parentRequestId_(server_.registerThreadRequest(requestId_)) {}
 
 ThreadRequestRegistrationGuard::~ThreadRequestRegistrationGuard() {
     server_.unregisterThreadRequest(requestId_);
+}
+
+boost::optional<request_id_t> ThreadRequestRegistrationGuard::getParentRequestId() const {
+    return parentRequestId_;
 }
 
 Listener::Listener(Server& server, FILE* inputFile) :
@@ -256,7 +348,6 @@ void Listener::operator()() {
     SizedBuffer buffer;
 
     while (true) {
-        MVar<const Message*>* const runnerVar = listenerVar_.take();
         size_t messageSize;
         if (fread(&messageSize, sizeof(size_t), 1, inputFile_) != 1) {
             std::cerr << "Listener: Failed to read size from pipe.  Aborting.\n";
@@ -278,6 +369,17 @@ void Listener::operator()() {
             message->log(logFile);
             fflush(logFile);
         }
+
+        boost::optional<ServerRequest*> const maybeServerRequest =
+            server_.findServerRequest(message->getRequestId());
+        MVar<const Message*>* runnerVar;
+        if (maybeServerRequest == boost::none) {
+            runnerVar = listenerVar_.take();
+        } else {
+            ServerRequest& serverRequest = **maybeServerRequest;
+            runnerVar = &serverRequest.getResponseVar();
+        }
+
         runnerVar->put(message);
     }
 }

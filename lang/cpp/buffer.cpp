@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include "callback.h"
 
 namespace cppop {
 
@@ -17,6 +18,13 @@ SizedBuffer::SizedBuffer() :
     }
 }
 
+SizedBuffer::SizedBuffer(const SizedBuffer& other) :
+    buffer_(static_cast<char*>(malloc(other.size_))),
+    capacity_(other.size_),
+    size_(other.size_) {
+    memcpy(buffer_.get(), other.buffer_.get(), size_);
+}
+
 SizedBuffer::SizedBuffer(size_t initialSize) :
     buffer_(static_cast<char*>(malloc(initialSize))),
     capacity_(initialSize),
@@ -26,6 +34,12 @@ SizedBuffer::SizedBuffer(size_t initialSize) :
                   << initialSize << "byte(s), aborting.\n";
         abort();
     }
+}
+
+SizedBuffer& SizedBuffer::operator=(const SizedBuffer& other) {
+    ensureSize(other.size_);
+    memcpy(buffer_.get(), other.buffer_.get(), size_);
+    return *this;
 }
 
 char* SizedBuffer::buffer() const {
@@ -108,19 +122,29 @@ void SizedBufferWriter::write(const SizedBuffer& source) {
     write(source.buffer(), source.size());
 }
 
-std::string decodeStdString(SizedBufferReader& reader) {
-    size_t size = reader.readLiteral<size_t>();
-    std::cerr << "Reading string of size 0x" << std::hex << (size & 0xff) << ".\n";
+std::string decodeStdString(Server&, SizedBufferReader& reader) {
+    size_t size;
+    reader.readLiteralTo(&size);
     const char* p = reader.read(size);
     return std::string(p, size);
 }
 
-void encodeStdString(const std::string& str, SizedBufferWriter& buf) {
+void encodeStdString(const std::string& str, SizedBufferWriter& writer) {
     size_t size = str.size();
-    char* p = buf.allocPointer(sizeof(size_t) + size);
+    char* p = writer.allocPointer(sizeof(size_t) + size);
     *(size_t*)p = size;
     p += sizeof(size_t);
     memcpy(p, str.c_str(), size);
+}
+
+Callback decodeCallback(Server& server, SizedBufferReader& reader) {
+    callback_id_t id;
+    reader.readLiteralTo(&id);
+    return Callback(server, id);
+}
+
+void encodeCallback(Callback callback, SizedBufferWriter& writer) {
+    writer.writeLiteral(callback.getId());
 }
 
 }

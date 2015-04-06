@@ -122,7 +122,7 @@ sayInterfaceFunction = do
   interface <- askInterface
   let fnName = interfaceCppFnName interface
   sayFunction fnName [] (TFn [] $ TPtr $ TConst $ TOpaque "::cppop::Interface") $ do
-    says ["::cppop::Interface* i = new ::cppop::Interface(\"", interfaceName interface, "\");\n"]
+    says ["::cppop::Interface*const i = new ::cppop::Interface(\"", interfaceName interface, "\");\n"]
 
     exports <- askExports
     forM_ exports $ \export -> case export of
@@ -220,9 +220,12 @@ sayExportFn extName sayCppName maybeThisType paramTypes retType = do
       hasParams = isJust maybeThisType || not (null paramTypes)
       returnsData = retType /= TVoid
   sayFunction (externalNameToCpp extName)
-              [if hasParams then "argBuffer" else "",
-               if returnsData then "out" else ""]
-              (TFn [ TRef $ TConst $ TOpaque "::cppop::SizedBuffer"
+              [ "server"
+              , if hasParams then "argBuffer" else ""
+              , if returnsData then "out" else ""
+              ]
+              (TFn [ TRef $ TOpaque "::cppop::Server"
+                   , TRef $ TConst $ TOpaque "::cppop::SizedBuffer"
                    , TRef $ TOpaque "::cppop::SizedBufferWriter"
                    ]
                    TVoid) $ do
@@ -267,7 +270,7 @@ sayArgRead extName paramVarName paramType = case paramType of
       sayVar paramVarName Nothing paramType
       say "("
       sayIdentifier decoderId
-      say "(args));\n"
+      say "(server, args));\n"
   _ -> do
     primTypeName <- maybe (abort $ "Can't decode argument of type " ++ show paramType ++
                            " for export \"" ++ fromExtName extName ++ "\".")
