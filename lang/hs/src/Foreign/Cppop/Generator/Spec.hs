@@ -42,19 +42,23 @@ module Foreign.Cppop.Generator.Spec (
   methodConst,
   methodStatic,
   -- ** Encoding and decoding
-  ForeignType (..),
   ClassEncoding (..),
   classEncodingNone,
   classModifyEncoding,
   classCopyEncodingFrom,
+  CppCoder (..),
+  HaskellEncoding (..),
+  HaskellEncoder (..),
   ) where
 
+import Control.Applicative ((<$>), (<*>))
 import Control.Arrow ((&&&))
+import Data.Char (isAlpha, isAlphaNum)
 import Data.Function (on)
 import Data.List (intercalate)
 import qualified Data.Map as Map
 import Data.Map (Map)
-import Data.Maybe (catMaybes)
+import Data.Maybe (catMaybes, fromMaybe)
 import Data.Monoid (mappend)
 import Language.Haskell.Syntax (HsType)
 
@@ -113,7 +117,13 @@ newtype ExtName = ExtName { fromExtName :: String }
                 deriving (Eq, Ord, Show)
 
 toExtName :: String -> ExtName
-toExtName = ExtName
+toExtName str = case str of
+  [] -> error "An ExtName cannot be empty."
+  c:cs -> if isAlpha c && all ((||) <$> isAlphaNum <*> (== '_')) cs
+          then ExtName str
+          else error $
+               "An ExtName must start with a letter and only contain letters, numbers, and '_': " ++
+               show str
 
 -- | Specifies some C++ object (function or class) to give access to.
 data Export =
@@ -194,6 +204,11 @@ data Type =
   | TConst Type
   deriving (Eq, Show)
 
+-- | Calls to pure functions will be executed non-strictly by Haskell.  Calls to
+-- impure functions must execute in the IO monad.
+--
+-- Member functions for mutable classes should not be made pure, because it is
+-- difficult in general to control when the call will be made.
 data Purity = Nonpure | Pure
             deriving (Eq, Show)
 
@@ -221,36 +236,44 @@ data Class = Class
 instance Eq Class where
   (==) = (==) `on` classIdentifier
 
-makeClass :: Identifier -> [Class] -> [Ctor] -> [Method] -> Class
-makeClass identifier supers ctors methods = Class
+makeClass :: Identifier -> Maybe ExtName -> [Class] -> [Ctor] -> [Method] -> Class
+makeClass identifier maybeExtName supers ctors methods = Class
   { classIdentifier = identifier
-  , classExtName = toExtName $ idName identifier
+  , classExtName = fromMaybe (toExtName $ idName identifier) maybeExtName
   , classSuperclasses = supers
   , classCtors = ctors
   , classMethods = methods
   , classEncoding = classEncodingNone
   }
 
-data ForeignType t f = ForeignType
-  { coderType :: t
-  , coderDecoder :: f
-  , coderEncoder :: f
-  } deriving (Show)
-
 data ClassEncoding = ClassEncoding
-  { classCppDecoder :: Maybe Identifier
-  , classCppEncoder :: Maybe Identifier
-  , classHaskellType :: Maybe (ForeignType HsType String)
+  { classCppCType :: Maybe Type
+  , classCppDecoder :: Maybe CppCoder
+  , classCppEncoder :: Maybe CppCoder
+  , classHaskellType :: Maybe HaskellEncoding
   } deriving (Show)
 
 classEncodingNone :: ClassEncoding
-classEncodingNone = ClassEncoding Nothing Nothing Nothing
+classEncodingNone = ClassEncoding Nothing Nothing Nothing Nothing
 
 classModifyEncoding :: (ClassEncoding -> ClassEncoding) -> Class -> Class
 classModifyEncoding f cls = cls { classEncoding = f $ classEncoding cls }
 
 classCopyEncodingFrom :: Class -> Class -> Class
 classCopyEncodingFrom source target = target { classEncoding = classEncoding source }
+
+data CppCoder = CppCoderFn Identifier | CppCoderExpr [Maybe String]
+              deriving (Show)
+
+data HaskellEncoding = HaskellEncoding
+  { haskellEncodingType :: HsType
+  , haskellEncodingCType :: HsType
+  , haskellEncodingDecoder :: String
+  , haskellEncodingEncoder :: HaskellEncoder
+  } deriving (Show)
+
+data HaskellEncoder = HaskellEncoderWith String | HaskellEncoderConverter String
+                    deriving (Show)
 
 -- | A C++ class constructor declaration.
 data Ctor = Ctor

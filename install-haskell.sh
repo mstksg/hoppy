@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 
-# Accepts MAKEOPTS.
-
 set -euo pipefail
 . "$(dirname "$(realpath "$0")")/common.sh"
 

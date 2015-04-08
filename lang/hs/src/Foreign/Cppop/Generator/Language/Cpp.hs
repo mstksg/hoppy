@@ -3,6 +3,8 @@ module Foreign.Cppop.Generator.Language.Cpp (
   generate,
   generatedHeader,
   generatedSource,
+  -- * Exported only for other generators, do not use.
+  externalNameToCpp,
   ) where
 
 import Control.Applicative ((<$>))
@@ -13,8 +15,9 @@ import Control.Monad.Writer (WriterT, runWriterT, tell)
 import Control.Monad.Trans (lift)
 import Data.Foldable (forM_)
 import Data.List (intercalate, intersperse)
-import Data.Maybe (isJust)
+import Data.Maybe (fromMaybe, isJust)
 import Data.Tuple (swap)
+import Foreign.Cppop.Common
 import Foreign.Cppop.Generator.Spec
 
 cppNameSeparator :: String
@@ -23,13 +26,6 @@ cppNameSeparator = "__"
 makeCppName :: [String] -> String
 makeCppName = intercalate cppNameSeparator
 
--- | "geniface" is used for functions that create C++ Interface objects.
-externalInterfaceFnNamePrefix :: String
-externalInterfaceFnNamePrefix = "geniface"
-
-interfaceCppFnName :: Interface -> String
-interfaceCppFnName interface = makeCppName [externalInterfaceFnNamePrefix, interfaceName interface]
-
 -- | "genpop" is used for individually exported functions.
 externalNamePrefix :: String
 externalNamePrefix = "genpop"
@@ -37,6 +33,12 @@ externalNamePrefix = "genpop"
 externalNameToCpp :: ExtName -> String
 externalNameToCpp extName =
   makeCppName [externalNamePrefix, fromExtName extName]
+
+toArgName :: Int -> String
+toArgName = ("arg" ++) . show
+
+toArgNameAlt :: Int -> String
+toArgNameAlt n = "arg" ++ show n ++ "_"
 
 -- | A chunk is a string that contains an arbitrary portion of C++ code.  The
 -- only requirement is that chunk boundaries are also C++ token boundaries,
@@ -51,9 +53,6 @@ type Generator = ReaderT Env (WriterT [Chunk] (Either String))
 data Env = Env
   { envInterface :: Interface
   }
-
-askInterface :: Generator Interface
-askInterface = fmap envInterface ask
 
 askIncludes :: Generator [Include]
 askIncludes = fmap (interfaceIncludes . envInterface) ask
@@ -99,61 +98,31 @@ sayIdentifier = say . idToString
 
 sayInterfaceHeader :: Generator ()
 sayInterfaceHeader = do
-  interface <- askInterface
-  sayCommonIncludes
-  says ["\n::cppop::Interface const*", interfaceCppFnName interface, "();\n"]
+  mapM_ (say . includeToString) =<< askIncludes
+  say "\nextern \"C\" {\n"
+  mapM_ (sayExport False) =<< askExports
+  say "\n}\n"
 
 sayInterfaceSource :: Generator ()
 sayInterfaceSource = do
-  sayCommonIncludes
   mapM_ (say . includeToString) =<< askIncludes
-  mapM_ sayExport =<< askExports
-  sayInterfaceFunction
+  say "\nextern \"C\" {\n"
+  mapM_ (sayExport True) =<< askExports
+  say "\n}\n"
 
-sayCommonIncludes :: Generator ()
-sayCommonIncludes = do
-  say "#include <map>\n"
-  say "#include <string>\n"
-  say "#include \"buffer.h\"\n"
-  say "#include \"interface.h\"\n"
-
-sayInterfaceFunction :: Generator ()
-sayInterfaceFunction = do
-  interface <- askInterface
-  let fnName = interfaceCppFnName interface
-  sayFunction fnName [] (TFn [] $ TPtr $ TConst $ TOpaque "::cppop::Interface") $ do
-    says ["::cppop::Interface*const i = new ::cppop::Interface(\"", interfaceName interface, "\");\n"]
-
-    exports <- askExports
-    forM_ exports $ \export -> case export of
-      ExportFn fn -> sayDefinition $ fnExtName fn
-      ExportClass cls -> do
-        forM_ (classCtors cls) $ sayDefinition . ctorExtName
-        forM_ (classMethods cls) $ sayDefinition . methodExtName
-
-    says [ "i->finish();\n"  -- TODO Check the return value.
-         , "return i;\n"
-         ]
-
-  where sayDefinition :: ExtName -> Generator ()
-        sayDefinition extName =
-          says [ "i->define(\""
-               , fromExtName extName
-               , "\", "
-               , externalNameToCpp extName
-               , ");\n"
-               ]
-
-sayFunction :: String -> [String] -> Type -> Generator () -> Generator ()
-sayFunction name paramNames t body = do
+sayFunction :: String -> [String] -> Type -> Maybe (Generator ()) -> Generator ()
+sayFunction name paramNames t maybeBody = do
   case t of
     TFn {} -> return ()
     _ -> abort $ "sayFunction requires a function type, given: " ++ show t
   say "\n"  -- New top-level structure, leave a blank line.
   sayVar name (Just paramNames) t
-  say " {\n"
-  body  -- TODO Indent.
-  say "}\n"
+  case maybeBody of
+    Nothing -> say ";\n"
+    Just body -> do
+      say " {\n"
+      body  -- TODO Indent.
+      say "}\n"
 
 class HasExternalName a where
   getExternalName :: a -> ExtName
@@ -162,7 +131,8 @@ instance HasExternalName Function where
   getExternalName = fnExtName
 
 -- TODO Fixme, this is most likely backwards, it should be a finite set of
--- non-identifier chars.
+-- non-identifier chars.  Also (maybe) share some logic with the toExtName
+-- requirements?
 isIdentifierChar :: Char -> Bool
 isIdentifierChar = (`elem` identifierChars)
 
@@ -183,8 +153,8 @@ generate interface = do
     , generatedSource = source
     }
 
-sayExport :: Export -> Generator ()
-sayExport export = case export of
+sayExport :: Bool -> Export -> Generator ()
+sayExport sayBody export = case export of
   ExportFn fn ->
     -- Export a single function.
     sayExportFn (fnExtName fn)
@@ -192,6 +162,7 @@ sayExport export = case export of
                 Nothing
                 (fnParams fn)
                 (fnReturn fn)
+                sayBody
   ExportClass cls -> do
     let clsPtr = TPtr $ TObj cls
         justClsPtr = Just clsPtr
@@ -202,6 +173,7 @@ sayExport export = case export of
                   Nothing
                   (ctorParams ctor)
                   clsPtr
+                  sayBody
     -- Export each of the class's methods.
     forM_ (classMethods cls) $ \method -> do
       let static = methodStatic method == Static
@@ -213,75 +185,70 @@ sayExport export = case export of
                   (if static then Nothing else justClsPtr)
                   (methodParams method)
                   (methodReturn method)
+                  sayBody
 
-sayExportFn :: ExtName -> Generator () -> Maybe Type -> [Type] -> Type -> Generator ()
-sayExportFn extName sayCppName maybeThisType paramTypes retType = do
+sayExportFn :: ExtName -> Generator () -> Maybe Type -> [Type] -> Type -> Bool -> Generator ()
+sayExportFn extName sayCppName maybeThisType paramTypes retType sayBody = do
   let paramCount = length paramTypes
-      hasParams = isJust maybeThisType || not (null paramTypes)
-      returnsData = retType /= TVoid
+  paramCTypeMaybes <- mapM typeToCType paramTypes
+  let paramCTypes = zipWith (fromMaybe) paramTypes paramCTypeMaybes
+  retCTypeMaybe <- typeToCType retType
+  let retCType = fromMaybe retType retCTypeMaybe
   sayFunction (externalNameToCpp extName)
-              [ "server"
-              , if hasParams then "argBuffer" else ""
-              , if returnsData then "out" else ""
-              ]
-              (TFn [ TRef $ TOpaque "::cppop::Server"
-                   , TRef $ TConst $ TOpaque "::cppop::SizedBuffer"
-                   , TRef $ TOpaque "::cppop::SizedBufferWriter"
-                   ]
-                   TVoid) $ do
-    when hasParams $
-      say "::cppop::SizedBufferReader args(argBuffer);\n"
-    -- Maybe extract a this-pointer for a method call.
-    forM_ maybeThisType $ \thisType ->
-      sayArgRead extName "self" thisType
-    -- Extract arguments from the binary RPC data.
-    forM_ (zip [0..] paramTypes) $ \(paramIdx, paramType) -> do
-      sayArgRead extName ("arg" ++ show paramIdx) paramType
-    -- Call the exported function or method.
-    when returnsData $ do
-      sayVar "result" Nothing retType
-      say " = "
-    forM_ maybeThisType $ const $ say "self->"
-    sayCppName
-    say "("
-    sayArgNames paramCount
-    say ");\n"
-    -- If there is a return value, send it back to the caller.
-    when returnsData $ case retType of
-      TObj cls -> case classCppEncoder $ classEncoding cls of
-        Nothing -> abort $ "No encoder for class " ++ idToString (classIdentifier cls) ++
-                   " while generating export " ++ fromExtName extName ++ "."
-        Just encoderId -> do
-          sayIdentifier encoderId
-          say "(result, out);\n"
-      _ -> do
-        primTypeName <- maybe (abort $ "Can't encode return value of type " ++ show retType ++
-                               " for export \"" ++ fromExtName extName ++ "\".")
-                              return $
-                        primitiveTypeName retType
-        says ["*reinterpret_cast< ", primTypeName, "*>(out.allocPointer(sizeof(", primTypeName, "))) = result;\n"]
+              (maybe id (const ("self":)) maybeThisType $
+               zipWith (\ctm -> if isJust ctm then toArgNameAlt else toArgName)
+               paramCTypeMaybes [1..paramCount])
+              (TFn (maybe id (:) maybeThisType paramCTypes) retCType) $
+    if not sayBody
+    then Nothing
+    else Just $ do
+      -- Convert arguments that aren't passed in directly.
+      mapM_ sayArgRead $ zip3 [1..] paramTypes paramCTypeMaybes
+      -- Call the exported function or method.
+      let sayCall = do when (isJust maybeThisType) $ say "self->"
+                       sayCppName
+                       say "("
+                       sayArgNames paramCount
+                       say ")"
+      case (retType, retCTypeMaybe) of
+        (TVoid, Nothing) -> sayCall >> say ";\n"
+        (_, Nothing) -> say "return " >> sayCall >> say ";\n"
+        (TObj cls, Just _) -> do
+          encoder <- fromMaybeM (abort $ "sayExportFn: Class lacks an encoder: " ++ show cls) $
+                     classCppEncoder $ classEncoding cls
+          case encoder of
+            CppCoderFn fn ->
+              say "return " >> sayIdentifier fn >> say "(" >> sayCall >> say ");\n"
+            CppCoderExpr terms -> do
+              sayVar "result" Nothing retType >> say " = " >> sayCall >> say ";\n"
+              say "return " >> sayExpr "result" terms >> say ";\n"
+        ts -> abort $ "sayExportFn: Unexpected return types: " ++ show ts
 
-sayArgRead :: ExtName -> String -> Type -> Generator ()
-sayArgRead extName paramVarName paramType = case paramType of
-  TObj cls -> case classCppDecoder $ classEncoding cls of
-    Nothing -> abort $ "No decoder for class " ++ idToString (classIdentifier cls) ++
-               " while generating export \"" ++ fromExtName extName ++ "\"."
-    Just decoderId -> do
-      sayVar paramVarName Nothing paramType
-      say "("
-      sayIdentifier decoderId
-      say "(server, args));\n"
-  _ -> do
-    primTypeName <- maybe (abort $ "Can't decode argument of type " ++ show paramType ++
-                           " for export \"" ++ fromExtName extName ++ "\".")
-                          return $
-                    primitiveTypeName paramType
-    sayVar paramVarName Nothing paramType
-    says [" = *reinterpret_cast< ", primTypeName, "const*>(args.read(sizeof(", primTypeName, ")));\n"]
+sayArgRead :: (Int, Type, Maybe Type) -> Generator ()
+sayArgRead (n, cppType, maybeCType) = when (isJust maybeCType) $ do
+  cls <- case cppType of
+    TObj cls -> return cls
+    _ -> abort $ "sayArgRead: Don't know how to decode to type " ++ show cppType ++ "."
+  decoder <- fromMaybeM (abort $ "sayArgRead: Class lacks a decoder: " ++ show cls) $
+             classCppDecoder $ classEncoding cls
+  sayVar (toArgName n) Nothing cppType
+  say " = "
+  let inputVar = toArgNameAlt n
+  case decoder of
+    CppCoderFn fn -> do
+      sayIdentifier fn
+      says ["(", inputVar, ");\n"]
+    CppCoderExpr terms -> sayExpr inputVar terms
+
+sayExpr :: String -> [Maybe String] -> Generator ()
+sayExpr arg terms = do
+  say "("
+  forM_ terms $ maybe (says ["(", arg, ")"]) say
+  say ")"
 
 sayArgNames :: Int -> Generator ()
 sayArgNames count =
-  says $ intersperse ", " $ map (("arg" ++) . show) [0..count - 1]
+  says $ intersperse ", " $ map toArgName [1..count]
 
 sayVar :: String -> Maybe [String] -> Type -> Generator ()
 sayVar name maybeParamNames t = sayType' t maybeParamNames topPrecedence $ say name
@@ -354,34 +321,15 @@ typePrecedence t = case t of
   TRef {} -> 8
   _ -> 7
 
-primitiveTypeName :: Type -> Maybe String
-primitiveTypeName = primitiveTypeName' False
-
-primitiveTypeName' :: Bool -> Type -> Maybe String
-primitiveTypeName' nonPrimitiveOkay t = case t of
-  TVoid -> Just "void"
-  TBool -> Just "bool"
-  TChar -> Just "char"
-  TUChar -> Just "unsigned char"
-  TShort -> Just "short"
-  TUShort -> Just "unsigned short"
-  TInt -> Just "int"
-  TUInt -> Just "unsigned int"
-  TLong -> Just "long"
-  TULong -> Just "unsigned long"
-  TLLong -> Just "long long"
-  TULLong -> Just "unsigned long long"
-  TFloat -> Just "float"
-  TDouble -> Just "double"
-  TSize -> Just "size_t"
-  TSSize -> Just "ssize_t"
-  TArray {} -> Nothing  -- TODO Hmm.
-  TPtr t' -> (++ "*") <$> primitiveTypeName' True t'
-  TRef {} -> Nothing  -- TODO Hmm.
-  TFn {} -> Nothing  -- TODO Hmm.
-  TObj cls | nonPrimitiveOkay -> Just $ idToString $ classIdentifier cls
-  TObj _ -> Nothing
-  TOpaque str | nonPrimitiveOkay -> Just str
-  TOpaque _  -> Nothing
-  TBlob -> Nothing  -- TODO Hmm.
-  TConst t' -> ("const " ++) <$> primitiveTypeName' nonPrimitiveOkay t'
+typeToCType :: Type -> Generator (Maybe Type)
+typeToCType t = case t of
+  TObj cls -> do
+    t' <- fromMaybeM (abort $ "typeToCType: Don't have a C type for class: " ++ show cls) $
+          classCppCType $ classEncoding cls
+    Just <$> ensureNonObj t'
+  TConst t' -> typeToCType t'
+  _ -> return Nothing
+  where ensureNonObj t' = case t' of
+          TObj cls' -> abort $ "typeToCType: Class's C type cannot be an object: " ++ show cls'
+          TConst t'' -> ensureNonObj t''
+          _ -> return t'
