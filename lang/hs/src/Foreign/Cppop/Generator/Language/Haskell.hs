@@ -6,7 +6,7 @@ module Foreign.Cppop.Generator.Language.Haskell (
 
 import Control.Applicative ((<$>), (<*>), pure)
 import Control.Arrow ((&&&), first)
-import Control.Monad (when)
+import Control.Monad (forM, when)
 import Control.Monad.Trans (lift)
 import Control.Monad.Writer (WriterT, censor, runWriterT, tell)
 import Data.Char (toLower, toUpper)
@@ -366,6 +366,14 @@ cppTypeToHsType side t = case t of
     Just $ HsTyCon $ UnQual $ HsIdent $ toHsTypeName Nonconst $ classExtName cls
   TPtr (TConst (TObj cls)) ->
     Just $ HsTyCon $ UnQual $ HsIdent $ toHsTypeName Const $ classExtName cls
+  TPtr (TFn ps r) -> do
+    ps' <- forM ps $ cppTypeToHsType side
+    Just $
+      (case side of
+         HsCSide -> HsTyApp (HsTyCon $ UnQual $ HsIdent "F.FunPtr")
+         HsHsSide -> id) $
+      foldr HsTyFun (HsTyApp (HsTyCon $ UnQual $ HsIdent "P.IO") $ HsTyCon $ Special $ HsUnitCon)
+      ps'
   -- Do we even want this next instance?  If we want that functionality we
   -- should have our own poiner type, since Ptrs are meant to be valid in
   -- the Haskell process's address space.
