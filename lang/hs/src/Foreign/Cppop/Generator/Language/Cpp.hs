@@ -91,7 +91,7 @@ callbackFnName :: Callback -> String
 callbackFnName = externalNameToCpp . callbackExtName
 
 data CoderDirection = DoDecode | DoEncode
-                    deriving (Eq)
+                    deriving (Eq, Show)
 
 getCoder :: CoderDirection -> ClassEncoding -> Maybe CppCoder
 getCoder DoDecode = classCppDecoder
@@ -293,8 +293,10 @@ sayExportFn extName sayCppName maybeThisType paramTypes retType sayBody = do
   let retCType = fromMaybe retType retCTypeMaybe
   sayFunction (externalNameToCpp extName)
               (maybe id (const ("self":)) maybeThisType $
-               zipWith (\ctm -> if isJust ctm then toArgNameAlt else toArgName)
-               paramCTypeMaybes [1..paramCount])
+               zipWith3 (\t ctm -> case t of
+                           TCallback {} -> toArgNameAlt
+                           _ -> if isJust ctm then toArgNameAlt else toArgName)
+               paramTypes paramCTypeMaybes [1..paramCount])
               (TFn (maybe id (:) maybeThisType paramCTypes) retCType) $
     if not sayBody
     then Nothing
@@ -322,21 +324,25 @@ sayExportFn extName sayCppName maybeThisType paramTypes retType sayBody = do
         ts -> abort $ "sayExportFn: Unexpected return types: " ++ show ts
 
 sayArgRead :: CoderDirection -> (Int, Type, Maybe Type) -> Generator ()
-sayArgRead dir (n, cppType, maybeCType) = forM_ maybeCType $ \cType -> case cppType of
+sayArgRead dir (n, cppType, maybeCType) = case cppType of
   TCallback cb -> do
     case dir of
       DoDecode -> return ()
       DoEncode -> abort $ "sayArgRead: Encoding of callbacks is not supported.  Given " ++
                   show cb ++ "."
-    says [callbackImplClassName cb, " ", toArgName n, "(", toArgNameAlt n, ");\n"]
+    says [callbackClassName cb, " ", toArgName n, "(", toArgNameAlt n, ");\n"]
 
   TObj cls -> do
     let encoding = classEncoding cls
-    coder <- fromMaybeM (abort $ "sayArgRead: Class lacks a decoder: " ++ show cls) $
+    coder <- fromMaybeM (abort $ "sayArgRead: Class lacks a coder for " ++ show dir ++ ": " ++
+                         show (classExtName cls)) $
              getCoder dir encoding
-    sayVar (toArgName n) Nothing $ case dir of
-      DoDecode -> cppType
-      DoEncode -> cType
+    sayVar (toArgName n) Nothing =<< case dir of
+      DoDecode -> return cppType
+      DoEncode -> fromMaybeM (abort $
+                              "sayArgRead: Internal error, don't have a C type for class: " ++
+                              show (classExtName cls))
+                  maybeCType
     say " = "
     let inputVar = toArgNameAlt n
     case coder of
@@ -345,7 +351,14 @@ sayArgRead dir (n, cppType, maybeCType) = forM_ maybeCType $ \cType -> case cppT
     when (dir == DoDecode && classCppDecodeThenFree encoding) $
       says ["free(", inputVar, ");\n"]
 
-  _ -> abort $ "sayArgRead: Don't know how to decode to type " ++ show cppType ++ "."
+  -- Primitive types don't need to be encoded/decoded.  But it we maybeCType is
+  -- a Just, then we're expected to do some encoding/decoding, so something is
+  -- wrong.
+  --
+  -- TODO Do we need to handle TConst?
+  _ -> forM_ maybeCType $ \cType ->
+    abort $ "sayArgRead: Don't know how to " ++ show dir ++ " to type " ++ show cType ++
+    " from type " ++ show cppType ++ "."
 
 sayExpr :: String -> [Maybe String] -> Generator ()
 sayExpr arg terms = do
@@ -395,7 +408,7 @@ sayExportCallback mode sayBody cb = do
         -- Render the class declarations into the header file.
         says ["\nclass ", implClassName, " {\n"]
         say "public:\n"
-        says ["    ", implClassName, "("] >> sayType Nothing fnPtrCType >>
+        says ["    explicit ", implClassName, "("] >> sayType Nothing fnPtrCType >>
           say ", void(*)(void(*)()), bool);\n"
         says ["    ~", implClassName, "();\n"]
         say "    " >> sayVar "operator()" Nothing fnType >> say ";\n"
@@ -410,7 +423,7 @@ sayExportCallback mode sayBody cb = do
 
         says ["\nclass ", className, " {\n"]
         say "public:\n"
-        says ["    ", className, "(", implClassName, "* impl) : impl_(impl) {}\n"]
+        says ["    explicit ", className, "(", implClassName, "* impl) : impl_(impl) {}\n"]
         say "    " >> sayVar "operator()" Nothing fnType >> say ";\n"
         say "private:\n"
         says ["    std::shared_ptr<", implClassName, "> impl_;\n"]
