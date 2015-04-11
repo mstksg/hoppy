@@ -163,6 +163,7 @@ sayIdentifier = say . idToString
 
 sayBindingsHeader :: Generator ()
 sayBindingsHeader = do
+  say "////////// GENERATED FILE, EDITS WILL BE LOST //////////\n\n"
   mapM_ sayInclude . interfaceBindingsIncludes =<< askInterface
   say "\nextern \"C\" {\n"
   mapM_ (sayExport False) =<< askExports
@@ -170,8 +171,8 @@ sayBindingsHeader = do
 
 sayBindingsSource :: Generator ()
 sayBindingsSource = do
+  say "////////// GENERATED FILE, EDITS WILL BE LOST //////////\n\n"
   iface <- askInterface
-
   -- cstdlib is required for the free() call that 'classCppDecodeThenFree'
   -- provides.
   say $ includeToString $ includeStd "cstdlib"
@@ -184,6 +185,7 @@ sayBindingsSource = do
 
 sayCallbacksHeader :: Generator ()
 sayCallbacksHeader = do
+  say "////////// GENERATED FILE, EDITS WILL BE LOST //////////\n\n"
   iface <- askInterface
   let guardName = ("CPPOP_GEN_CB_" ++) $ interfaceName iface
   says ["#ifndef ", guardName, "\n"]
@@ -199,6 +201,7 @@ sayCallbacksHeader = do
 
 sayCallbacksSource :: Generator ()
 sayCallbacksSource = do
+  say "////////// GENERATED FILE, EDITS WILL BE LOST //////////\n\n"
   iface <- askInterface
   maybe (abort $ "Interface " ++ show (interfaceName iface) ++
          " requires a .hpp file path for generating callbacks.")

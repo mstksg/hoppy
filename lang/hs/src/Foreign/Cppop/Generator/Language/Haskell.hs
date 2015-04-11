@@ -52,6 +52,8 @@ runGenerator = fmap (first (intercalate "\n") . swap) . runWriterT
 
 generateSource :: Interface -> Generator ()
 generateSource interface = do
+  sayLn "---------- GENERATED FILE, EDITS WILL BE LOST ----------"
+  ln
   saysLn ["module ", getModuleName interface, " where"]
   ln
   sayLn "import qualified Foreign as F"
