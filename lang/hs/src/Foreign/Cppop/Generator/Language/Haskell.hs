@@ -17,7 +17,7 @@ import Data.Tuple (swap)
 import Data.Maybe (isJust, mapMaybe)
 import Foreign.Cppop.Common
 import Foreign.Cppop.Generator.Spec
-import Foreign.Cppop.Generator.Language.Cpp (externalNameToCpp)
+import Foreign.Cppop.Generator.Language.Cpp (classDeleteFnCppName, externalNameToCpp)
 import Language.Haskell.Pretty (prettyPrint)
 import Language.Haskell.Syntax (
   HsAsst,
@@ -96,6 +96,9 @@ toHsCastMethodName cst cls = "to" ++ toHsTypeName cst (classExtName cls)
 
 toHsDataTypeName :: Constness -> Class -> String
 toHsDataTypeName cst cls = toHsTypeName cst $ classExtName cls
+
+toHsClassDeleteFnName :: Class -> String
+toHsClassDeleteFnName cls = 'd':'e':'l':'e':'t':'e':'\'':toHsDataTypeName Nonconst cls
 
 toHsCallbackCtorName :: Callback -> String
 toHsCallbackCtorName = toHsFnName . callbackExtName
@@ -338,6 +341,8 @@ sayExportClass mode cls = case mode of
       (sayExportFn mode <$> methodExtName <*> pure methodInfo <*> methodPurity <*>
        methodParams <*> methodReturn) method
 
+    sayExportClassHsDeleteImports cls
+
   SayExportDecls -> do
     sayExportClassHsClass cls Const
     sayExportClassHsClass cls Nonconst
@@ -397,6 +402,9 @@ sayExportClassHsType cls cst = do
   ln
   saysLn ["instance FCRS.CppPtr ", hsTypeName, " where"]
   saysLn ["  toPtr (", hsTypeName, " ptr) = ptr"]
+  saysLn $ "  delete = " : toHsClassDeleteFnName cls : case cst of
+    Const -> []
+    Nonconst -> [" . ", toHsCastMethodName Const cls]
   ln
   let neededInstances = flatten $ unfoldTree (id &&& classSuperclasses) cls
   forM_ neededInstances $ \cls' -> do
@@ -417,6 +425,12 @@ sayExportClassHsCtors mode cls =
   forM_ (classCtors cls) $ \ctor ->
   (sayExportFn mode <$> ctorExtName <*> pure Nothing <*>
    pure Nonpure <*> ctorParams <*> pure (TPtr $ TObj cls)) ctor
+
+sayExportClassHsDeleteImports :: Class -> Generator ()
+sayExportClassHsDeleteImports cls =
+  saysLn ["foreign import ccall \"", classDeleteFnCppName cls, "\" ",
+          toHsClassDeleteFnName cls, " :: ", toHsDataTypeName Const cls,
+          " -> P.IO ()"]
 
 fnToHsType :: HsTypeSide -> Maybe (Constness, Class) -> Purity -> [Type] -> Type -> Maybe HsQualType
 fnToHsType side methodInfo purity paramTypes returnType = do

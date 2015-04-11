@@ -7,6 +7,7 @@ module Foreign.Cppop.Generator.Language.Cpp (
   generatedCallbacksSource,
   -- * Exported only for other generators, do not use.
   externalNameToCpp,
+  classDeleteFnCppName,
   ) where
 
 -- How callbacks work:
@@ -75,11 +76,12 @@ externalNameToCpp :: ExtName -> String
 externalNameToCpp extName =
   makeCppName [externalNamePrefix, fromExtName extName]
 
-toArgName :: Int -> String
-toArgName = ("arg" ++) . show
+classDeleteFnPrefix :: String
+classDeleteFnPrefix = "gendel"
 
-toArgNameAlt :: Int -> String
-toArgNameAlt n = "arg" ++ show n ++ "_"
+classDeleteFnCppName :: Class -> String
+classDeleteFnCppName cls =
+  makeCppName [classDeleteFnPrefix, fromExtName $ classExtName cls]
 
 callbackClassName :: Callback -> String
 callbackClassName = fromExtName . callbackExtName
@@ -89,6 +91,12 @@ callbackImplClassName = (++ "_impl") . fromExtName . callbackExtName
 
 callbackFnName :: Callback -> String
 callbackFnName = externalNameToCpp . callbackExtName
+
+toArgName :: Int -> String
+toArgName = ("arg" ++) . show
+
+toArgNameAlt :: Int -> String
+toArgNameAlt n = "arg" ++ show n ++ "_"
 
 data CoderDirection = DoDecode | DoEncode
                     deriving (Eq, Show)
@@ -270,6 +278,13 @@ sayExport sayBody export = case export of
                   (ctorParams ctor)
                   clsPtr
                   sayBody
+    -- Export a delete function for class objects.
+    sayFunction (classDeleteFnCppName cls)
+                ["self"]
+                (TFn [TPtr $ TConst $ TObj cls] TVoid) $
+      if sayBody
+      then Just $ say "delete self;\n"
+      else Nothing
     -- Export each of the class's methods.
     forM_ (classMethods cls) $ \method -> do
       let static = methodStatic method == Static
