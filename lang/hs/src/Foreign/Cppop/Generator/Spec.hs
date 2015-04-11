@@ -3,7 +3,12 @@ module Foreign.Cppop.Generator.Spec (
   Interface,
   interface,
   interfaceName,
-  interfaceIncludes,
+  interfaceBindingsCppPath,
+  interfaceBindingsHppPath,
+  interfaceBindingsIncludes,
+  interfaceCallbacksCppPath,
+  interfaceCallbacksHppPath,
+  interfaceCallbacksIncludes,
   interfaceExports,
   interfaceExportsByName,
   -- * C++ includes
@@ -48,7 +53,9 @@ module Foreign.Cppop.Generator.Spec (
   classCopyEncodingFrom,
   CppCoder (..),
   HaskellEncoding (..),
-  HaskellEncoder (..),
+  -- * Callbacks
+  Callback (..),
+  callbackToTFn,
   ) where
 
 import Control.Applicative ((<$>), (<*>))
@@ -68,7 +75,12 @@ type ErrorMsg = String
 -- including the server generator for C++, use these to produce their output.
 data Interface = Interface
   { interfaceName :: String
-  , interfaceIncludes :: [Include]
+  , interfaceBindingsCppPath :: FilePath
+  , interfaceBindingsHppPath :: FilePath
+  , interfaceBindingsIncludes :: [Include]
+  , interfaceCallbacksCppPath :: Maybe FilePath
+  , interfaceCallbacksHppPath :: Maybe FilePath
+  , interfaceCallbacksIncludes :: [Include]
   , interfaceExports :: [Export]
   , interfaceExportsByName :: Map ExtName Export
   } deriving (Show)
@@ -85,8 +97,15 @@ includeLocal path = Include $ "#include \"" ++ path ++ "\"\n"
 -- | Constructs an 'Interface' from the required parts.  Some validation is
 -- performed; if the resulting interface would be invalid, an error message is
 -- returned instead.
-interface :: String -> [Include] -> [Export] -> Either ErrorMsg Interface
-interface ifName includes exports = do
+interface :: String
+          -> FilePath
+          -> FilePath
+          -> [Include]
+          -> Maybe (FilePath, FilePath, [Include])
+          -> [Export]
+          -> Either ErrorMsg Interface
+interface ifName bindingsCppPath bindingsHppPath bindingsIncludes
+          maybeCallbacksPathsAndIncludes exports = do
   -- Check for multiple definitions of a single external name.
   let directory = Map.fromListWith mappend $ flip map exports $
                   \e -> (exportExtName e, [e])
@@ -106,7 +125,12 @@ interface ifName includes exports = do
 
   return $ Interface
     { interfaceName = ifName
-    , interfaceIncludes = includes
+    , interfaceBindingsCppPath = bindingsCppPath
+    , interfaceBindingsHppPath = bindingsHppPath
+    , interfaceBindingsIncludes = bindingsIncludes
+    , interfaceCallbacksCppPath = fmap (\(a,_,_) -> a) maybeCallbacksPathsAndIncludes
+    , interfaceCallbacksHppPath = fmap (\(_,b,_) -> b) maybeCallbacksPathsAndIncludes
+    , interfaceCallbacksIncludes = maybe [] (\(_,_,c) -> c) maybeCallbacksPathsAndIncludes
     , interfaceExports = exports
     , interfaceExportsByName = Map.fromList $ map (exportExtName &&& id) exports
     }
@@ -129,6 +153,7 @@ toExtName str = case str of
 data Export =
   ExportFn Function
   | ExportClass Class
+  | ExportCallback Callback
   deriving (Show)
 
 -- | Returns the external name of an export.
@@ -136,6 +161,7 @@ exportExtName :: Export -> ExtName
 exportExtName export = case export of
   ExportFn f -> fnExtName f
   ExportClass c -> classExtName c
+  ExportCallback c -> callbackExtName c
 
 -- | An absolute path from the top-level C++ namespace down to some named
 -- object.
@@ -198,6 +224,7 @@ data Type =
     -- ^ A function taking parameters and returning a value (or 'TVoid').
     -- Function declarations can use 'TFn' directly; but function pointers must
     -- wrap a 'TFn' in a 'TPtr'.
+  | TCallback Callback
   | TObj Class
   | TOpaque String
   | TBlob
@@ -249,12 +276,16 @@ makeClass identifier maybeExtName supers ctors methods = Class
 data ClassEncoding = ClassEncoding
   { classCppCType :: Maybe Type
   , classCppDecoder :: Maybe CppCoder
+  , classCppDecodeThenFree :: Bool
+    -- ^ A convenience for writing interfaces; enables decoding with an existing
+    -- function then automatically freeing the encoded value after the decoding
+    -- is finished.
   , classCppEncoder :: Maybe CppCoder
   , classHaskellType :: Maybe HaskellEncoding
   } deriving (Show)
 
 classEncodingNone :: ClassEncoding
-classEncodingNone = ClassEncoding Nothing Nothing Nothing Nothing
+classEncodingNone = ClassEncoding Nothing Nothing False Nothing Nothing
 
 classModifyEncoding :: (ClassEncoding -> ClassEncoding) -> Class -> Class
 classModifyEncoding f cls = cls { classEncoding = f $ classEncoding cls }
@@ -266,14 +297,11 @@ data CppCoder = CppCoderFn Identifier | CppCoderExpr [Maybe String]
               deriving (Show)
 
 data HaskellEncoding = HaskellEncoding
-  { haskellEncodingType :: HsType
-  , haskellEncodingCType :: HsType
-  , haskellEncodingDecoder :: String
-  , haskellEncodingEncoder :: HaskellEncoder
+  { haskellEncodingType :: HsType  -- ^ @ht@; e.g. @String@.
+  , haskellEncodingCType :: HsType  -- ^ @ct@; e.g. @TPtr TChar@.
+  , haskellEncodingDecoder :: String  -- ^ Decoding function, of type @ct -> IO ht@.
+  , haskellEncodingEncoder :: String  -- ^ Encoding function, of type @ht -> IO ct@.
   } deriving (Show)
-
-data HaskellEncoder = HaskellEncoderWith String | HaskellEncoderConverter String
-                    deriving (Show)
 
 -- | A C++ class constructor declaration.
 data Ctor = Ctor
@@ -311,3 +339,16 @@ methodStatic :: Method -> Staticness
 methodStatic method = case methodApplicability method of
   MStatic -> Static
   _ -> Nonstatic
+
+-- | A non-C++ function that can be invoked via a C++ functor.
+data Callback = Callback
+  { callbackExtName :: ExtName
+  , callbackParams :: [Type]
+  , callbackReturn :: Type
+  } deriving (Show)
+
+instance Eq Callback where
+  (==) = (==) `on` callbackExtName
+
+callbackToTFn :: Callback -> Type
+callbackToTFn = TFn <$> callbackParams <*> callbackReturn

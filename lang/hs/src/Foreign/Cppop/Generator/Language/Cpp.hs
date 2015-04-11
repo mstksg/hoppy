@@ -1,22 +1,63 @@
 module Foreign.Cppop.Generator.Language.Cpp (
   Generation,
   generate,
-  generatedHeader,
-  generatedSource,
+  generatedBindingsHeader,
+  generatedBindingsSource,
+  generatedCallbacksHeader,
+  generatedCallbacksSource,
   -- * Exported only for other generators, do not use.
   externalNameToCpp,
   ) where
 
-import Control.Applicative ((<$>))
-import Control.Arrow (first)
+-- How callbacks work:
+--
+-- data Type = ... | TCallback Callback
+--
+-- data Callback = Callback ExtName [Type] Type  -- Parameter and return types.
+--
+-- We want to call some foreign code from C++.  What C++ type do we associate
+-- with such an entry point?  (Both the C++ and foreign sides of the callback
+-- will need to perform en-/decoding.)
+--
+-- Function pointer: Create a function pointer to a foreign wrapper which does
+-- en-/decoding on the foreign side.  But then we need to wrap this in a C++
+-- function (pointer) which does the C++-side conversions.  Function pointers
+-- can't close over variables, so this doesn't work.
+--
+-- C++ functor: Create a class G that takes a foreign function pointer and
+-- implements operator(), performing the necessary conversions around invoking
+-- the pointer.  In the event that the function pointer is dynamically allocated
+-- (as in Haskell), then this class also ties the lifetime of the function
+-- pointer to the lifetime of the class.  But this would cause problems for
+-- passing this object around by value, so instead we make G non-copyable and
+-- non-assignable, allocate our G instance on the heap, and create a second
+-- class F that holds a shared_ptr<G> and whose operator() calls through to G.
+--
+-- This way, the existance of the F and G objects are invisible to the foreign
+-- language, and (for now) passing these callbacks back to the foreign language
+-- is not supported.
+--
+-- When a binding is declared to take a callback type, the generated foreign
+-- side of the binding will take a foreign function (the callback) with
+-- foreign-side types, and use a function (Haskell: callbackName) generated for
+-- the callback type to wrap the callback in a foreign function that does
+-- argument decoding and return value encoding: this wrapped function will have
+-- C-side types.  The binding will then create a G object (above) for this
+-- wrapped function (Haskell: using callbackName'), and pass a G pointer into
+-- the C side of the binding.  The binding will decode this C pointer by
+-- wrapping it in a temporary F object, and passing that to the C++ function.
+-- The C++ code is free to copy this F object as much as it likes.  If it
+-- doesn't store a copy somewhere before returning, then the when the temporary
+-- F object is destructed, the G object will get deleted.
+
+import Control.Applicative ((<$>), (<*>))
 import Control.Monad (when)
 import Control.Monad.Reader (ReaderT, ask, runReaderT)
 import Control.Monad.Writer (WriterT, runWriterT, tell)
 import Control.Monad.Trans (lift)
 import Data.Foldable (forM_)
 import Data.List (intercalate, intersperse)
-import Data.Maybe (fromMaybe, isJust)
-import Data.Tuple (swap)
+import Data.Maybe (fromMaybe, isJust, mapMaybe)
 import Foreign.Cppop.Common
 import Foreign.Cppop.Generator.Spec
 
@@ -40,6 +81,22 @@ toArgName = ("arg" ++) . show
 toArgNameAlt :: Int -> String
 toArgNameAlt n = "arg" ++ show n ++ "_"
 
+callbackClassName :: Callback -> String
+callbackClassName = fromExtName . callbackExtName
+
+callbackImplClassName :: Callback -> String
+callbackImplClassName = (++ "_impl") . fromExtName . callbackExtName
+
+callbackFnName :: Callback -> String
+callbackFnName = externalNameToCpp . callbackExtName
+
+data CoderDirection = DoDecode | DoEncode
+                    deriving (Eq)
+
+getCoder :: CoderDirection -> ClassEncoding -> Maybe CppCoder
+getCoder DoDecode = classCppDecoder
+getCoder DoEncode = classCppEncoder
+
 -- | A chunk is a string that contains an arbitrary portion of C++ code.  The
 -- only requirement is that chunk boundaries are also C++ token boundaries,
 -- because the generator monad automates the process of inserting whitespace
@@ -54,8 +111,8 @@ data Env = Env
   { envInterface :: Interface
   }
 
-askIncludes :: Generator [Include]
-askIncludes = fmap (interfaceIncludes . envInterface) ask
+askInterface :: Generator Interface
+askInterface = fmap envInterface ask
 
 askExports :: Generator [Export]
 askExports = fmap (interfaceExports . envInterface) ask
@@ -64,9 +121,9 @@ askExports = fmap (interfaceExports . envInterface) ask
 abort :: String -> Generator a
 abort = lift . lift . Left
 
-runGenerator :: Interface -> Generator a -> Either String (String, a)
-runGenerator interface =
-  fmap (first combineChunks . swap) . runWriterT . flip runReaderT (Env interface)
+execGenerator :: Interface -> Generator a -> Either String String
+execGenerator interface =
+  fmap (combineChunks . snd) . runWriterT . flip runReaderT (Env interface)
 
 -- | Flattens a list of chunks down into a single string.  Inserts spaces
 -- between chunks where the ends of adjacent chunks would otherwise merge into a
@@ -96,19 +153,57 @@ says = tell . map Chunk
 sayIdentifier :: Identifier -> Generator ()
 sayIdentifier = say . idToString
 
-sayInterfaceHeader :: Generator ()
-sayInterfaceHeader = do
-  mapM_ (say . includeToString) =<< askIncludes
+sayBindingsHeader :: Generator ()
+sayBindingsHeader = do
+  mapM_ sayInclude . interfaceBindingsIncludes =<< askInterface
   say "\nextern \"C\" {\n"
   mapM_ (sayExport False) =<< askExports
   say "\n}\n"
 
-sayInterfaceSource :: Generator ()
-sayInterfaceSource = do
-  mapM_ (say . includeToString) =<< askIncludes
+sayBindingsSource :: Generator ()
+sayBindingsSource = do
+  iface <- askInterface
+
+  -- cstdlib is required for the free() call that 'classCppDecodeThenFree'
+  -- provides.
+  say $ includeToString $ includeStd "cstdlib"
+  say "\n"
+  say $ includeToString $ includeLocal $ interfaceBindingsHppPath iface
+  forM_ (interfaceCallbacksHppPath iface) $ say . includeToString . includeLocal
   say "\nextern \"C\" {\n"
   mapM_ (sayExport True) =<< askExports
   say "\n}\n"
+
+sayCallbacksHeader :: Generator ()
+sayCallbacksHeader = do
+  iface <- askInterface
+  let guardName = ("CPPOP_GEN_CB_" ++) $ interfaceName iface
+  says ["#ifndef ", guardName, "\n"]
+  says ["#define ", guardName, "\n"]
+  says ["\n", includeToString $ includeStd "memory", "\n"]  -- Needed for shared_ptr.
+  mapM_ sayInclude $ interfaceCallbacksIncludes iface
+  callbacks <- mapMaybe (\export -> case export of
+                           ExportCallback cb -> Just cb
+                           _ -> Nothing) <$>
+               askExports
+  forM_ callbacks $ sayExportCallback SayCallbackImpl False
+  say "\n#endif\n"
+
+sayCallbacksSource :: Generator ()
+sayCallbacksSource = do
+  iface <- askInterface
+  maybe (abort $ "Interface " ++ show (interfaceName iface) ++
+         " requires a .hpp file path for generating callbacks.")
+        (say . includeToString . includeLocal) $
+    interfaceCallbacksHppPath iface
+  callbacks <- mapMaybe (\export -> case export of
+                           ExportCallback cb -> Just cb
+                           _ -> Nothing) <$>
+               askExports
+  forM_ callbacks $ sayExportCallback SayCallbackImpl True
+
+sayInclude :: Include -> Generator ()
+sayInclude = say . includeToString
 
 sayFunction :: String -> [String] -> Type -> Maybe (Generator ()) -> Generator ()
 sayFunction name paramNames t maybeBody = do
@@ -140,18 +235,19 @@ identifierChars :: String
 identifierChars = ['A'..'Z'] ++ ['a'..'z'] ++ ['0'..'9'] ++ "_"
 
 data Generation = Generation
-  { generatedHeader :: String
-  , generatedSource :: String
+  { generatedBindingsHeader :: String
+  , generatedBindingsSource :: String
+  , generatedCallbacksHeader :: String
+  , generatedCallbacksSource :: String
   }
 
 generate :: Interface -> Either String Generation
-generate interface = do
-  header <- fst <$> runGenerator interface sayInterfaceHeader
-  source <- fst <$> runGenerator interface sayInterfaceSource
-  return Generation
-    { generatedHeader = header
-    , generatedSource = source
-    }
+generate interface =
+  Generation <$>
+  execGenerator interface sayBindingsHeader <*>
+  execGenerator interface sayBindingsSource <*>
+  execGenerator interface sayCallbacksHeader <*>
+  execGenerator interface sayCallbacksSource
 
 sayExport :: Bool -> Export -> Generator ()
 sayExport sayBody export = case export of
@@ -186,12 +282,13 @@ sayExport sayBody export = case export of
                   (methodParams method)
                   (methodReturn method)
                   sayBody
+  ExportCallback cb -> sayExportCallback SayCallbackBinding sayBody cb
 
 sayExportFn :: ExtName -> Generator () -> Maybe Type -> [Type] -> Type -> Bool -> Generator ()
 sayExportFn extName sayCppName maybeThisType paramTypes retType sayBody = do
   let paramCount = length paramTypes
   paramCTypeMaybes <- mapM typeToCType paramTypes
-  let paramCTypes = zipWith (fromMaybe) paramTypes paramCTypeMaybes
+  let paramCTypes = zipWith fromMaybe paramTypes paramCTypeMaybes
   retCTypeMaybe <- typeToCType retType
   let retCType = fromMaybe retType retCTypeMaybe
   sayFunction (externalNameToCpp extName)
@@ -203,7 +300,7 @@ sayExportFn extName sayCppName maybeThisType paramTypes retType sayBody = do
     then Nothing
     else Just $ do
       -- Convert arguments that aren't passed in directly.
-      mapM_ sayArgRead $ zip3 [1..] paramTypes paramCTypeMaybes
+      mapM_ (sayArgRead DoDecode) $ zip3 [1..] paramTypes paramCTypeMaybes
       -- Call the exported function or method.
       let sayCall = do when (isJust maybeThisType) $ say "self->"
                        sayCppName
@@ -224,21 +321,31 @@ sayExportFn extName sayCppName maybeThisType paramTypes retType sayBody = do
               say "return " >> sayExpr "result" terms >> say ";\n"
         ts -> abort $ "sayExportFn: Unexpected return types: " ++ show ts
 
-sayArgRead :: (Int, Type, Maybe Type) -> Generator ()
-sayArgRead (n, cppType, maybeCType) = when (isJust maybeCType) $ do
-  cls <- case cppType of
-    TObj cls -> return cls
-    _ -> abort $ "sayArgRead: Don't know how to decode to type " ++ show cppType ++ "."
-  decoder <- fromMaybeM (abort $ "sayArgRead: Class lacks a decoder: " ++ show cls) $
-             classCppDecoder $ classEncoding cls
-  sayVar (toArgName n) Nothing cppType
-  say " = "
-  let inputVar = toArgNameAlt n
-  case decoder of
-    CppCoderFn fn -> do
-      sayIdentifier fn
-      says ["(", inputVar, ");\n"]
-    CppCoderExpr terms -> sayExpr inputVar terms
+sayArgRead :: CoderDirection -> (Int, Type, Maybe Type) -> Generator ()
+sayArgRead dir (n, cppType, maybeCType) = forM_ maybeCType $ \cType -> case cppType of
+  TCallback cb -> do
+    case dir of
+      DoDecode -> return ()
+      DoEncode -> abort $ "sayArgRead: Encoding of callbacks is not supported.  Given " ++
+                  show cb ++ "."
+    says [callbackImplClassName cb, " ", toArgName n, "(", toArgNameAlt n, ");\n"]
+
+  TObj cls -> do
+    let encoding = classEncoding cls
+    coder <- fromMaybeM (abort $ "sayArgRead: Class lacks a decoder: " ++ show cls) $
+             getCoder dir encoding
+    sayVar (toArgName n) Nothing $ case dir of
+      DoDecode -> cppType
+      DoEncode -> cType
+    say " = "
+    let inputVar = toArgNameAlt n
+    case coder of
+      CppCoderFn fn -> sayIdentifier fn >> says ["(", inputVar, ");\n"]
+      CppCoderExpr terms -> sayExpr inputVar terms >> say ";\n"
+    when (dir == DoDecode && classCppDecodeThenFree encoding) $
+      says ["free(", inputVar, ");\n"]
+
+  _ -> abort $ "sayArgRead: Don't know how to decode to type " ++ show cppType ++ "."
 
 sayExpr :: String -> [Maybe String] -> Generator ()
 sayExpr arg terms = do
@@ -250,8 +357,124 @@ sayArgNames :: Int -> Generator ()
 sayArgNames count =
   says $ intersperse ", " $ map toArgName [1..count]
 
+data SayCallbackMode = SayCallbackImpl | SayCallbackBinding
+
+sayExportCallback :: SayCallbackMode -> Bool -> Callback -> Generator ()
+sayExportCallback mode sayBody cb = do
+  let className = callbackClassName cb
+      implClassName = callbackImplClassName cb
+      fnName = callbackFnName cb
+      paramTypes = callbackParams cb
+      paramCount = length paramTypes
+      retType = callbackReturn cb
+      cbType = TCallback cb
+      fnType = TFn paramTypes retType
+
+  -- The function pointer we receive from foreign code will work with C-types,
+  -- so determine what that function looks like.
+  paramCTypes <- zipWith fromMaybe paramTypes <$> mapM typeToCType paramTypes
+  retCType <- fromMaybe retType <$> typeToCType retType
+  let fnCType = TFn paramCTypes retCType
+      fnPtrCType = TPtr fnCType
+
+  case mode of
+    SayCallbackBinding -> do
+      -- Render the function that creates a new callback object.
+      let newCallbackFnType = TFn [ fnPtrCType
+                                  , TPtr (TFn [TPtr $ TFn [] TVoid] TVoid)
+                                  , TBool
+                                  ] $
+                              cbType
+      sayFunction fnName ["f", "release", "releaseRelease"] newCallbackFnType $
+        if sayBody
+        then Just $ says ["return new ", implClassName, "(f, release, releaseRelease);\n"]
+        else Nothing
+
+    SayCallbackImpl -> case sayBody of
+      False -> do
+        -- Render the class declarations into the header file.
+        says ["\nclass ", implClassName, " {\n"]
+        say "public:\n"
+        says ["    ", implClassName, "("] >> sayType Nothing fnPtrCType >>
+          say ", void(*)(void(*)()), bool);\n"
+        says ["    ~", implClassName, "();\n"]
+        say "    " >> sayVar "operator()" Nothing fnType >> say ";\n"
+        say "private:\n"
+        says ["    ", implClassName, "(const ", implClassName, "&);\n"]
+        says ["    ", implClassName, "& operator=(const ", implClassName, "&);\n"]
+        say "\n"
+        say "    " >> sayVar "f_" Nothing (TConst fnPtrCType) >> say ";\n"
+        say "    void (*const release_)(void(*)());\n"
+        say "    const bool releaseRelease_;\n"
+        say "};\n"
+
+        says ["\nclass ", className, " {\n"]
+        say "public:\n"
+        says ["    ", className, "(", implClassName, "* impl) : impl_(impl) {}\n"]
+        say "    " >> sayVar "operator()" Nothing fnType >> say ";\n"
+        say "private:\n"
+        says ["    std::shared_ptr<", implClassName, "> impl_;\n"]
+        say "};\n"
+
+      True -> do
+        -- Render the classes' methods into the source file.  First render the
+        -- impl class's constructor.
+        says ["\n", implClassName, "::", implClassName, "("] >> sayVar "f" Nothing fnPtrCType >>
+          say ", void (*release)(void(*)()), bool releaseRelease) :\n"
+        say "    f_(f), release_(release), releaseRelease_(releaseRelease) {}\n"
+
+        -- Then render the destructor.
+        says ["\n", implClassName, "::~", implClassName, "() {\n"]
+        say "    if (release_) {\n"
+        say "        release_(reinterpret_cast<void(*)()>(f_));\n"
+        say "        if (releaseRelease_) {\n"
+        say "            release_(reinterpret_cast<void(*)()>(release_));\n"
+        say "        }\n"
+        say "    }\n"
+        say "}\n"
+
+        -- Render the impl operator() method, which does argument decoding and
+        -- return value encoding and passes C++ values to underlying function
+        -- poiner.
+        --
+        -- TODO Abstract the duplicated code here and in sayExportFn.
+        paramCTypeMaybes <- mapM typeToCType paramTypes
+        retCTypeMaybe <- typeToCType retType
+        sayFunction (implClassName ++ "::operator()")
+                    (zipWith (\ctm -> if isJust ctm then toArgNameAlt else toArgName)
+                     paramCTypeMaybes [1..paramCount])
+                    fnType $ Just $ do
+          -- Convert arguments that aren't passed in directly.
+          mapM_ (sayArgRead DoEncode) $ zip3 [1..] paramTypes paramCTypeMaybes
+          -- Invoke the function pointer into foreign code.
+          let sayCall = say "f_(" >> sayArgNames paramCount >> say ")"
+          case (retType, retCTypeMaybe) of
+            (TVoid, Nothing) -> sayCall >> say ";\n"
+            (_, Nothing) -> say "return " >> sayCall >> say ";\n"
+            (TObj cls, Just _) -> do
+              decoder <- fromMaybeM (abort $ "sayExportCallback: Class lacks a decoder: " ++
+                                     show cls) $
+                         classCppDecoder $ classEncoding cls
+              case decoder of
+                CppCoderFn fn ->
+                  say "return " >> sayIdentifier fn >> say "(" >> sayCall >> say ");\n"
+                CppCoderExpr terms -> do
+                  sayVar "result" Nothing retType >> say " = " >> sayCall >> say ";\n"
+                  say "return " >> sayExpr "result" terms >> say ";\n"
+            ts -> abort $ "sayExportCallback: Unexpected return types: " ++ show ts
+
+        -- Render the non-impl operator() method, which simply passes C++ values
+        -- along to the impl object.
+        sayFunction (className ++ "::operator()")
+                    (map toArgName [1..paramCount])
+                    fnType $ Just $
+          say "(*impl_)(" >> sayArgNames paramCount >> say ");\n"
+
 sayVar :: String -> Maybe [String] -> Type -> Generator ()
 sayVar name maybeParamNames t = sayType' t maybeParamNames topPrecedence $ say name
+
+sayType :: Maybe [String] -> Type -> Generator ()
+sayType maybeParamNames t = sayType' t maybeParamNames topPrecedence $ return ()
 
 sayType' :: Type -> Maybe [String] -> Int -> Generator () -> Generator ()
 sayType' t maybeParamNames outerPrec unwrappedOuter =
@@ -305,6 +528,7 @@ sayType' t maybeParamNames outerPrec unwrappedOuter =
       -- int*(*)()         Pointer to a function returning a pointer to an int.
       -- int(*(*var)())[]  Pointer to a function returning a pointer to an array of ints.  (Must be sized...)
       -- A function can't return an array.
+    TCallback cb -> says [callbackImplClassName cb, "*"] >> outer
     TObj cls -> sayIdentifier (classIdentifier cls) >> outer
     TOpaque s -> say s >> outer
     TBlob -> say "void*" >> outer

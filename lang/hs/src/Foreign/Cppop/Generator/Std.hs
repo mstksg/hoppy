@@ -14,12 +14,13 @@ cls_std__string =
   classModifyEncoding
   (\c -> c { classCppCType = Just $ TPtr TChar
            , classCppDecoder = Just $ CppCoderFn $ ident1 "std" "string"
+           , classCppDecodeThenFree = True
            , classCppEncoder = Just $ CppCoderExpr [Just "strdup(", Nothing, Just ".c_str())"]
            , classHaskellType = Just $ HaskellEncoding
                                 { haskellEncodingType = HsTyCon $ UnQual $ HsIdent "P.String"
                                 , haskellEncodingCType = HsTyCon $ UnQual $ HsIdent "FC.CString"
                                 , haskellEncodingDecoder = "FCRS.decodeAndFreeCString"
-                                , haskellEncodingEncoder = HaskellEncoderWith "FC.withCString"
+                                , haskellEncodingEncoder = "FC.newCString"
                                 }
            }) $
   makeClass (ident1 "std" "string") (Just $ toExtName "StdString")

@@ -1,5 +1,6 @@
 module Foreign.Cppop.Runtime.Support (
   CppPtr (..),
+  CCallback (..),
   decodeAndFreeCString,
   ) where
 
@@ -8,6 +9,10 @@ import Foreign.C (CString, peekCString)
 
 class CppPtr this where
   toPtr :: this -> Ptr this
+
+-- | Internal type that represents a pointer to a C++ callback object (callback
+-- impl object, specifically).
+newtype CCallback fnHsCType = CCallback (Ptr ())
 
 decodeAndFreeCString :: CString -> IO String
 decodeAndFreeCString cstr = do
