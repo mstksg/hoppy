@@ -26,4 +26,4 @@ cls_std__string =
   makeClass (ident1 "std" "string") (Just $ toExtName "StdString")
   []
   []
-  [ Method "size" (toExtName "string_size") MConst Nonpure [] TSize ]
+  [ makeMethod "size" (toExtName "string_size") MConst Nonpure [] TSize ]
