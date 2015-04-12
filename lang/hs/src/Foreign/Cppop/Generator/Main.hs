@@ -1,4 +1,7 @@
-module Foreign.Cppop.Generator.Main (run) where
+module Foreign.Cppop.Generator.Main (
+  Action (..),
+  run,
+  ) where
 
 import Control.Applicative ((<$>), (<*>))
 import Control.Concurrent.MVar (MVar, modifyMVar, newMVar, readMVar)
@@ -15,6 +18,11 @@ import System.Directory (doesDirectoryExist)
 import System.Exit (exitFailure, exitSuccess)
 import System.FilePath ((</>))
 import System.IO (hPutStrLn, stderr)
+
+data Action =
+  ListInterfaces
+  | GenCpp FilePath
+  | GenHaskell FilePath
 
 data AppState = AppState
   { appInterfaces :: [Interface]
@@ -54,7 +62,7 @@ getGeneratedHaskell cache = case generatedHaskell cache of
     l@(Left _) -> return (cache, l)
     r@(Right gen) -> return (cache { generatedHaskell = Just gen }, r)
 
-run :: [Interface] -> [String] -> IO ()
+run :: [Interface] -> [String] -> IO [Action]
 run interfaces args = do
   stateVar <- newMVar $ initialAppState interfaces
   when (null args) $ do
@@ -72,21 +80,20 @@ usage stateVar = do
     , "Interfaces: " ++ intercalate ", " interfaceNames
     , ""
     , "Supported options:"
-    , "  --help              Displays this menu."
-    , "  --list-interfaces   Lists the interfaces compiled into this binary."
-    , "  --gen-cpp-h         Generate a C++ header file for the server."
-    , "  --gen-cpp-cpp       Generate a C++ source file for the server."
-    , "  --gen-hs            Generate a Haskell binding for the client."
+    , "  --help                      Displays this menu."
+    , "  --list-interfaces           Lists the interfaces compiled into this binary."
+    , "  --gen-cpp <outdir>          Generate C++ bindings in a directory."
+    , "  --gen-hs <outfile>          Generate Haskell bindings."
     ]
 
-processArgs :: MVar AppState -> [String] -> IO ()
+processArgs :: MVar AppState -> [String] -> IO [Action]
 processArgs stateVar args = do
   case args of
-    [] -> return ()
+    [] -> return []
 
     "--list-interfaces":rest -> do
       listInterfaces stateVar
-      processArgs stateVar rest
+      (ListInterfaces:) <$> processArgs stateVar rest
 
     "--gen-cpp":dir:rest -> do
       dirExists <- doesDirectoryExist dir
@@ -111,7 +118,7 @@ processArgs stateVar args = do
           writeFile (dir </> bindingsHppPath) $ Cpp.generatedBindingsHeader gen
           forM_ callbacksCppPath $ \p -> writeFile (dir </> p) $ Cpp.generatedCallbacksSource gen
           forM_ callbacksHppPath $ \p -> writeFile (dir </> p) $ Cpp.generatedCallbacksHeader gen
-          processArgs stateVar rest
+          (GenCpp dir:) <$> processArgs stateVar rest
 
     "--gen-hs":path:rest -> do
       genResult <- withCurrentCache stateVar getGeneratedHaskell
@@ -121,7 +128,7 @@ processArgs stateVar args = do
           exitFailure
         Right gen -> do
           writeFile path $ Haskell.generatedSource gen
-          processArgs stateVar rest
+          (GenHaskell path:) <$> processArgs stateVar rest
 
     arg:_ -> do
       putStrLn $ "Invalid option or missing argument for " ++ arg ++ "."

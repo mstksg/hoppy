@@ -54,49 +54,14 @@ module Foreign.Cppop.Generator.Language.Cpp (
 import Control.Applicative ((<$>), (<*>))
 import Control.Monad (when)
 import Control.Monad.Reader (ReaderT, ask, runReaderT)
-import Control.Monad.Writer (WriterT, runWriterT, tell)
+import Control.Monad.Writer (WriterT)
 import Control.Monad.Trans (lift)
 import Data.Foldable (forM_)
-import Data.List (intercalate, intersperse)
+import Data.List (intersperse)
 import Data.Maybe (fromMaybe, isJust, mapMaybe)
 import Foreign.Cppop.Common
+import Foreign.Cppop.Generator.Language.Cpp.General
 import Foreign.Cppop.Generator.Spec
-
-cppNameSeparator :: String
-cppNameSeparator = "__"
-
-makeCppName :: [String] -> String
-makeCppName = intercalate cppNameSeparator
-
--- | "genpop" is used for individually exported functions.
-externalNamePrefix :: String
-externalNamePrefix = "genpop"
-
-externalNameToCpp :: ExtName -> String
-externalNameToCpp extName =
-  makeCppName [externalNamePrefix, fromExtName extName]
-
-classDeleteFnPrefix :: String
-classDeleteFnPrefix = "gendel"
-
-classDeleteFnCppName :: Class -> String
-classDeleteFnCppName cls =
-  makeCppName [classDeleteFnPrefix, fromExtName $ classExtName cls]
-
-callbackClassName :: Callback -> String
-callbackClassName = fromExtName . callbackExtName
-
-callbackImplClassName :: Callback -> String
-callbackImplClassName = (++ "_impl") . fromExtName . callbackExtName
-
-callbackFnName :: Callback -> String
-callbackFnName = externalNameToCpp . callbackExtName
-
-toArgName :: Int -> String
-toArgName = ("arg" ++) . show
-
-toArgNameAlt :: Int -> String
-toArgNameAlt n = "arg" ++ show n ++ "_"
 
 data CoderDirection = DoDecode | DoEncode
                     deriving (Eq, Show)
@@ -104,14 +69,6 @@ data CoderDirection = DoDecode | DoEncode
 getCoder :: CoderDirection -> ClassEncoding -> Maybe CppCoder
 getCoder DoDecode = classCppDecoder
 getCoder DoEncode = classCppEncoder
-
--- | A chunk is a string that contains an arbitrary portion of C++ code.  The
--- only requirement is that chunk boundaries are also C++ token boundaries,
--- because the generator monad automates the process of inserting whitespace
--- between chunk boundaries where necessary.
-data Chunk = Chunk
-  { chunkContents :: String
-  }
 
 type Generator = ReaderT Env (WriterT [Chunk] (Either String))
 
@@ -130,36 +87,7 @@ abort :: String -> Generator a
 abort = lift . lift . Left
 
 execGenerator :: Interface -> Generator a -> Either String String
-execGenerator interface =
-  fmap (combineChunks . snd) . runWriterT . flip runReaderT (Env interface)
-
--- | Flattens a list of chunks down into a single string.  Inserts spaces
--- between chunks where the ends of adjacent chunks would otherwise merge into a
--- single C++ token.
-combineChunks :: [Chunk] -> String
-combineChunks chunks =
-  let strs = map chunkContents chunks
-  in concat $ flip map (zip ("":strs) strs) $ \(prev, cur) ->
-       let needsSpace =
-             not (null prev) && not (null cur) &&
-             (let a = last prev
-                  b = head cur
-              in -- "intconstx" should become "int const x"
-                 isIdentifierChar a && isIdentifierChar b ||
-                 -- Adjacent template parameter '>'s need spacing in old C++.
-                 a == '>' && b == '>')
-       in if needsSpace then ' ':cur else cur
-
--- | Emits a single 'Chunk'.
-say :: String -> Generator ()
-say = tell . (:[]) . Chunk
-
--- | Emits a 'Chunk' for each string in a list.
-says :: [String] -> Generator ()
-says = tell . map Chunk
-
-sayIdentifier :: Identifier -> Generator ()
-sayIdentifier = say . idToString
+execGenerator interface = execChunkWriterT . flip runReaderT (Env interface)
 
 sayBindingsHeader :: Generator ()
 sayBindingsHeader = do
@@ -235,15 +163,6 @@ class HasExternalName a where
 
 instance HasExternalName Function where
   getExternalName = fnExtName
-
--- TODO Fixme, this is most likely backwards, it should be a finite set of
--- non-identifier chars.  Also (maybe) share some logic with the toExtName
--- requirements?
-isIdentifierChar :: Char -> Bool
-isIdentifierChar = (`elem` identifierChars)
-
-identifierChars :: String
-identifierChars = ['A'..'Z'] ++ ['a'..'z'] ++ ['0'..'9'] ++ "_"
 
 data Generation = Generation
   { generatedBindingsHeader :: String
@@ -500,81 +419,6 @@ sayExportCallback mode sayBody cb = do
                     (map toArgName [1..paramCount])
                     fnType $ Just $
           say "(*impl_)(" >> sayArgNames paramCount >> say ");\n"
-
-sayVar :: String -> Maybe [String] -> Type -> Generator ()
-sayVar name maybeParamNames t = sayType' t maybeParamNames topPrecedence $ say name
-
-sayType :: Maybe [String] -> Type -> Generator ()
-sayType maybeParamNames t = sayType' t maybeParamNames topPrecedence $ return ()
-
-sayType' :: Type -> Maybe [String] -> Int -> Generator () -> Generator ()
-sayType' t maybeParamNames outerPrec unwrappedOuter =
-  let prec = typePrecedence t
-      outer = if prec <= outerPrec
-              then unwrappedOuter
-              else say "(" >> unwrappedOuter >> say ")"
-  in case t of
-    TVoid -> say "void" >> outer
-    TBool -> say "bool" >> outer
-    TChar -> say "char" >> outer
-    TUChar -> say "unsigned char" >> outer
-    TShort -> say "short" >> outer
-    TUShort -> say "unsigned short" >> outer
-    TInt -> say "int" >> outer
-    TUInt -> say "unsigned int" >> outer
-    TLong -> say "long" >> outer
-    TULong -> say "unsigned long" >> outer
-    TLLong -> say "long long" >> outer
-    TULLong -> say "unsigned long long" >> outer
-    TFloat -> say "float" >> outer
-    TDouble -> say "double" >> outer
-    TSize -> say "size_t" >> outer
-    TSSize -> say "ssize_t" >> outer
-    TArray maybeSize t' -> sayType' t' Nothing prec $ do
-      outer
-      say $ maybe "[]" (\n -> '[' : show n ++ "]") maybeSize
-      -- int[]             Array of int.
-      -- int*[]            Array of pointers to ints.
-      -- int*(*var[x])[y]  Array(x) of pointers to arrays(y) of pointers to ints.  (Ptr to array(y) must be sized.)
-      -- int(*[])()        Array of pointers to functions returning ints.
-      -- int(**[])()       Array of pointers to pointers to functions returning ints.
-    TPtr t' -> sayType' t' Nothing prec $ say "*" >> outer
-      -- int*              Pointer to an int.
-      -- int(*)[]          Pointer to an array of ints.  (C requires the array be sized.)
-      -- int(*)()          Pointer to a function returning an int.
-    TRef t' -> sayType' t' Nothing prec $ say "&" >> outer
-      -- int&              Reference to an int.
-      -- int(&)[]          Reference to an array of ints.  (C requires the array be sized.)
-      -- int(&)()          Reference to a function returning an int.
-    TFn paramTypes retType -> sayType' retType Nothing prec $ do
-      outer
-      say "("
-      --sequence_ $ intersperse (tell [", "]) $ map sayType paramTypes
-      sequence_ $ intersperse (say ", ") $
-        flip map (zip paramTypes $ maybe (repeat Nothing) (map Just) maybeParamNames) $ \(ptype, pname) ->
-        sayType' ptype Nothing topPrecedence $ forM_ pname $ say
-      say ")"
-      -- int(*)()          Pointer to a function returning an int.
-      -- int(*)()[]        Pointer to a function returning an array of ints.  (Must be sized...)
-      -- int*(*)()         Pointer to a function returning a pointer to an int.
-      -- int(*(*var)())[]  Pointer to a function returning a pointer to an array of ints.  (Must be sized...)
-      -- A function can't return an array.
-    TCallback cb -> says [callbackImplClassName cb, "*"] >> outer
-    TObj cls -> sayIdentifier (classIdentifier cls) >> outer
-    TOpaque s -> say s >> outer
-    TBlob -> say "void*" >> outer
-    TConst t' -> sayType' t' maybeParamNames outerPrec $ say "const" >> unwrappedOuter  -- TODO Is using the outer stuff correctly here?
-
-topPrecedence :: Int
-topPrecedence = 11
-
-typePrecedence :: Type -> Int
-typePrecedence t = case t of
-  TFn {} -> 10
-  TArray {} -> 9
-  TPtr {} -> 8
-  TRef {} -> 8
-  _ -> 7
 
 typeToCType :: Type -> Generator (Maybe Type)
 typeToCType t = case t of

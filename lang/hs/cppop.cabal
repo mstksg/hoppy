@@ -14,20 +14,26 @@ build-type:             Simple
 cabal-version:          >=1.10
 
 library
-  exposed-modules:      Foreign.Cppop.Generator.Main,
-                        Foreign.Cppop.Generator.Spec,
-                        Foreign.Cppop.Generator.Std,
-                        Foreign.Cppop.Runtime.Support
-  other-modules:        Foreign.Cppop.Common,
-                        Foreign.Cppop.Generator.Language.Cpp,
-                        Foreign.Cppop.Generator.Language.Haskell
-  default-extensions:   ExistentialQuantification,
-                        FlexibleInstances,
-                        FunctionalDependencies,
-                        GeneralizedNewtypeDeriving,
-                        MultiParamTypeClasses,
-                        ScopedTypeVariables,
-                        UndecidableInstances
+  exposed-modules:
+      Foreign.Cppop.Common
+    , Foreign.Cppop.Generator.Language.Cpp.General
+    , Foreign.Cppop.Generator.Language.Haskell.General
+    , Foreign.Cppop.Generator.Main
+    , Foreign.Cppop.Generator.Spec
+    , Foreign.Cppop.Generator.Std
+    , Foreign.Cppop.Runtime.Support
+  other-modules:
+      Foreign.Cppop.Generator.Language.Cpp
+    , Foreign.Cppop.Generator.Language.Haskell
+  default-extensions:
+      ExistentialQuantification
+    , FlexibleContexts
+    , FlexibleInstances
+    , FunctionalDependencies
+    , GeneralizedNewtypeDeriving
+    , MultiParamTypeClasses
+    , ScopedTypeVariables
+    , UndecidableInstances
   -- other-extensions:     
   build-depends:        base >=4.7 && <4.8,
                         binary >=0.7 && <0.8,
