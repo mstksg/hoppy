@@ -1,5 +1,5 @@
 module Foreign.Cppop.Generator.Std (
-  cls_std__string,
+  c_std__string,
   ) where
 
 import Foreign.Cppop.Generator.Spec
@@ -9,8 +9,8 @@ import Language.Haskell.Syntax (
   HsType (HsTyCon),
   )
 
-cls_std__string :: Class
-cls_std__string =
+c_std__string :: Class
+c_std__string =
   classModifyEncoding
   (\c -> c { classCppCType = Just $ TPtr TChar
            , classCppDecoder = Just $ CppCoderFn $ ident1 "std" "string"
