@@ -153,11 +153,7 @@ cppTypeToHsType side t = case t of
          HsCSide -> HsTyApp (HsTyCon $ UnQual $ HsIdent "F.FunPtr")
          HsHsSide -> id) $
       foldr HsTyFun (HsTyApp (HsTyCon $ UnQual $ HsIdent "P.IO") retHsType) paramHsTypes
-  -- Do we even want this next instance?  If we want that functionality we
-  -- should have our own poiner type, since Ptrs are meant to be valid in
-  -- the Haskell process's address space.
-  --TPtr t' -> fmap (HsTyApp (HsTyCon $ UnQual $ HsIdent "FP.Ptr")) $ cppTypeToHsType t'
-  TPtr _ -> Nothing
+  TPtr t' -> fmap (HsTyApp (HsTyCon $ UnQual $ HsIdent "F.Ptr")) $ cppTypeToHsType side t'
   TRef {} -> Nothing
   TFn paramTypes retType -> do
     paramHsTypes <- mapM (cppTypeToHsType side) paramTypes
