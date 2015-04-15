@@ -16,7 +16,6 @@ import Foreign.Cppop.Common
 import Foreign.Cppop.Generator.Spec
 import Foreign.Cppop.Generator.Language.Cpp (classDeleteFnCppName, externalNameToCpp)
 import Foreign.Cppop.Generator.Language.Haskell.General
-import Language.Haskell.Pretty (prettyPrint)
 import Language.Haskell.Syntax (
   HsAsst,
   HsContext,

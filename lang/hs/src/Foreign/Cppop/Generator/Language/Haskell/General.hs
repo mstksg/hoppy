@@ -20,6 +20,7 @@ module Foreign.Cppop.Generator.Language.Haskell.General (
   HsTypeSide (..),
   encodingTypeForSide,
   cppTypeToHsType,
+  prettyPrint,
   ) where
 
 import Control.Applicative ((<$>), (<*))
@@ -31,6 +32,7 @@ import Data.Foldable (forM_)
 import Data.List (intercalate)
 import Data.Tuple (swap)
 import Foreign.Cppop.Generator.Spec
+import qualified Language.Haskell.Pretty as P
 import Language.Haskell.Syntax (
   HsName (HsIdent),
   HsQName (Special, UnQual),
@@ -170,3 +172,10 @@ cppTypeToHsType side t = case t of
   TOpaque {} -> Nothing
   TBlob -> Nothing
   TConst t' -> cppTypeToHsType side t'
+
+-- | Prints a value like 'P.prettyPrint', but removes newlines so that they
+-- don't cause problems with this module's textual generation.  Should be mainly
+-- used for printing types; stripping newlines from definitions for example
+-- could go badly.
+prettyPrint :: P.Pretty a => a -> String
+prettyPrint = filter (/= '\n') . P.prettyPrint
