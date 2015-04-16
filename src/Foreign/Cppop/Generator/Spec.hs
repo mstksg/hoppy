@@ -197,7 +197,7 @@ data Identifier = Identifier
 -- | Converts an identifier to it's C++ form.
 idToString :: Identifier -> String
 idToString identifier =
-  ':':':':(intercalate "::" $ idNamespaces identifier ++ [idName identifier])
+  intercalate "::" $ idNamespaces identifier ++ [idName identifier]
 
 -- | Creates an identifier of the form @::a@.
 ident :: String -> Identifier
