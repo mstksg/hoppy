@@ -13,6 +13,7 @@ module Foreign.Cppop.Generator.Language.Haskell.General (
   toHsClassName,
   toHsCastMethodName,
   toHsDataTypeName,
+  toHsClassNullName,
   toHsClassDeleteFnName,
   toHsCallbackCtorName,
   toHsFnName,
@@ -100,12 +101,17 @@ toHsCastMethodName cst cls = "to" ++ toHsTypeName cst (classExtName cls)
 toHsDataTypeName :: Constness -> Class -> String
 toHsDataTypeName cst cls = toHsTypeName cst $ classExtName cls
 
+toHsClassNullName :: Class -> String
+toHsClassNullName cls = toHsFnName (classExtName cls) ++ "_null"
+
 toHsClassDeleteFnName :: Class -> String
 toHsClassDeleteFnName cls = 'd':'e':'l':'e':'t':'e':'\'':toHsDataTypeName Nonconst cls
 
 toHsCallbackCtorName :: Callback -> String
 toHsCallbackCtorName = toHsFnName . callbackExtName
 
+-- TODO Rename this to toHsBindingName or toHsValueName; it's used for
+-- non-function bindings too.
 toHsFnName :: ExtName -> String
 toHsFnName extName = case fromExtName extName of
   x:xs -> toLower x:xs

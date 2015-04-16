@@ -363,7 +363,7 @@ sayExportClassHsType cls cst = do
 sayExportClassHsNull :: Class -> Generator ()
 sayExportClassHsNull cls = do
   let clsExtName = classExtName cls
-      clsHsNullName = toHsFnName (classExtName cls) ++ "_null"
+      clsHsNullName = toHsClassNullName cls
   ln
   saysLn [clsHsNullName, " :: ", toHsTypeName Nonconst clsExtName]
   saysLn [clsHsNullName, " = ", toHsTypeName Nonconst clsExtName, " F.nullPtr"]
