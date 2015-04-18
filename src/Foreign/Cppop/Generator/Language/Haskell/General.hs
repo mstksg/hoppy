@@ -10,6 +10,8 @@ module Foreign.Cppop.Generator.Language.Haskell.General (
   indent,
   sayLet,
   toHsTypeName,
+  toHsEnumTypeName,
+  toHsEnumCtorName,
   toHsClassName,
   toHsCastMethodName,
   toHsDataTypeName,
@@ -92,6 +94,15 @@ toHsTypeName cst extName =
     x:xs -> toUpper x:xs
     [] -> []
 
+toHsEnumTypeName :: CppEnum -> String
+toHsEnumTypeName = toHsTypeName Nonconst . enumExtName
+
+toHsEnumCtorName :: CppEnum -> [String] -> String
+toHsEnumCtorName enum words =
+  concat $ toHsEnumTypeName enum : "_" : map capitalize words
+  where capitalize "" = ""
+        capitalize (c:cs) = toUpper c : map toLower cs
+
 toHsClassName :: Constness -> Class -> String
 toHsClassName cst cls = toHsTypeName cst (classExtName cls) ++ "Class"
 
@@ -144,6 +155,9 @@ cppTypeToHsType side t = case t of
   TDouble -> Just $ HsTyCon $ UnQual $ HsIdent "FC.CDouble"
   TSize -> Just $ HsTyCon $ UnQual $ HsIdent "FC.CSize"
   TSSize -> Nothing
+  TEnum e -> Just $ HsTyCon $ UnQual $ HsIdent $ case side of
+    HsCSide -> "FC.CInt"
+    HsHsSide -> toHsEnumTypeName e
   TArray {} -> Nothing
   --TPtr (TObj cls) -> Just $ HsTyApp (HsTyCon $ UnQual $ HsIdent "FP.Ptr") $ HsTyCon $ UnQual $ HsIdent $ toHsTypeName $ classExtName cls
   -- Oops, not a pointer to the pointer-newtype, the pointer-newtype itself!

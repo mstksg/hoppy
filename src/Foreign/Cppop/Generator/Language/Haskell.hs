@@ -5,7 +5,7 @@ module Foreign.Cppop.Generator.Language.Haskell (
   ) where
 
 import Control.Applicative ((<$>), (<*>), pure)
-import Control.Arrow ((&&&))
+import Control.Arrow ((&&&), second)
 import Control.Monad (when)
 import Data.Char (toLower, toUpper)
 import Data.Foldable (forM_)
@@ -39,7 +39,7 @@ generateSource interface = do
   saysLn ["module ", getModuleName interface, " where"]
   ln
   sayQualifiedImports
-  sayLn "import Prelude ((.), ($), (>>=))"
+  sayLn "import Prelude ((.), ($), (>>=), (++))"
   ln
   sayLn "foreign import ccall \"wrapper\" newFreeHaskellFunPtrFunPtr"
   indent $ sayLn ":: (F.FunPtr (P.IO ()) -> P.IO ())"
@@ -63,10 +63,42 @@ data SayExportMode = SayExportForeignImports | SayExportDecls
 
 sayExport :: SayExportMode -> Export -> Generator ()
 sayExport mode export = case export of
+  ExportEnum enum -> sayExportEnum mode enum
   ExportFn fn ->
     (sayExportFn mode <$> fnExtName <*> pure Nothing <*> fnPurity <*> fnParams <*> fnReturn) fn
   ExportClass cls -> sayExportClass mode cls
   ExportCallback cb -> sayExportCallback mode cb
+
+sayExportEnum :: SayExportMode -> CppEnum -> Generator ()
+sayExportEnum mode enum = case mode of
+  -- Nothing to import from the C++ side of an enum.
+  SayExportForeignImports -> return ()
+  SayExportDecls -> do
+    let hsTypeName = toHsEnumTypeName enum
+        values :: [(Int, String)]
+        values = map (second $ toHsEnumCtorName enum) $ enumValueNames enum
+
+    -- Print out the data declaration.
+    ln
+    saysLn ["data ", hsTypeName, " ="]
+    indent $ do
+      forM_ (zip (False:repeat True) values) $ \(cont, (_, hsCtorName)) ->
+        saysLn [if cont then "| " else "", hsCtorName]
+      sayLn "deriving (P.Bounded, P.Eq, P.Ord, P.Show)"
+
+    -- Print out the Enum instance.
+    ln
+    saysLn ["instance P.Enum ", hsTypeName, " where"]
+    indent $ do
+      forM_ values $ \(num, hsCtorName) ->
+        saysLn ["fromEnum ", hsCtorName, " = ", show num]
+      ln
+      forM_ values $ \(num, hsCtorName) ->
+        saysLn ["toEnum ", show num, " = ", hsCtorName]
+      -- TODO Fix the potential name collision of 'n'.
+      saysLn ["toEnum n = P.error $ ",
+              show (concat ["Unknown ", hsTypeName, " numeric value: "]),
+              " ++ P.show n"]
 
 sayExportFn :: SayExportMode -> ExtName -> Maybe (Constness, Class) -> Purity -> [Type] -> Type -> Generator ()
 sayExportFn mode name methodInfo purity paramTypes retType =
@@ -228,6 +260,9 @@ sayEncode t suffix = case t of
   TDouble -> saysLn $ "P.return" : suffix
   TSize -> saysLn $ "P.return" : suffix
   TSSize -> saysLn $ "P.return" : suffix
+  -- TODO The coersion here is unnecssary if we replace the C numeric types with
+  -- their Haskell ones across the board (e.g. CInt -> Int).
+  TEnum _ -> saysLn $ "(P.return . FCRS.coerceIntegral . P.fromEnum)" : suffix
   TArray {} -> abort "sayEncode: TArray unimplemented."
   TPtr (TObj cls) ->
     saysLn $ "(P.return . " : toHsCastMethodName Nonconst cls : ")" : suffix
@@ -264,6 +299,9 @@ sayDecode t suffix = case t of
   TDouble -> saysLn $ "P.return" : suffix
   TSize -> saysLn $ "P.return" : suffix
   TSSize -> saysLn $ "P.return" : suffix
+  -- TODO The coersion here is unnecssary if we replace the C numeric types with
+  -- their Haskell ones across the board (e.g. CInt -> Int).
+  TEnum _ -> saysLn $ "(P.return . P.toEnum . FCRS.coerceIntegral)" : suffix
   TArray {} -> abort "sayDecode: TArray unimplemented."
   TPtr _ -> saysLn $ "P.return" : suffix
   TRef {} -> abort "sayDecode: TRef unimplemented."

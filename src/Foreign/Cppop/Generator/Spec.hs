@@ -36,6 +36,7 @@ module Foreign.Cppop.Generator.Spec (
   ident5,
   -- * Basic types
   Type (..),
+  CppEnum, makeEnum, enumIdentifier, enumExtName, enumValueNames,
   Purity (..),
   Function, makeFn, fnIdentifier, fnExtName, fnPurity, fnParams, fnReturn,
   Class, makeClass, classIdentifier, classExtName, classSuperclasses, classCtors, classMethods,
@@ -170,9 +171,15 @@ toExtName str = case str of
                "An ExtName must start with a letter and only contain letters, numbers, and '_': " ++
                show str
 
+-- | Generates an 'ExtName' from an 'Identifier', if the given name is absent.
+extNameOrIdentifier :: Identifier -> Maybe ExtName -> ExtName
+extNameOrIdentifier identifier maybeExtName =
+  fromMaybe (toExtName $ idName identifier) maybeExtName
+
 -- | Specifies some C++ object (function or class) to give access to.
 data Export =
-  ExportFn Function
+  ExportEnum CppEnum
+  | ExportFn Function
   | ExportClass Class
   | ExportCallback Callback
   deriving (Show)
@@ -180,6 +187,7 @@ data Export =
 -- | Returns the external name of an export.
 exportExtName :: Export -> ExtName
 exportExtName export = case export of
+  ExportEnum e -> enumExtName e
   ExportFn f -> fnExtName f
   ExportClass c -> classExtName c
   ExportCallback c -> callbackExtName c
@@ -194,7 +202,7 @@ data Identifier = Identifier
   }
   deriving (Eq, Show)
 
--- | Converts an identifier to it's C++ form.
+-- | Converts an identifier to its C++ form.
 idToString :: Identifier -> String
 idToString identifier =
   intercalate "::" $ idNamespaces identifier ++ [idName identifier]
@@ -248,6 +256,7 @@ data Type =
   | TDouble  -- ^ @double@
   | TSize  -- ^ @size_t@
   | TSSize  -- ^ @ssize_t@
+  | TEnum CppEnum  -- ^ A C++ @enum@.
   | TArray (Maybe Int) Type  -- ^ An array, optionally with finite size.
   | TPtr Type  -- ^ A poiner to another type.
   | TRef Type  -- ^ A reference to another type.
@@ -261,6 +270,28 @@ data Type =
   | TBlob
   | TConst Type
   deriving (Eq, Show)
+
+-- | A C++ enum declaration.
+data CppEnum = CppEnum
+  { enumIdentifier :: Identifier
+  , enumExtName :: ExtName
+  , enumValueNames :: [(Int, [String])]
+    -- ^ The numeric values and names of the enum values.  A single value's name
+    -- is broken up into words.  How the words and ext name get combined to make
+    -- a name in a particular foreign language depends on the language.
+  } deriving (Show)
+
+instance Eq CppEnum where
+  (==) = (==) `on` enumIdentifier
+
+makeEnum :: Identifier  -- ^ 'enumIdentifier'
+         -> Maybe ExtName
+         -- ^ An optional external name; will be automatically derived from
+         -- the identifier if absent.
+         -> [(Int, [String])]  -- ^ 'enumValueNames'
+         -> CppEnum
+makeEnum identifier maybeExtName =
+  CppEnum identifier $ extNameOrIdentifier identifier maybeExtName
 
 -- | Calls to pure functions will be executed non-strictly by Haskell.  Calls to
 -- impure functions must execute in the IO monad.
@@ -280,8 +311,16 @@ data Function = Function
   }
   deriving (Show)
 
-makeFn :: Identifier -> ExtName -> Purity -> [Type] -> Type -> Function
-makeFn = Function
+makeFn :: Identifier
+       -> Maybe ExtName
+       -- ^ An optional external name; will be automatically derived from
+       -- the identifier if absent.
+       -> Purity
+       -> [Type]  -- ^ Parameter types.
+       -> Type  -- ^ Return type.
+       -> Function
+makeFn identifier maybeExtName =
+  Function identifier $ extNameOrIdentifier identifier maybeExtName
 
 -- | A C++ class declaration.
 data Class = Class
@@ -307,7 +346,7 @@ makeClass :: Identifier
           -> Class
 makeClass identifier maybeExtName supers ctors methods = Class
   { classIdentifier = identifier
-  , classExtName = fromMaybe (toExtName $ idName identifier) maybeExtName
+  , classExtName = extNameOrIdentifier identifier maybeExtName
   , classSuperclasses = supers
   , classCtors = ctors
   , classMethods = methods
@@ -387,7 +426,9 @@ data Ctor = Ctor
   }
   deriving (Show)
 
-makeCtor :: ExtName -> [Type] -> Ctor
+makeCtor :: ExtName
+         -> [Type]  -- ^ Parameter types.
+         -> Ctor
 makeCtor = Ctor
 
 -- | A C++ class method declaration.

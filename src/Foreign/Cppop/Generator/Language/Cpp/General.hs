@@ -156,6 +156,7 @@ sayType' t maybeParamNames outerPrec unwrappedOuter =
     TDouble -> say "double" >> outer
     TSize -> say "size_t" >> outer
     TSSize -> say "ssize_t" >> outer
+    TEnum e -> sayIdentifier (enumIdentifier e) >> outer
     TArray maybeSize t' -> sayType' t' Nothing prec $ do
       outer
       say $ maybe "[]" (\n -> '[' : show n ++ "]") maybeSize

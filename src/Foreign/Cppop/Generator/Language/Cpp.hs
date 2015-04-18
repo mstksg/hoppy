@@ -181,6 +181,9 @@ generate interface =
 
 sayExport :: Bool -> Export -> Generator ()
 sayExport sayBody export = case export of
+  -- Nothing to do C++ side for an enum.
+  ExportEnum _ -> return ()
+
   ExportFn fn ->
     -- Export a single function.
     sayExportFn (fnExtName fn)
@@ -420,6 +423,8 @@ sayExportCallback mode sayBody cb = do
                     fnType $ Just $
           say "(*impl_)(" >> sayArgNames paramCount >> say ");\n"
 
+-- | Returns a 'Type' iff there is a C type distinct from the given C++ type
+-- that should be used for conversion.
 typeToCType :: Type -> Generator (Maybe Type)
 typeToCType t = case t of
   TObj cls -> do
