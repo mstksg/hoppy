@@ -6,7 +6,7 @@ module Foreign.Cppop.Generator.Language.Haskell (
 
 import Control.Applicative ((<$>), (<*>), pure)
 import Control.Arrow ((&&&), second)
-import Control.Monad (when)
+import Control.Monad (unless, when)
 import Data.Char (toLower, toUpper)
 import Data.Foldable (forM_)
 import Data.List (intercalate, intersperse)
@@ -40,6 +40,12 @@ generateSource interface = do
   ln
   sayQualifiedImports
   sayLn "import Prelude ((.), ($), (>>=), (++))"
+
+  let customImports = interfaceHaskellImports interface
+  unless (null customImports) $ do
+    ln
+    forM_ customImports $ \x -> saysLn ["import ", x]
+
   ln
   sayLn "foreign import ccall \"wrapper\" newFreeHaskellFunPtrFunPtr"
   indent $ sayLn ":: (F.FunPtr (P.IO ()) -> P.IO ())"

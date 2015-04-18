@@ -10,6 +10,7 @@ module Foreign.Cppop.Generator.Spec (
   interfaceCallbacksCppPath,
   interfaceCallbacksHppPath,
   interfaceCallbacksIncludes,
+  interfaceHaskellImports,
   interfaceExports,
   interfaceExportsByName,
   -- * C++ includes
@@ -91,6 +92,8 @@ data Interface = Interface
     -- ^ The corresponding header file for 'interfaceCallbacksHppPath'.
   , interfaceCallbacksIncludes :: [Include]
     -- ^ Includes that will be added to the callback header and source files.
+  , interfaceHaskellImports :: [String]
+    -- ^ Imports that will be added to the generated Haskell bindings.
   , interfaceExports :: [Export]
     -- ^ The complete list of bindings to be generated.
   , interfaceExportsByName :: Map ExtName Export
@@ -119,10 +122,11 @@ interface :: String  -- ^ 'interfaceName'
           -> Maybe (FilePath, FilePath, [Include])
           -- ^ If present, then @('interfaceCallbacksCppPath',
           -- 'interfaceCallbacksHppPath', 'interfaceCallbacksIncludes')@.
+          -> [String]  -- ^ 'interfaceHaskellImports'
           -> [Export]  -- ^ 'interfaceExports'
           -> Either ErrorMsg Interface
 interface ifName bindingsCppPath bindingsHppPath bindingsIncludes
-          maybeCallbacksPathsAndIncludes exports = do
+          maybeCallbacksPathsAndIncludes haskellImports exports = do
   -- Check for multiple definitions of a single external name.
   let directory = Map.fromListWith mappend $ flip map exports $
                   \e -> (exportExtName e, [e])
@@ -148,6 +152,7 @@ interface ifName bindingsCppPath bindingsHppPath bindingsIncludes
     , interfaceCallbacksCppPath = fmap (\(a,_,_) -> a) maybeCallbacksPathsAndIncludes
     , interfaceCallbacksHppPath = fmap (\(_,b,_) -> b) maybeCallbacksPathsAndIncludes
     , interfaceCallbacksIncludes = maybe [] (\(_,_,c) -> c) maybeCallbacksPathsAndIncludes
+    , interfaceHaskellImports = haskellImports
     , interfaceExports = exports
     , interfaceExportsByName = Map.fromList $ map (exportExtName &&& id) exports
     }
