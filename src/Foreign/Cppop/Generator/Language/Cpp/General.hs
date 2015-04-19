@@ -2,6 +2,8 @@ module Foreign.Cppop.Generator.Language.Cpp.General (
   makeCppName,
   externalNameToCpp,
   classDeleteFnCppName,
+  classEncodeFnCppName,
+  classDecodeFnCppName,
   callbackClassName,
   callbackImplClassName,
   callbackFnName,
@@ -42,12 +44,26 @@ externalNameToCpp :: ExtName -> String
 externalNameToCpp extName =
   makeCppName [externalNamePrefix, fromExtName extName]
 
+makeClassCppName :: String -> Class -> String
+makeClassCppName prefix cls = makeCppName [prefix, fromExtName $ classExtName cls]
+
 classDeleteFnPrefix :: String
 classDeleteFnPrefix = "gendel"
 
 classDeleteFnCppName :: Class -> String
-classDeleteFnCppName cls =
-  makeCppName [classDeleteFnPrefix, fromExtName $ classExtName cls]
+classDeleteFnCppName = makeClassCppName classDeleteFnPrefix
+
+classEncodeFnPrefix :: String
+classEncodeFnPrefix = "genenc"
+
+classEncodeFnCppName :: Class -> String
+classEncodeFnCppName = makeClassCppName classEncodeFnPrefix
+
+classDecodeFnPrefix :: String
+classDecodeFnPrefix = "gendec"
+
+classDecodeFnCppName :: Class -> String
+classDecodeFnCppName = makeClassCppName classDecodeFnPrefix
 
 callbackClassName :: Callback -> String
 callbackClassName = fromExtName . callbackExtName
@@ -82,7 +98,7 @@ data Chunk = Chunk
   }
 
 runChunkWriter :: Writer [Chunk] a -> (a, String)
-runChunkWriter = (fmap combineChunks) . runWriter
+runChunkWriter = fmap combineChunks . runWriter
 
 evalChunkWriter :: Writer [Chunk] a -> a
 evalChunkWriter = fst . runChunkWriter
@@ -179,7 +195,7 @@ sayType' t maybeParamNames outerPrec unwrappedOuter =
       --sequence_ $ intersperse (tell [", "]) $ map sayType paramTypes
       sequence_ $ intersperse (say ", ") $
         flip map (zip paramTypes $ maybe (repeat Nothing) (map Just) maybeParamNames) $ \(ptype, pname) ->
-        sayType' ptype Nothing topPrecedence $ forM_ pname $ say
+        sayType' ptype Nothing topPrecedence $ forM_ pname say
       say ")"
       -- int(*)()          Pointer to a function returning an int.
       -- int(*)()[]        Pointer to a function returning an array of ints.  (Must be sized...)

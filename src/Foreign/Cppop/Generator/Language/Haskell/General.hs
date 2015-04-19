@@ -17,6 +17,8 @@ module Foreign.Cppop.Generator.Language.Haskell.General (
   toHsDataTypeName,
   toHsClassNullName,
   toHsClassDeleteFnName,
+  toHsClassEncodeFnName,
+  toHsClassDecodeFnName,
   toHsCallbackCtorName,
   toHsFnName,
   toArgName,
@@ -118,6 +120,12 @@ toHsClassNullName cls = toHsFnName (classExtName cls) ++ "_null"
 toHsClassDeleteFnName :: Class -> String
 toHsClassDeleteFnName cls = 'd':'e':'l':'e':'t':'e':'\'':toHsDataTypeName Nonconst cls
 
+toHsClassEncodeFnName :: Class -> String
+toHsClassEncodeFnName cls = 'e':'n':'c':'o':'d':'e':'\'':toHsDataTypeName Nonconst cls
+
+toHsClassDecodeFnName :: Class -> String
+toHsClassDecodeFnName cls = 'd':'e':'c':'o':'d':'e':'\'':toHsDataTypeName Nonconst cls
+
 toHsCallbackCtorName :: Callback -> String
 toHsCallbackCtorName = toHsFnName . callbackExtName
 
@@ -173,7 +181,7 @@ cppTypeToHsType side t = case t of
          HsCSide -> HsTyApp (HsTyCon $ UnQual $ HsIdent "F.FunPtr")
          HsHsSide -> id) $
       foldr HsTyFun (HsTyApp (HsTyCon $ UnQual $ HsIdent "P.IO") retHsType) paramHsTypes
-  TPtr t' -> fmap (HsTyApp (HsTyCon $ UnQual $ HsIdent "F.Ptr")) $ cppTypeToHsType side t'
+  TPtr t' -> HsTyApp (HsTyCon $ UnQual $ HsIdent "F.Ptr") <$> cppTypeToHsType side t'
   TRef {} -> Nothing
   TFn paramTypes retType -> do
     paramHsTypes <- mapM (cppTypeToHsType side) paramTypes

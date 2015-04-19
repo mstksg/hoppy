@@ -14,7 +14,12 @@ import Data.Tree (flatten, unfoldTree)
 import Data.Maybe (isJust, mapMaybe)
 import Foreign.Cppop.Common
 import Foreign.Cppop.Generator.Spec
-import Foreign.Cppop.Generator.Language.Cpp (classDeleteFnCppName, externalNameToCpp)
+import Foreign.Cppop.Generator.Language.Cpp.General (
+  classDecodeFnCppName,
+  classDeleteFnCppName,
+  classEncodeFnCppName,
+  externalNameToCpp,
+  )
 import Foreign.Cppop.Generator.Language.Haskell.General
 import Language.Haskell.Syntax (
   HsAsst,
@@ -34,11 +39,17 @@ generate interface =
 
 generateSource :: Interface -> Generator ()
 generateSource interface = do
+  -- MultiParamTypeClasses are necessary for instances of Decodable and
+  -- Encodable.  FlexiableInstances and TypeSynonymInstances are enabled to
+  -- allow conversions to and from String, which is really [Char].
+  sayLn "{-# LANGUAGE FlexibleInstances, MultiParamTypeClasses, TypeSynonymInstances #-}"
+  ln
   sayLn "---------- GENERATED FILE, EDITS WILL BE LOST ----------"
   ln
   saysLn ["module ", getModuleName interface, " where"]
   ln
   sayQualifiedImports
+  sayLn "import Control.Monad ((>=>))"
   sayLn "import Prelude ((.), ($), (>>=), (++))"
 
   let customImports = interfaceHaskellImports interface
@@ -238,13 +249,14 @@ sayExportCallback mode cb = do
       saysLn [hsFnName, " :: ", prettyPrint wholeFnType]
       saysLn [hsFnName, " f'hs = do"]
       indent $ do
-        flip sayLet Nothing
-          [do saysLn ["f'c ", intercalate " " argNames, " ="]
+        sayLet
+          [do saysLn ["f'c ", unwords argNames, " ="]
               indent $ do
                 forM_ (zip3 paramTypes argNames argNames') $ \(t, argName, argName') ->
                   sayDecode t [" ", argName, " >>= \\", argName', " ->"]
                 saysLn $ "f'hs" : map (' ':) argNames' ++ [" >>="]
                 sayEncode retType []]
+          Nothing
         saysLn ["f'p <- ", hsFnName'newFunPtr, " f'c"]
         saysLn [hsFnName'newCallback, " f'p freeHaskellFunPtrFunPtr P.False"]
 
@@ -321,33 +333,34 @@ sayDecode t suffix = case t of
   TConst t' -> sayDecode t' suffix
 
 sayExportClass :: SayExportMode -> Class -> Generator ()
-sayExportClass mode cls = case mode of
-  SayExportForeignImports -> do
-    sayExportClassHsCtors mode cls
+sayExportClass mode cls = do
+  case mode of
+    SayExportForeignImports -> do
+      sayExportClassHsCtors mode cls
 
-    forM_ (classMethods cls) $ \method -> do
-      let methodInfo = case methodApplicability method of
-            MNormal -> Just (Nonconst, cls)
-            MStatic -> Nothing
-            MConst -> Just (Const, cls)
-      (sayExportFn mode <$> methodExtName <*> pure methodInfo <*> methodPurity <*>
-       methodParams <*> methodReturn) method
+      forM_ (classMethods cls) $ \method -> do
+        let methodInfo = case methodApplicability method of
+              MNormal -> Just (Nonconst, cls)
+              MStatic -> Nothing
+              MConst -> Just (Const, cls)
+        (sayExportFn mode <$> methodExtName <*> pure methodInfo <*> methodPurity <*>
+         methodParams <*> methodReturn) method
 
-    sayExportClassHsDeleteImports cls
+    SayExportDecls -> do
+      sayExportClassHsClass cls Const
+      sayExportClassHsClass cls Nonconst
 
-  SayExportDecls -> do
-    sayExportClassHsClass cls Const
-    sayExportClassHsClass cls Nonconst
+      sayExportClassHsStaticMethods cls
 
-    sayExportClassHsStaticMethods cls
+      -- Create a newtype for referencing foreign objects with pointers.  The
+      -- newtype is not used with encodings of value objects.
+      sayExportClassHsType cls Const
+      sayExportClassHsType cls Nonconst
 
-    -- Create a newtype for referencing foreign objects with pointers.  The
-    -- newtype is not used with encodings of value objects.
-    sayExportClassHsType cls Const
-    sayExportClassHsType cls Nonconst
+      sayExportClassHsNull cls
+      sayExportClassHsCtors mode cls
 
-    sayExportClassHsNull cls
-    sayExportClassHsCtors mode cls
+  sayExportClassHsSpecialFns mode cls
 
 sayExportClassHsClass :: Class -> Constness -> Generator ()
 sayExportClassHsClass cls cst = do
@@ -380,7 +393,7 @@ sayExportClassHsClass cls cst = do
        methodPurity <*> methodParams <*> methodReturn) method
 
 sayExportClassHsStaticMethods :: Class -> Generator ()
-sayExportClassHsStaticMethods cls = do
+sayExportClassHsStaticMethods cls =
   forM_ (classMethods cls) $ \method ->
     when (methodStatic method == Static) $
     (sayExportFn SayExportDecls <$> methodExtName <*> pure Nothing <*> methodPurity <*>
@@ -418,25 +431,77 @@ sayExportClassHsCtors mode cls =
   (sayExportFn mode <$> ctorExtName <*> pure Nothing <*>
    pure Nonpure <*> ctorParams <*> pure (TPtr $ TObj cls)) ctor
 
-sayExportClassHsDeleteImports :: Class -> Generator ()
-sayExportClassHsDeleteImports cls =
-  saysLn ["foreign import ccall \"", classDeleteFnCppName cls, "\" ",
-          toHsClassDeleteFnName cls, " :: ", toHsDataTypeName Const cls,
-          " -> P.IO ()"]
+sayExportClassHsSpecialFns :: SayExportMode -> Class -> Generator ()
+sayExportClassHsSpecialFns mode cls = do
+  -- Say the delete function.
+  case mode of
+    SayExportForeignImports ->
+      saysLn ["foreign import ccall \"", classDeleteFnCppName cls, "\" ",
+              toHsClassDeleteFnName cls, " :: ", toHsDataTypeName Const cls,
+              " -> P.IO ()"]
+    -- The user interface to this is the generic 'delete' function, rendered
+    -- elsewhere.
+    SayExportDecls -> return ()
+
+  -- Say Encodable and Decodable instances, if the class is encodable and
+  -- decodable.
+  forM_ (classHaskellType $ classEncoding cls) $ \encoding -> do
+    let hsType = haskellEncodingType encoding
+        hsTypeStr = concat ["(", prettyPrint hsType, ")"]
+        cType = haskellEncodingCType encoding
+        typeName = toHsDataTypeName Nonconst cls
+        typeNameConst = toHsDataTypeName Const cls
+    case mode of
+      SayExportForeignImports -> do
+        let hsPtrType = HsTyCon $ UnQual $ HsIdent typeName
+            hsConstPtrType = HsTyCon $ UnQual $ HsIdent typeNameConst
+        saysLn ["foreign import ccall \"", classEncodeFnCppName cls, "\" ",
+                toHsClassEncodeFnName cls, " :: ", prettyPrint (fnInIO cType hsPtrType)]
+        saysLn ["foreign import ccall \"", classDecodeFnCppName cls, "\" ",
+                toHsClassDecodeFnName cls, " :: ", prettyPrint (fnInIO hsConstPtrType cType)]
+
+      SayExportDecls -> do
+        -- Say the Encodable instances.
+        ln
+        saysLn ["instance FCRS.Encodable ", typeName, " (", hsTypeStr, ") where"]
+        indent $ do
+          sayLn "encode ="
+          indent $ sayEncode (TObj cls) [" >=> ", toHsClassEncodeFnName cls]
+        ln
+        saysLn ["instance FCRS.Encodable ", typeNameConst, " (", hsTypeStr, ") where"]
+        indent $
+          --saysLn ["encode = P.fmap (", toHsCastMethodName Const cls, " . (`P.asTypeOf` (P.undefined :: ", typeName, "))) . FCRS.encode"]
+          saysLn ["encode = P.fmap (", toHsCastMethodName Const cls,
+                  ") . FCRS.encodeAs (P.undefined :: ", typeName, ")"]
+
+        -- Say the Decodable instances.
+        ln
+        saysLn ["instance FCRS.Decodable ", typeName, " (", hsTypeStr, ") where"]
+        indent $
+          saysLn ["decode = FCRS.decode . ", toHsCastMethodName Const cls]
+        ln
+        saysLn ["instance FCRS.Decodable ", typeNameConst, " (", hsTypeStr, ") where"]
+        indent $ do
+          saysLn ["decode = ", toHsClassDecodeFnName cls, " >=>"]
+          indent $ sayDecode (TObj cls) []
+
+  where fnInIO :: HsType -> HsType -> HsType
+        fnInIO arg result =
+          HsTyFun arg $ HsTyApp (HsTyCon $ UnQual $ HsIdent "P.IO") result
 
 fnToHsType :: HsTypeSide -> Maybe (Constness, Class) -> Purity -> [Type] -> Type -> Maybe HsQualType
 fnToHsType side methodInfo purity paramTypes returnType = do
-  let params = map contextForParam $ zip [1..] paramTypes
+  let params = zipWith (curry contextForParam) [1..] paramTypes
       context = mapMaybe fst params :: HsContext
-  hsParams <- fmap (case methodInfo of
-                      Just (cst, cls) -> case side of
-                        HsHsSide -> (HsTyVar (HsIdent "this") :)
-                        HsCSide -> (HsTyVar (HsIdent $ toHsDataTypeName cst cls) :)
-                      Nothing -> id) $
-              sequence $ map snd params
-  hsReturn <- fmap (case purity of
-                       Pure -> id
-                       Nonpure -> HsTyApp $ HsTyCon $ UnQual $ HsIdent "P.IO") $
+  hsParams <- (case methodInfo of
+                  Just (cst, cls) -> case side of
+                    HsHsSide -> (HsTyVar (HsIdent "this") :)
+                    HsCSide -> (HsTyVar (HsIdent $ toHsDataTypeName cst cls) :)
+                  Nothing -> id) <$>
+              mapM snd params
+  hsReturn <- (case purity of
+                  Pure -> id
+                  Nonpure -> HsTyApp $ HsTyCon $ UnQual $ HsIdent "P.IO") <$>
               cppTypeToHsType side returnType
   return $ HsQualType context $ foldr HsTyFun hsReturn hsParams
 

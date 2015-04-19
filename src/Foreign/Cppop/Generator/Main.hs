@@ -87,7 +87,7 @@ usage stateVar = do
     ]
 
 processArgs :: MVar AppState -> [String] -> IO [Action]
-processArgs stateVar args = do
+processArgs stateVar args =
   case args of
     [] -> return []
 

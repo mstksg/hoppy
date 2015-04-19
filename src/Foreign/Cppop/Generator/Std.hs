@@ -9,6 +9,8 @@ import Language.Haskell.Syntax (
   HsType (HsTyCon),
   )
 
+{-# ANN module "HLint: ignore Use camelCase" #-}
+
 c_std__string :: Class
 c_std__string =
   classModifyEncoding
@@ -16,7 +18,7 @@ c_std__string =
            , classCppDecoder = Just $ CppCoderFn $ ident1 "std" "string"
            , classCppDecodeThenFree = True
            , classCppEncoder = Just $ CppCoderExpr [Just "strdup(", Nothing, Just ".c_str())"]
-           , classHaskellType = Just $ HaskellEncoding
+           , classHaskellType = Just HaskellEncoding
                                 { haskellEncodingType = HsTyCon $ UnQual $ HsIdent "P.String"
                                 , haskellEncodingCType = HsTyCon $ UnQual $ HsIdent "FC.CString"
                                 , haskellEncodingDecoder = "FCRS.decodeAndFreeCString"

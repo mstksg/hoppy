@@ -144,7 +144,7 @@ interface ifName bindingsCppPath bindingsHppPath bindingsIncludes
     _:_ -> Left $ unlines $ "An external name was declared multiple times:" : dupErrorMsgs
     _ -> return ()
 
-  return $ Interface
+  return Interface
     { interfaceName = ifName
     , interfaceBindingsCppPath = bindingsCppPath
     , interfaceBindingsHppPath = bindingsHppPath
@@ -178,8 +178,8 @@ toExtName str = case str of
 
 -- | Generates an 'ExtName' from an 'Identifier', if the given name is absent.
 extNameOrIdentifier :: Identifier -> Maybe ExtName -> ExtName
-extNameOrIdentifier identifier maybeExtName =
-  fromMaybe (toExtName $ idName identifier) maybeExtName
+extNameOrIdentifier identifier =
+  fromMaybe $ toExtName $ idName identifier
 
 -- | Specifies some C++ object (function or class) to give access to.
 data Export =
@@ -222,23 +222,23 @@ ident' = Identifier
 
 -- | Creates an identifier of the form @::a::b@.
 ident1 :: String -> String -> Identifier
-ident1 ns1 name = ident' [ns1] name
+ident1 ns1 = ident' [ns1]
 
 -- | Creates an identifier of the form @::a::b::c@.
 ident2 :: String -> String -> String -> Identifier
-ident2 ns1 ns2 name = ident' [ns1, ns2] name
+ident2 ns1 ns2 = ident' [ns1, ns2]
 
 -- | Creates an identifier of the form @::a::b::c::d@.
 ident3 :: String -> String -> String -> String -> Identifier
-ident3 ns1 ns2 ns3 name = ident' [ns1, ns2, ns3] name
+ident3 ns1 ns2 ns3 = ident' [ns1, ns2, ns3]
 
 -- | Creates an identifier of the form @::a::b::c::d::e@.
 ident4 :: String -> String -> String -> String -> String -> Identifier
-ident4 ns1 ns2 ns3 ns4 name = ident' [ns1, ns2, ns3, ns4] name
+ident4 ns1 ns2 ns3 ns4 = ident' [ns1, ns2, ns3, ns4]
 
 -- | Creates an identifier of the form @::a::b::c::d::e::f@.
 ident5 :: String -> String -> String -> String -> String -> String -> Identifier
-ident5 ns1 ns2 ns3 ns4 ns5 name = ident' [ns1, ns2, ns3, ns4, ns5] name
+ident5 ns1 ns2 ns3 ns4 ns5 = ident' [ns1, ns2, ns3, ns4, ns5]
 
 -- | Concrete C++ types.  It is possible to represent invalid C++ types with
 -- this, but that may result in undefined behaviour or invalid code generation.
@@ -359,8 +359,10 @@ makeClass identifier maybeExtName supers ctors methods = Class
   }
 
 -- | When a class object is returned from a function or taken as a parameter by
--- value, it needs to be converted into a foreign (non-C++) object.  This data
--- type describes how to perform those conversions.
+-- value, it needs to be converted into a foreign (non-C++) object.  Conversion
+-- may also be performed explicitly.  This data type describes how to perform
+-- those conversions.  A class may or may not support conversion; what is said
+-- below only applies to classes that are convertable.
 --
 -- When converting between a C++ value and a foreign value, an intermediate C
 -- type is used.  For example, for a @std::string@, a regular C string (@char*@,
@@ -368,6 +370,16 @@ makeClass identifier maybeExtName supers ctors methods = Class
 -- calling back into foreign code, either language may call the other, so the
 -- side that allocates memory on the heap transfers ownership of that memory to
 -- the other language.
+--
+-- In foreign code, foreign values can be explicitly converted to new C++ (heap)
+-- objects, and C++ object pointers can be explicitly converted to foreign
+-- values, via special \"encode\" and \"decode\" functions generated for the
+-- class.  In the context of these two functions, \"encode\" always converts
+-- /to/ a C++ value and \"decode\" always converts /from/ one; this is separate
+-- from the use of \"encode\" and \"decode\" in language-specific conversion
+-- code (e.g. 'classCppDecoder', 'classCppEncoder', 'haskellEncodingDecoder',
+-- 'haskellEncodingEncoder'), where encoding refers to converting a native value
+-- to its C type, and decoding vice versa.
 data ClassEncoding = ClassEncoding
   { classCppCType :: Maybe Type
     -- ^ The intermediate C type that will be used for conversions.  @Nothing@

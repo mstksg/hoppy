@@ -203,13 +203,16 @@ sayExport sayBody export = case export of
                   (ctorParams ctor)
                   clsPtr
                   sayBody
-    -- Export a delete function for class objects.
+    -- Export a delete function for the class.
     sayFunction (classDeleteFnCppName cls)
                 ["self"]
                 (TFn [TPtr $ TConst $ TObj cls] TVoid) $
       if sayBody
       then Just $ say "delete self;\n"
       else Nothing
+    -- Export encode and decode functions for the class.
+    sayClassEncodeFn sayBody cls
+    sayClassDecodeFn sayBody cls
     -- Export each of the class's methods.
     forM_ (classMethods cls) $ \method -> do
       let static = methodStatic method == Static
@@ -310,6 +313,44 @@ sayArgNames :: Int -> Generator ()
 sayArgNames count =
   says $ intersperse ", " $ map toArgName [1..count]
 
+-- | When a class is encodable from a foreign value (as described in
+-- 'ClassEncoding'), then generate an encode function.
+sayClassEncodeFn :: Bool -> Class -> Generator ()
+sayClassEncodeFn sayBody cls =
+  when (isJust $ classCppDecoder $ classEncoding cls) $ do
+    cType <-
+      fromMaybeM (abort $ "sayClassEncodeFn: Should have a C type for an object of class " ++
+                  show (fromExtName $ classExtName cls) ++ ".") =<<
+      typeToCType (TObj cls)
+    sayFunction (classEncodeFnCppName cls)
+                [toArgNameAlt 1]
+                (TFn [cType] $ TPtr $ TObj cls) $
+      if sayBody
+      then Just $ do
+        -- TODO This may result in an redundant temporary on the stack for some
+        -- classes; optimize.
+        sayArgRead DoDecode (1, TObj cls, Just cType)
+        say "return new" >> sayIdentifier (classIdentifier cls) >> says ["(", toArgName 1, ");\n"]
+      else Nothing
+
+-- | When a class is decodable to a foreign value (as described in
+-- 'ClassEncoding'), then generate an decode function.
+sayClassDecodeFn :: Bool -> Class -> Generator ()
+sayClassDecodeFn sayBody cls =
+  forM_ (classCppEncoder $ classEncoding cls) $ \encoder -> do
+    cType <-
+      fromMaybeM (abort $ "sayClassDecodeFn: Should have a C type for an object of class " ++
+                  show (fromExtName $ classExtName cls) ++ ".") =<<
+      typeToCType (TObj cls)
+    sayFunction (classDecodeFnCppName cls)
+                ["result"]
+                (TFn [TPtr $ TObj cls] cType) $
+      if sayBody
+      then Just $ case encoder of
+        CppCoderFn fn -> say "return " >> sayIdentifier fn >> say "(*result);\n"
+        CppCoderExpr terms -> say "return " >> sayExpr "(*result)" terms >> say ";\n"
+      else Nothing
+
 data SayCallbackMode = SayCallbackImpl | SayCallbackBinding
 
 sayExportCallback :: SayCallbackMode -> Bool -> Callback -> Generator ()
@@ -336,40 +377,16 @@ sayExportCallback mode sayBody cb = do
       let newCallbackFnType = TFn [ fnPtrCType
                                   , TPtr (TFn [TPtr $ TFn [] TVoid] TVoid)
                                   , TBool
-                                  ] $
+                                  ]
                               cbType
       sayFunction fnName ["f", "release", "releaseRelease"] newCallbackFnType $
         if sayBody
         then Just $ says ["return new ", implClassName, "(f, release, releaseRelease);\n"]
         else Nothing
 
-    SayCallbackImpl -> case sayBody of
-      False -> do
-        -- Render the class declarations into the header file.
-        says ["\nclass ", implClassName, " {\n"]
-        say "public:\n"
-        says ["    explicit ", implClassName, "("] >> sayType Nothing fnPtrCType >>
-          say ", void(*)(void(*)()), bool);\n"
-        says ["    ~", implClassName, "();\n"]
-        say "    " >> sayVar "operator()" Nothing fnType >> say ";\n"
-        say "private:\n"
-        says ["    ", implClassName, "(const ", implClassName, "&);\n"]
-        says ["    ", implClassName, "& operator=(const ", implClassName, "&);\n"]
-        say "\n"
-        say "    " >> sayVar "f_" Nothing (TConst fnPtrCType) >> say ";\n"
-        say "    void (*const release_)(void(*)());\n"
-        say "    const bool releaseRelease_;\n"
-        say "};\n"
-
-        says ["\nclass ", className, " {\n"]
-        say "public:\n"
-        says ["    explicit ", className, "(", implClassName, "* impl) : impl_(impl) {}\n"]
-        say "    " >> sayVar "operator()" Nothing fnType >> say ";\n"
-        say "private:\n"
-        says ["    std::shared_ptr<", implClassName, "> impl_;\n"]
-        say "};\n"
-
-      True -> do
+    SayCallbackImpl ->
+      if sayBody
+      then do
         -- Render the classes' methods into the source file.  First render the
         -- impl class's constructor.
         says ["\n", implClassName, "::", implClassName, "("] >> sayVar "f" Nothing fnPtrCType >>
@@ -422,6 +439,31 @@ sayExportCallback mode sayBody cb = do
                     (map toArgName [1..paramCount])
                     fnType $ Just $
           say "(*impl_)(" >> sayArgNames paramCount >> say ");\n"
+
+      else do
+        -- Render the class declarations into the header file.
+        says ["\nclass ", implClassName, " {\n"]
+        say "public:\n"
+        says ["    explicit ", implClassName, "("] >> sayType Nothing fnPtrCType >>
+          say ", void(*)(void(*)()), bool);\n"
+        says ["    ~", implClassName, "();\n"]
+        say "    " >> sayVar "operator()" Nothing fnType >> say ";\n"
+        say "private:\n"
+        says ["    ", implClassName, "(const ", implClassName, "&);\n"]
+        says ["    ", implClassName, "& operator=(const ", implClassName, "&);\n"]
+        say "\n"
+        say "    " >> sayVar "f_" Nothing (TConst fnPtrCType) >> say ";\n"
+        say "    void (*const release_)(void(*)());\n"
+        say "    const bool releaseRelease_;\n"
+        say "};\n"
+
+        says ["\nclass ", className, " {\n"]
+        say "public:\n"
+        says ["    explicit ", className, "(", implClassName, "* impl) : impl_(impl) {}\n"]
+        say "    " >> sayVar "operator()" Nothing fnType >> say ";\n"
+        say "private:\n"
+        says ["    std::shared_ptr<", implClassName, "> impl_;\n"]
+        say "};\n"
 
 -- | Returns a 'Type' iff there is a C type distinct from the given C++ type
 -- that should be used for conversion.
