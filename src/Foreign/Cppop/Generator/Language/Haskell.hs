@@ -9,7 +9,7 @@ import Control.Arrow ((&&&), second)
 import Control.Monad (unless, when)
 import Data.Char (toLower, toUpper)
 import Data.Foldable (forM_)
-import Data.List (intercalate, intersperse)
+import Data.List (intersperse)
 import Data.Tree (flatten, unfoldTree)
 import Data.Maybe (isJust, mapMaybe)
 import Foreign.Cppop.Common

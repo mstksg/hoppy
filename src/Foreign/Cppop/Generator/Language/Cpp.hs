@@ -262,7 +262,8 @@ sayExportFn extName sayCppName maybeThisType paramTypes retType sayBody = do
             CppCoderFn fn ->
               say "return " >> sayIdentifier fn >> say "(" >> sayCall >> say ");\n"
             CppCoderExpr terms -> do
-              sayVar "result" Nothing retType >> say " = " >> sayCall >> say ";\n"
+              sayVar "result" Nothing (TRef $ TConst retType) >>
+                say " = " >> sayCall >> say ";\n"
               say "return " >> sayExpr "result" terms >> say ";\n"
         ts -> abort $ "sayExportFn: Unexpected return types: " ++ show ts
 
@@ -343,12 +344,12 @@ sayClassDecodeFn sayBody cls =
                   show (fromExtName $ classExtName cls) ++ ".") =<<
       typeToCType (TObj cls)
     sayFunction (classDecodeFnCppName cls)
-                ["result"]
+                ["ptr"]
                 (TFn [TPtr $ TObj cls] cType) $
       if sayBody
       then Just $ case encoder of
-        CppCoderFn fn -> say "return " >> sayIdentifier fn >> say "(*result);\n"
-        CppCoderExpr terms -> say "return " >> sayExpr "(*result)" terms >> say ";\n"
+        CppCoderFn fn -> say "return " >> sayIdentifier fn >> say "(*ptr);\n"
+        CppCoderExpr terms -> say "return " >> sayExpr "(*ptr)" terms >> say ";\n"
       else Nothing
 
 data SayCallbackMode = SayCallbackImpl | SayCallbackBinding
@@ -429,7 +430,8 @@ sayExportCallback mode sayBody cb = do
                 CppCoderFn fn ->
                   say "return " >> sayIdentifier fn >> say "(" >> sayCall >> say ");\n"
                 CppCoderExpr terms -> do
-                  sayVar "result" Nothing retType >> say " = " >> sayCall >> say ";\n"
+                  sayVar "result" Nothing (TRef $ TConst retType) >>
+                    say " = " >> sayCall >> say ";\n"
                   say "return " >> sayExpr "result" terms >> say ";\n"
             ts -> abort $ "sayExportCallback: Unexpected return types: " ++ show ts
 
