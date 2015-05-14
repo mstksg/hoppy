@@ -58,7 +58,6 @@ import qualified Data.Map as M
 import Data.Maybe (fromMaybe)
 import Data.Monoid (Monoid, mappend, mconcat, mempty)
 import qualified Data.Set as S
-import Debug.Trace (trace)
 import Foreign.Cppop.Generator.Spec
 import qualified Language.Haskell.Pretty as P
 import Language.Haskell.Syntax (
@@ -196,7 +195,6 @@ importHsModuleForExtName extName = do
       let ownerModuleName = getModuleName iface ownerModule
       currentModuleName <- askModuleName
       when (currentModuleName /= ownerModuleName) $
-        trace (concat [">>> ", currentModuleName, " is importing ", ownerModuleName, " <<<"]) $
         addImport ownerModuleName
     Nothing ->
       abort $ "importHsModuleForExtName: Couldn't find module for ExtName: " ++
