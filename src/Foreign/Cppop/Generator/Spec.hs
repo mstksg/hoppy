@@ -231,64 +231,6 @@ addModuleHaskellName name = do
       throwError $ "addModuleHaskellName: Module already has Haskell name " ++
       show name' ++ "; trying to add name " ++ show name ++ "."
 
--- The C++ header for a function (or ctor, method) binding requires includes for
--- the types mentioned in the parameter and return types.  The C++ source for a
--- function binding additionally requires includes for any necessary
--- conversions.  The C++ header (resp. source) requirements for a class binding
--- are the union of the header (resp. source) requirements of the constituent
--- ctors and methods.  Requirements for callbacks are the same as the
--- requirements for function bindings.
---
--- The requirements for a type, if the type is scalar, are constant.  Primitive
--- types have no requirements.  size_t and ssize_t require <cstddef>.  Types
--- that reference classes require those classes' class includes (distinct from
--- the requirements for the class's bindings).
---
--- getExportBindingReqs :: DoEnc|NoEnc -> Export -> Reqs
---   getFunctionBindingReqs :: DoEnc|NoEnc -> Export -> Reqs
---   getClassBindingReqs :: DoEnc|NoEnc -> Export -> Reqs
---   getCallbackBindingReqs :: DoEnc|NoEnc -> Export -> Reqs
---     getTypeReqs :: Maybe (Enc|Dec) -> Type -> Reqs
---       getClassUseReqs :: Maybe (Enc|Dec) -> Class -> Reqs
---
--- *Binding* vs. *use* requirements for a class.
---
--- TODO Some includes may be replaced with forward declarations.  The paragraphs
--- above ignore that fact.
---
--- For Haskell!
---
--- For a function binding, we require everything required to reference, and
--- encode or decode the types.
---
--- TODO Not really, if we only take function param
---
--- getExportBindingHsReqs :: Enc|Dec ->
---     getTypeReqs :: zz
-
--- Classes have "use", "cuse", "encode", and "decode" reqs.  "encode" and
--- "decode" imply "cuse".
---
--- Requirements to use a type in a specific location are parameterized by the
--- set of class use cases above.
---
--- function, header: nothing.
---
--- function, source: use function; use+decode param types; use+encode ret type.
---
--- class, header: nothing.
---
--- class, source: use class type (at least for gendel); use class encode reqs
--- (for *gendec*); use class decode reqs (for *genenc*); recur into ctors and
--- methods using "function, source" rules.
---
--- callback, header: recur into the ctype of the TFn.
---
--- callback, source: same as "function, source" for the TFn.
---
--- enum, header/source: none
-
-
 data Reqs = Reqs
   { reqsIncludes :: S.Set Include
   } deriving (Show)
@@ -619,9 +561,13 @@ data HaskellEncoding = HaskellEncoding
     -- ^ Decoding function, of type @ct -> IO ht@.
   , haskellEncodingEncoder :: String
     -- ^ Encoding function, of type @ht -> IO ct@.
-  , haskellEncodingImports :: S.Set HaskellImport
-    -- ^ Imports necessary to make use of the Haskell type and references in the
-    -- encoding and decoding expressions.
+  , haskellEncodingTypeImports :: S.Set HaskellImport
+    -- ^ Imports necessary to make use of @ht@.
+  , haskellEncodingCTypeImports :: S.Set HaskellImport
+    -- ^ Imports necessary to make use of @ct@.
+  , haskellEncodingFnImports :: S.Set HaskellImport
+    -- ^ Imports necessary to make use of @haskellEncodingDecoder@ and
+    -- @haskellEncodingDecoder@.
   } deriving (Show)
 
 -- | A C++ class constructor declaration.

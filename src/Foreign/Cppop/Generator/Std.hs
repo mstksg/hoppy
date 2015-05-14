@@ -27,13 +27,20 @@ c_std__string =
            , classCppDecodeThenFree = True
            , classCppEncoder = Just $ CppCoderExpr [Just "strdup(", Nothing, Just ".c_str())"] $
                                reqInclude $ includeStd "cstring"
-           , classHaskellType = Just HaskellEncoding
-                                { haskellEncodingType = HsTyCon $ UnQual $ HsIdent "P.String"
-                                , haskellEncodingCType = HsTyCon $ UnQual $ HsIdent "FC.CString"
-                                , haskellEncodingDecoder = "FCRS.decodeAndFreeCString"
-                                , haskellEncodingEncoder = "FC.newCString"
-                                , haskellEncodingImports = S.empty
-                                }
+           , classHaskellType =
+             Just HaskellEncoding
+             { haskellEncodingType = HsTyCon $ UnQual $ HsIdent "CppopP.String"
+             , haskellEncodingCType = HsTyCon $ UnQual $ HsIdent "CppopFC.CString"
+             , haskellEncodingDecoder = "CppopFCRS.decodeAndFreeCString"
+             , haskellEncodingEncoder = "CppopFC.newCString"
+             , haskellEncodingTypeImports = S.singleton "qualified Prelude as CppopP"
+             , haskellEncodingCTypeImports = S.singleton "qualified Foreign.C as CppopFC"
+             , haskellEncodingFnImports =
+               S.fromList
+               [ "qualified Foreign.C as CppopFC"
+               , "qualified Foreign.Cppop.Runtime.Support as CppopFCRS"
+               ]
+             }
            }) $
   makeClass (ident1 "std" "string") (Just $ toExtName "StdString")
   []

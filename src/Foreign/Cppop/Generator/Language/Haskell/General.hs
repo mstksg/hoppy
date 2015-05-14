@@ -3,16 +3,25 @@ module Foreign.Cppop.Generator.Language.Haskell.General (
   toModuleName,
   HsExport,
   HsImport,
+  -- * Code generators
   Generator,
   runGenerator,
   execGenerator,
   abort,
+  -- * Exports
   addExport,
   addExports,
+  -- * Imports
   addImport,
   addImports,
   addImportSet,
-  addQualifiedImports,
+  importHsModuleForExtName,
+  -- ** Internal to Cppop
+  addImportForForeign,
+  addImportForPrelude,
+  addImportForSupport,
+  addImportForUnsafeIO,
+  -- * Code generation
   sayLn,
   saysLn,
   ln,
@@ -34,12 +43,10 @@ module Foreign.Cppop.Generator.Language.Haskell.General (
   HsTypeSide (..),
   encodingTypeForSide,
   cppTypeToHsTypeAndUse,
-  addImportsForType,
-  addImportsForClass,
   prettyPrint,
   ) where
 
-import Control.Applicative ((<$>))
+import Control.Applicative ((<$), (<$>))
 import Control.Monad (when)
 import Control.Monad.Reader (ReaderT, ask, runReaderT)
 import Control.Monad.Trans (lift)
@@ -166,15 +173,34 @@ addImports = addImportSet . S.fromList
 addImportSet :: S.Set HsImport -> Generator ()
 addImportSet imports = tell $ mempty { outputImports = imports }
 
-addQualifiedImports :: Generator ()
-addQualifiedImports =
-  addImports
-  [ "qualified Foreign as F"
-  , "qualified Foreign.C as FC"
-  , "qualified Foreign.Cppop.Runtime.Support as FCRS"
-  , "qualified Prelude as P"
-  , "qualified System.IO.Unsafe as SIU"
-  ]
+addImportForForeign :: Generator ()
+addImportForForeign = addImport "qualified Foreign as CppopF"
+
+addImportForForeignC :: Generator ()
+addImportForForeignC = addImport "qualified Foreign.C as CppopFC"
+
+addImportForPrelude :: Generator ()
+addImportForPrelude = addImport "qualified Prelude as CppopP"
+
+addImportForSupport :: Generator ()
+addImportForSupport = addImport "qualified Foreign.Cppop.Runtime.Support as CppopFCRS"
+
+addImportForUnsafeIO :: Generator ()
+addImportForUnsafeIO = addImport "qualified System.IO.Unsafe as CppopSIU"
+
+importHsModuleForExtName :: ExtName -> Generator ()
+importHsModuleForExtName extName = do
+  iface <- askInterface
+  case M.lookup extName $ interfaceNamesToModules iface of
+    Just ownerModule -> do
+      let ownerModuleName = getModuleName iface ownerModule
+      currentModuleName <- askModuleName
+      when (currentModuleName /= ownerModuleName) $
+        trace (concat [">>> ", currentModuleName, " is importing ", ownerModuleName, " <<<"]) $
+        addImport ownerModuleName
+    Nothing ->
+      abort $ "importHsModuleForExtName: Couldn't find module for ExtName: " ++
+      show extName
 
 sayLn :: String -> Generator ()
 sayLn x = tell $ mempty { outputBody = [x] }
@@ -256,116 +282,86 @@ encodingTypeForSide :: HsTypeSide -> HaskellEncoding -> HsType
 encodingTypeForSide HsCSide = haskellEncodingCType
 encodingTypeForSide HsHsSide = haskellEncodingType
 
+encodingTypeImportsForSide :: HsTypeSide -> HaskellEncoding -> S.Set HaskellImport
+encodingTypeImportsForSide HsCSide = haskellEncodingCTypeImports
+encodingTypeImportsForSide HsHsSide = haskellEncodingTypeImports
+
 cppTypeToHsTypeAndUse :: HsTypeSide -> Type -> Generator (Maybe HsType)
-cppTypeToHsTypeAndUse side t = case cppTypeToHsType side t of
-  Nothing -> return Nothing
-  result@(Just _) -> addImportsForType t >> return result
-
-  where cppTypeToHsType :: HsTypeSide -> Type -> Maybe HsType
-        cppTypeToHsType side t = case t of
-          TVoid -> Just $ HsTyCon $ Special HsUnitCon
-          TBool -> Just $ HsTyCon $ UnQual $ HsIdent "P.Bool"
-          TChar -> Just $ HsTyCon $ UnQual $ HsIdent "FC.CChar"
-          TUChar -> Just $ HsTyCon $ UnQual $ HsIdent "FC.CUChar"
-          TShort -> Just $ HsTyCon $ UnQual $ HsIdent "FC.CShort"
-          TUShort -> Just $ HsTyCon $ UnQual $ HsIdent "FC.CUShort"
-          TInt -> Just $ HsTyCon $ UnQual $ HsIdent "FC.CInt"
-          TUInt -> Just $ HsTyCon $ UnQual $ HsIdent "FC.CUInt"
-          TLong -> Just $ HsTyCon $ UnQual $ HsIdent "FC.CLong"
-          TULong -> Just $ HsTyCon $ UnQual $ HsIdent "FC.CULong"
-          TLLong -> Just $ HsTyCon $ UnQual $ HsIdent "FC.CLLong"
-          TULLong -> Just $ HsTyCon $ UnQual $ HsIdent "FC.CULLong"
-          TFloat -> Just $ HsTyCon $ UnQual $ HsIdent "FC.CFloat"
-          TDouble -> Just $ HsTyCon $ UnQual $ HsIdent "FC.CDouble"
-          TSize -> Just $ HsTyCon $ UnQual $ HsIdent "FC.CSize"
-          TSSize -> Nothing
-          TEnum e -> Just $ HsTyCon $ UnQual $ HsIdent $ case side of
-            HsCSide -> "FC.CInt"
-            HsHsSide -> toHsEnumTypeName e
-          TArray {} -> Nothing
-          TPtr (TObj cls) ->
-            Just $ HsTyCon $ UnQual $ HsIdent $ toHsTypeName Nonconst $ classExtName cls
-          TPtr (TConst (TObj cls)) ->
-            Just $ HsTyCon $ UnQual $ HsIdent $ toHsTypeName Const $ classExtName cls
-          TPtr (TFn paramTypes retType) -> do
-            paramHsTypes <- mapM (cppTypeToHsType side) paramTypes
-            retHsType <- cppTypeToHsType side retType
-            Just $
-              (case side of
-                 HsCSide -> HsTyApp (HsTyCon $ UnQual $ HsIdent "F.FunPtr")
-                 HsHsSide -> id) $
-              foldr HsTyFun (HsTyApp (HsTyCon $ UnQual $ HsIdent "P.IO") retHsType) paramHsTypes
-          TPtr t' -> HsTyApp (HsTyCon $ UnQual $ HsIdent "F.Ptr") <$> cppTypeToHsType side t'
-          TRef {} -> Nothing
-          TFn paramTypes retType -> do
-            paramHsTypes <- mapM (cppTypeToHsType side) paramTypes
-            retHsType <- cppTypeToHsType side retType
-            Just $ foldr HsTyFun
-                         (HsTyApp (HsTyCon $ UnQual $ HsIdent "P.IO") retHsType)
-                         paramHsTypes
-          TCallback cb ->
-            (case side of
-               HsCSide -> HsTyApp $ HsTyCon $ UnQual $ HsIdent "FCRS.CCallback"
-               HsHsSide -> id) <$>
-            cppTypeToHsType side (callbackToTFn cb)
-          TObj cls -> fmap (encodingTypeForSide side) $ classHaskellType $ classEncoding cls
-          TOpaque {} -> Nothing
-          TBlob -> Nothing
-          TConst t' -> cppTypeToHsType side t'
-
-addImportsForType :: Type -> Generator ()
-addImportsForType t' = case t' of
-  TVoid -> return ()
-  TBool -> return ()
-  TChar -> return ()
-  TUChar -> return ()
-  TShort -> return ()
-  TUShort -> return ()
-  TInt -> return ()
-  TUInt -> return ()
-  TLong -> return ()
-  TULong -> return ()
-  TLLong -> return ()
-  TULLong -> return ()
-  TFloat -> return ()
-  TDouble -> return ()
-  TSize -> return ()
-  TSSize -> return ()
-  TEnum e -> importHsModuleForExtName $ enumExtName e
-  TArray _ t'' -> addImportsForType t''
-  TPtr (TObj cls) -> importHsModuleForExtName $ classExtName cls
-  TPtr (TConst (TObj cls)) -> importHsModuleForExtName $ classExtName cls
-  TPtr t'' -> addImportsForType t''
-  TRef t'' -> error $
-              "addImportsForType: TRef not implemented for type: " ++
-              show t''
-  TFn paramTypes retType -> mapM_ addImportsForType $ retType:paramTypes
+cppTypeToHsTypeAndUse side t = case t of
+  TVoid -> return $ Just $ HsTyCon $ Special HsUnitCon
+  TBool -> Just (HsTyCon $ UnQual $ HsIdent "CppopP.Bool") <$ addImportForPrelude
+  TChar -> Just (HsTyCon $ UnQual $ HsIdent "CppopFC.CChar") <$ addImportForForeignC
+  TUChar -> Just (HsTyCon $ UnQual $ HsIdent "CppopFC.CUChar") <$ addImportForForeignC
+  TShort -> Just (HsTyCon $ UnQual $ HsIdent "CppopFC.CShort") <$ addImportForForeignC
+  TUShort -> Just (HsTyCon $ UnQual $ HsIdent "CppopFC.CUShort") <$ addImportForForeignC
+  TInt -> Just (HsTyCon $ UnQual $ HsIdent "CppopFC.CInt") <$ addImportForForeignC
+  TUInt -> Just (HsTyCon $ UnQual $ HsIdent "CppopFC.CUInt") <$ addImportForForeignC
+  TLong -> Just (HsTyCon $ UnQual $ HsIdent "CppopFC.CLong") <$ addImportForForeignC
+  TULong -> Just (HsTyCon $ UnQual $ HsIdent "CppopFC.CULong") <$ addImportForForeignC
+  TLLong -> Just (HsTyCon $ UnQual $ HsIdent "CppopFC.CLLong") <$ addImportForForeignC
+  TULLong -> Just (HsTyCon $ UnQual $ HsIdent "CppopFC.CULLong") <$ addImportForForeignC
+  TFloat -> Just (HsTyCon $ UnQual $ HsIdent "CppopFC.CFloat") <$ addImportForForeignC
+  TDouble -> Just (HsTyCon $ UnQual $ HsIdent "CppopFC.CDouble") <$ addImportForForeignC
+  TSize -> Just (HsTyCon $ UnQual $ HsIdent "CppopFC.CSize") <$ addImportForForeignC
+  TSSize -> return Nothing
+  TEnum e ->
+    Just . HsTyCon . UnQual . HsIdent <$> case side of
+      HsCSide -> "CppopFC.CInt" <$ addImportForPrelude
+      HsHsSide -> toHsEnumTypeName e <$ importHsModuleForExtName (enumExtName e)
+  TArray {} -> return Nothing
+  TPtr (TObj cls) -> do
+    importHsModuleForExtName $ classExtName cls
+    return $ Just $ HsTyCon $ UnQual $ HsIdent $ toHsTypeName Nonconst $ classExtName cls
+  TPtr (TConst (TObj cls)) -> do
+    importHsModuleForExtName $ classExtName cls
+    return $ Just $ HsTyCon $ UnQual $ HsIdent $ toHsTypeName Const $ classExtName cls
+  TPtr (TFn paramTypes retType) -> do
+    paramHsTypesMaybe <- sequence <$> mapM (cppTypeToHsTypeAndUse side) paramTypes
+    retHsTypeMaybe <- cppTypeToHsTypeAndUse side retType
+    sideFn <- case side of
+      HsCSide -> do addImportForForeign
+                    return $ HsTyApp $ HsTyCon $ UnQual $ HsIdent "CppopF.FunPtr"
+      HsHsSide -> return id
+    case paramHsTypesMaybe of
+      Nothing -> return Nothing
+      Just paramHsTypes -> case retHsTypeMaybe of
+        Nothing -> return Nothing
+        Just retHsType -> do
+          addImportForPrelude
+          return $ Just $ sideFn $
+            foldr HsTyFun (HsTyApp (HsTyCon $ UnQual $ HsIdent "CppopP.IO") retHsType) paramHsTypes
+  TPtr t' -> do
+    addImportForForeign
+    fmap (HsTyApp $ HsTyCon $ UnQual $ HsIdent "CppopF.Ptr") <$>
+      cppTypeToHsTypeAndUse side t'
+  TRef {} -> return Nothing
+  TFn paramTypes retType -> do
+    paramHsTypesMaybe <- sequence <$> mapM (cppTypeToHsTypeAndUse side) paramTypes
+    retHsTypeMaybe <- cppTypeToHsTypeAndUse side retType
+    case paramHsTypesMaybe of
+      Nothing -> return Nothing
+      Just paramHsTypes -> case retHsTypeMaybe of
+        Nothing -> return Nothing
+        Just retHsType -> do
+          addImportForPrelude
+          return $ Just $
+            foldr HsTyFun (HsTyApp (HsTyCon $ UnQual $ HsIdent "CppopP.IO") retHsType) paramHsTypes
   TCallback cb -> do
-    importHsModuleForExtName $ callbackExtName cb
-    addImportsForType $ callbackToTFn cb
-  TObj cls ->
-    forM_ (haskellEncodingImports <$> classHaskellType (classEncoding cls))
-    addImportSet
-  TOpaque {} -> return ()
-  TBlob -> return ()
-  TConst t'' -> addImportsForType t''
-
-  where importHsModuleForExtName :: ExtName -> Generator ()
-        importHsModuleForExtName extName = do
-          iface <- askInterface
-          case M.lookup extName $ interfaceNamesToModules iface of
-            Just ownerModule -> do
-              let ownerModuleName = getModuleName iface ownerModule
-              currentModuleName <- askModuleName
-              when (currentModuleName /= ownerModuleName) $
-                trace (concat [">>> ", currentModuleName, " is importing ", ownerModuleName, " <<<"]) $
-                addImport ownerModuleName
-            Nothing ->
-              abort $ "addImportsForType: Couldn't find module for ExtName: " ++
-              show extName
-
-addImportsForClass :: Class -> Generator ()
-addImportsForClass = addImportsForType . TPtr . TObj
+    hsTypeMaybe <- cppTypeToHsTypeAndUse side $ callbackToTFn cb
+    case hsTypeMaybe of
+      Nothing -> return Nothing
+      Just hsType -> case side of
+        HsHsSide -> return hsTypeMaybe
+        HsCSide -> do
+          addImportForSupport
+          return $ Just $ HsTyApp (HsTyCon $ UnQual $ HsIdent "CppopFCRS.CCallback") hsType
+  TObj cls -> do
+    forM_ (encodingTypeImportsForSide side <$> classHaskellType (classEncoding cls))
+      addImportSet
+    return $ fmap (encodingTypeForSide side) $ classHaskellType $ classEncoding cls
+  TOpaque {} -> return Nothing
+  TBlob -> return Nothing
+  TConst t' -> cppTypeToHsTypeAndUse side t'
 
 -- | Prints a value like 'P.prettyPrint', but removes newlines so that they
 -- don't cause problems with this module's textual generation.  Should be mainly
