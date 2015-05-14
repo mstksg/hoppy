@@ -86,17 +86,11 @@ addInclude = addIncludes . (:[])
 addReqs :: Reqs -> Generator ()
 addReqs = lift . lift . tell . reqsIncludes
 
-addModuleReq :: Module -> Generator ()
-addModuleReq = addReqs . reqInclude . includeLocal . moduleHppPath
-
 askInterface :: MonadReader Env m => m Interface
 askInterface = liftM envInterface ask
 
 askModule :: MonadReader Env m => m Module
 askModule = liftM envModule ask
-
-askExports :: MonadReader Env m => m [Export]
-askExports = liftM (M.elems . moduleExports . envModule) ask
 
 -- | Halts generation and returns the given error message.
 abort :: String -> Generator a
@@ -498,30 +492,18 @@ typeToCType t = case t of
 data ReqsType = ReqsType
   { reqsTypeUse :: Bool
   , reqsTypeCUse :: Bool
-  , reqsTypeEncode :: Bool
-  , reqsTypeDecode :: Bool
   }
 
 instance Monoid ReqsType where
-  mempty = ReqsType False False False False
+  mempty = ReqsType False False
 
-  mappend (ReqsType a b c d) (ReqsType a' b' c' d') =
-    ReqsType (a || a') (b || b') (c || c') (d || d')
+  mappend (ReqsType a b) (ReqsType a' b') = ReqsType (a || a') (b || b')
 
 reqsForUse :: ReqsType
 reqsForUse = mempty { reqsTypeUse = True }
 
 reqsForCUse :: ReqsType
 reqsForCUse = mempty { reqsTypeCUse = True }
-
-reqsForEncode :: ReqsType
-reqsForEncode = mempty { reqsTypeUse = True, reqsTypeCUse = True, reqsTypeEncode = True }
-
-reqsForDecode :: ReqsType
-reqsForDecode = mempty { reqsTypeUse = True, reqsTypeCUse = True, reqsTypeDecode = True }
-
-reqsWithoutCoding :: ReqsType -> ReqsType
-reqsWithoutCoding rt = rt { reqsTypeEncode = False, reqsTypeDecode = False }
 
 typeUseReqs :: ReqsType -> Type -> Generator Reqs
 typeUseReqs rt t = case t of
@@ -546,24 +528,18 @@ typeUseReqs rt t = case t of
   TPtr t' -> typeUseReqs rt t'
   TRef t' -> typeUseReqs rt t'
   TFn paramTypes retType ->
-    -- Is the right 'ReqsType' being used recursively here?
-    mconcat <$> mapM (typeUseReqs $ reqsWithoutCoding rt) (retType:paramTypes)
+    -- TODO Is the right 'ReqsType' being used recursively here?
+    mconcat <$> mapM (typeUseReqs rt) (retType:paramTypes)
   TCallback cb -> do
     cbClassReqs <- reqInclude . includeLocal . moduleHppPath <$>
                    findExportModule (callbackExtName cb)
-    -- Is the right 'ReqsType' being used recursively here?
-    fnTypeReqs <- typeUseReqs (reqsWithoutCoding rt) $ callbackToTFn cb
+    -- TODO Is the right 'ReqsType' being used recursively here?
+    fnTypeReqs <- typeUseReqs rt $ callbackToTFn cb
     return $ cbClassReqs `mappend` fnTypeReqs
   TObj cls -> do
     let encoding = classEncoding cls
         reqsSum =
           -- These are roughly in order of decreasing use, for performance.
-          (if reqsTypeEncode rt
-           then maybe id mappend (cppCoderReqs <$> classCppEncoder encoding)
-           else id) $
-          (if reqsTypeDecode rt
-           then maybe id mappend (cppCoderReqs <$> classCppDecoder encoding)
-           else id) $
           (if reqsTypeCUse rt then mappend $ classCppCTypeReqs encoding else id) $
           (if reqsTypeUse rt then classUseReqs cls else mempty)
     return reqsSum

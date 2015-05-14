@@ -81,7 +81,8 @@ type HsExport = String
 
 type HsImport = String
 
-{-
+{- TODO Use an import structure that merges imports correctly?
+
 newtype HsImportSet = HsImportSet { getHsImportSet :: M.Map String (Maybe [String]) }
 
 data HsImportSpecs = ...
