@@ -524,7 +524,6 @@ typeUseReqs rt t = case t of
   TSize -> return sizeTReqs
   TSSize -> return sizeTReqs
   TEnum e -> return $ enumUseReqs e
-  TArray _ t' -> typeUseReqs rt t'
   TPtr t' -> typeUseReqs rt t'
   TRef t' -> typeUseReqs rt t'
   TFn paramTypes retType ->
@@ -543,8 +542,6 @@ typeUseReqs rt t = case t of
           (if reqsTypeCUse rt then mappend $ classCppCTypeReqs encoding else id) $
           (if reqsTypeUse rt then classUseReqs cls else mempty)
     return reqsSum
-  TOpaque _ -> return mempty
-  TBlob -> return mempty
   TConst t' -> typeUseReqs rt t'
 
 sizeTReqs :: Reqs

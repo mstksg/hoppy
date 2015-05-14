@@ -363,7 +363,6 @@ data Type =
   | TSize  -- ^ @size_t@
   | TSSize  -- ^ @ssize_t@
   | TEnum CppEnum  -- ^ A C++ @enum@.
-  | TArray (Maybe Int) Type  -- ^ An array, optionally with finite size.
   | TPtr Type  -- ^ A poiner to another type.
   | TRef Type  -- ^ A reference to another type.
   | TFn [Type] Type
@@ -372,8 +371,6 @@ data Type =
     -- wrap a 'TFn' in a 'TPtr'.
   | TCallback Callback
   | TObj Class
-  | TOpaque String
-  | TBlob
   | TConst Type
   deriving (Eq, Show)
 

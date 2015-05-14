@@ -307,7 +307,6 @@ cppTypeToHsTypeAndUse side t = case t of
     Just . HsTyCon . UnQual . HsIdent <$> case side of
       HsCSide -> "CppopFC.CInt" <$ addImportForPrelude
       HsHsSide -> toHsEnumTypeName e <$ importHsModuleForExtName (enumExtName e)
-  TArray {} -> return Nothing
   TPtr (TObj cls) -> do
     importHsModuleForExtName $ classExtName cls
     return $ Just $ HsTyCon $ UnQual $ HsIdent $ toHsTypeName Nonconst $ classExtName cls
@@ -358,8 +357,6 @@ cppTypeToHsTypeAndUse side t = case t of
     forM_ (encodingTypeImportsForSide side <$> classHaskellType (classEncoding cls))
       addImportSet
     return $ fmap (encodingTypeForSide side) $ classHaskellType $ classEncoding cls
-  TOpaque {} -> return Nothing
-  TBlob -> return Nothing
   TConst t' -> cppTypeToHsTypeAndUse side t'
 
 -- | Prints a value like 'P.prettyPrint', but removes newlines so that they

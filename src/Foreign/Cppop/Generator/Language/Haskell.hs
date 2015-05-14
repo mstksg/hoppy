@@ -279,7 +279,6 @@ sayEncode t suffix = case t of
                 addImportForPrelude
                 addImportForSupport
                 saysLn $ "(CppopP.return . CppopFCRS.coerceIntegral . CppopP.fromEnum)" : suffix
-  TArray {} -> abort "sayEncode: TArray unimplemented."
   TPtr (TObj cls) -> do
     addImport "Prelude ((.))"
     addImportForPrelude
@@ -300,8 +299,6 @@ sayEncode t suffix = case t of
       -- TODO Use the Encode class here?
       saysLn $ "(" : haskellEncodingEncoder encoding : ")" : suffix
     Nothing -> abort $ "sayEncode: Can't encode class: " ++ show cls
-  TOpaque {} -> abort "sayEncode: TOpaque unimplemented."
-  TBlob {} -> abort "sayEncode: TBlob unimplemented."
   TConst t' -> sayEncode t' suffix
 
 sayDecode :: Type -> [String] -> Generator ()
@@ -328,7 +325,6 @@ sayDecode t suffix = case t of
                 addImportForPrelude
                 addImportForSupport
                 saysLn $ "(CppopP.return . CppopP.toEnum . CppopFCRS.coerceIntegral)" : suffix
-  TArray {} -> abort "sayDecode: TArray unimplemented."
   TPtr _ -> addImportForPrelude >> saysLn ("CppopP.return" : suffix)
   TRef {} -> abort "sayDecode: TRef unimplemented."
   TFn {} -> abort "sayDecode: TFn unimplemented."
@@ -338,8 +334,6 @@ sayDecode t suffix = case t of
       addImportSet $ haskellEncodingFnImports encoding
       saysLn $ "(" : haskellEncodingDecoder encoding : ")" : suffix
     Nothing -> abort $ "sayDecode: Can't decode class: " ++ show cls
-  TOpaque {} -> abort "sayDecode: TOpaque unimplemented."
-  TBlob {} -> abort "sayDecode: TBlob unimplemented."
   TConst t' -> sayDecode t' suffix
 
 sayExportClass :: SayExportMode -> Class -> Generator ()

@@ -173,40 +173,19 @@ sayType' t maybeParamNames outerPrec unwrappedOuter =
     TSize -> say "size_t" >> outer
     TSSize -> say "ssize_t" >> outer
     TEnum e -> sayIdentifier (enumIdentifier e) >> outer
-    TArray maybeSize t' -> sayType' t' Nothing prec $ do
-      outer
-      say $ maybe "[]" (\n -> '[' : show n ++ "]") maybeSize
-      -- int[]             Array of int.
-      -- int*[]            Array of pointers to ints.
-      -- int*(*var[x])[y]  Array(x) of pointers to arrays(y) of pointers to ints.  (Ptr to array(y) must be sized.)
-      -- int(*[])()        Array of pointers to functions returning ints.
-      -- int(**[])()       Array of pointers to pointers to functions returning ints.
     TPtr t' -> sayType' t' Nothing prec $ say "*" >> outer
-      -- int*              Pointer to an int.
-      -- int(*)[]          Pointer to an array of ints.  (C requires the array be sized.)
-      -- int(*)()          Pointer to a function returning an int.
     TRef t' -> sayType' t' Nothing prec $ say "&" >> outer
-      -- int&              Reference to an int.
-      -- int(&)[]          Reference to an array of ints.  (C requires the array be sized.)
-      -- int(&)()          Reference to a function returning an int.
     TFn paramTypes retType -> sayType' retType Nothing prec $ do
       outer
       say "("
-      --sequence_ $ intersperse (tell [", "]) $ map sayType paramTypes
       sequence_ $ intersperse (say ", ") $
         flip map (zip paramTypes $ maybe (repeat Nothing) (map Just) maybeParamNames) $ \(ptype, pname) ->
         sayType' ptype Nothing topPrecedence $ forM_ pname say
       say ")"
-      -- int(*)()          Pointer to a function returning an int.
-      -- int(*)()[]        Pointer to a function returning an array of ints.  (Must be sized...)
-      -- int*(*)()         Pointer to a function returning a pointer to an int.
-      -- int(*(*var)())[]  Pointer to a function returning a pointer to an array of ints.  (Must be sized...)
-      -- A function can't return an array.
     TCallback cb -> says [callbackImplClassName cb, "*"] >> outer
     TObj cls -> sayIdentifier (classIdentifier cls) >> outer
-    TOpaque s -> say s >> outer
-    TBlob -> say "void*" >> outer
-    TConst t' -> sayType' t' maybeParamNames outerPrec $ say "const" >> unwrappedOuter  -- TODO Is using the outer stuff correctly here?
+    TConst t' -> sayType' t' maybeParamNames outerPrec $ say "const" >> unwrappedOuter
+                 -- TODO ^ Is using the outer stuff correctly here?
 
 topPrecedence :: Int
 topPrecedence = 11
@@ -214,7 +193,6 @@ topPrecedence = 11
 typePrecedence :: Type -> Int
 typePrecedence t = case t of
   TFn {} -> 10
-  TArray {} -> 9
-  TPtr {} -> 8
-  TRef {} -> 8
-  _ -> 7
+  TPtr {} -> 9
+  TRef {} -> 9
+  _ -> 8
