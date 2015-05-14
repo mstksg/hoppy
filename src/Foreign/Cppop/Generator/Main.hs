@@ -3,20 +3,20 @@ module Foreign.Cppop.Generator.Main (
   run,
   ) where
 
-import Control.Applicative ((<$>), (<*>))
+import Control.Applicative ((<$>))
 import Control.Concurrent.MVar (MVar, modifyMVar, newMVar, readMVar)
 import Control.Monad ((<=<), unless, when)
 import Data.Foldable (forM_)
 import Data.List (intercalate)
-import qualified Data.Map as Map
+import qualified Data.Map as M
 import Data.Map (Map)
 import Data.Maybe (fromMaybe)
 import qualified Foreign.Cppop.Generator.Language.Cpp as Cpp
 import qualified Foreign.Cppop.Generator.Language.Haskell as Haskell
 import Foreign.Cppop.Generator.Spec
-import System.Directory (doesDirectoryExist)
+import System.Directory (createDirectoryIfMissing, doesDirectoryExist)
 import System.Exit (exitFailure, exitSuccess)
-import System.FilePath ((</>))
+import System.FilePath ((</>), takeDirectory)
 import System.IO (hPutStrLn, stderr)
 
 data Action =
@@ -34,7 +34,7 @@ initialAppState :: [Interface] -> AppState
 initialAppState ifaces = AppState
   { appInterfaces = ifaces
   , appCurrentInterface = head ifaces
-  , appCaches = Map.empty
+  , appCaches = M.empty
   }
 
 type Caches = Map String InterfaceCache
@@ -95,12 +95,12 @@ processArgs stateVar args =
       listInterfaces stateVar
       (ListInterfaces:) <$> processArgs stateVar rest
 
-    "--gen-cpp":dir:rest -> do
-      dirExists <- doesDirectoryExist dir
-      unless dirExists $ do
+    "--gen-cpp":baseDir:rest -> do
+      baseDirExists <- doesDirectoryExist baseDir
+      unless baseDirExists $ do
         hPutStrLn stderr $
           "--gen-cpp: Please create this directory so that I can generate files in it: " ++
-          dir
+          baseDir
         exitFailure
       genResult <- withCurrentCache stateVar getGeneratedCpp
       case genResult of
@@ -108,27 +108,30 @@ processArgs stateVar args =
           putStrLn $ "--gen-cpp: Failed to generate: " ++ errorMsg
           exitFailure
         Right gen -> do
-          (bindingsCppPath, bindingsHppPath, callbacksCppPath, callbacksHppPath) <-
-            ((,,,) <$>
-             interfaceBindingsCppPath <*>
-             interfaceBindingsHppPath <*>
-             interfaceCallbacksCppPath <*>
-             interfaceCallbacksHppPath) . cacheInterface <$> getCurrentCache stateVar
-          writeFile (dir </> bindingsCppPath) $ Cpp.generatedBindingsSource gen
-          writeFile (dir </> bindingsHppPath) $ Cpp.generatedBindingsHeader gen
-          forM_ callbacksCppPath $ \p -> writeFile (dir </> p) $ Cpp.generatedCallbacksSource gen
-          forM_ callbacksHppPath $ \p -> writeFile (dir </> p) $ Cpp.generatedCallbacksHeader gen
-          (GenCpp dir:) <$> processArgs stateVar rest
+          forM_ (M.toList $ Cpp.generatedFiles gen) $ \(subpath, contents) -> do
+            let path = baseDir </> subpath
+            createDirectoryIfMissing True $ takeDirectory path
+            writeFile path contents
+          (GenCpp baseDir:) <$> processArgs stateVar rest
 
-    "--gen-hs":path:rest -> do
+    "--gen-hs":baseDir:rest -> do
+      baseDirExists <- doesDirectoryExist baseDir
+      unless baseDirExists $ do
+        hPutStrLn stderr $
+          "--gen-hs: Please create this directory so that I can generate files in it: " ++
+          baseDir
+        exitFailure
       genResult <- withCurrentCache stateVar getGeneratedHaskell
       case genResult of
         Left errorMsg -> do
           putStrLn $ "--gen-hs: Failed to generate: " ++ errorMsg
           exitFailure
         Right gen -> do
-          writeFile path $ Haskell.generatedSource gen
-          (GenHaskell path:) <$> processArgs stateVar rest
+          forM_ (M.toList $ Haskell.generatedFiles gen) $ \(subpath, contents) -> do
+            let path = baseDir </> subpath
+            createDirectoryIfMissing True $ takeDirectory path
+            writeFile path contents
+          (GenHaskell baseDir:) <$> processArgs stateVar rest
 
     arg:_ -> do
       putStrLn $ "Invalid option or missing argument for " ++ arg ++ "."
@@ -140,9 +143,9 @@ withCurrentCache stateVar fn = modifyMVar stateVar $ \state -> do
       name = interfaceName currentInterface
   (cache, result) <- fn $
                      fromMaybe (emptyCache currentInterface) $
-                     Map.lookup name $
+                     M.lookup name $
                      appCaches state
-  return (state { appCaches = Map.insert name cache $ appCaches state }, result)
+  return (state { appCaches = M.insert name cache $ appCaches state }, result)
 
 getCurrentCache :: MVar AppState -> IO InterfaceCache
 getCurrentCache stateVar = do
@@ -151,7 +154,7 @@ getCurrentCache stateVar = do
       name = interfaceName currentInterface
   return $
     fromMaybe (emptyCache currentInterface) $
-    Map.lookup name $
+    M.lookup name $
     appCaches state
 
 listInterfaces :: MVar AppState -> IO ()

@@ -1,10 +1,7 @@
 module Foreign.Cppop.Generator.Language.Cpp (
   Generation,
   generate,
-  generatedBindingsHeader,
-  generatedBindingsSource,
-  generatedCallbacksHeader,
-  generatedCallbacksSource,
+  generatedFiles,
   -- * Exported only for other generators, do not use.
   externalNameToCpp,
   classDeleteFnCppName,
@@ -51,14 +48,17 @@ module Foreign.Cppop.Generator.Language.Cpp (
 -- doesn't store a copy somewhere before returning, then the when the temporary
 -- F object is destructed, the G object will get deleted.
 
-import Control.Applicative ((<$>), (<*>))
-import Control.Monad (when)
-import Control.Monad.Reader (ReaderT, ask, runReaderT)
-import Control.Monad.Writer (WriterT)
+import Control.Applicative ((<$>))
+import Control.Monad (liftM, unless, when)
+import Control.Monad.Reader (MonadReader, ReaderT, ask, runReaderT)
+import Control.Monad.Writer (WriterT, execWriterT, runWriterT, tell)
 import Control.Monad.Trans (lift)
 import Data.Foldable (forM_)
 import Data.List (intersperse)
-import Data.Maybe (fromMaybe, isJust, mapMaybe)
+import qualified Data.Map as M
+import Data.Maybe (fromMaybe, isJust)
+import Data.Monoid (Monoid, mappend, mconcat, mempty)
+import qualified Data.Set as S
 import Foreign.Cppop.Common
 import Foreign.Cppop.Generator.Language.Cpp.General
 import Foreign.Cppop.Generator.Spec
@@ -70,79 +70,60 @@ getCoder :: CoderDirection -> ClassEncoding -> Maybe CppCoder
 getCoder DoDecode = classCppDecoder
 getCoder DoEncode = classCppEncoder
 
-type Generator = ReaderT Env (WriterT [Chunk] (Either String))
+type Generator = ReaderT Env (WriterT [Chunk] (WriterT (S.Set Include) (Either String)))
 
 data Env = Env
   { envInterface :: Interface
+  , envModule :: Module
   }
 
-askInterface :: Generator Interface
-askInterface = fmap envInterface ask
+addIncludes :: [Include] -> Generator ()
+addIncludes = lift . lift . tell . S.fromList
 
-askExports :: Generator [Export]
-askExports = fmap (interfaceExports . envInterface) ask
+addInclude :: Include -> Generator ()
+addInclude = addIncludes . (:[])
+
+addReqs :: Reqs -> Generator ()
+addReqs = lift . lift . tell . reqsIncludes
+
+addModuleReq :: Module -> Generator ()
+addModuleReq = addReqs . reqInclude . includeLocal . moduleHppPath
+
+askInterface :: MonadReader Env m => m Interface
+askInterface = liftM envInterface ask
+
+askModule :: MonadReader Env m => m Module
+askModule = liftM envModule ask
+
+askExports :: MonadReader Env m => m [Export]
+askExports = liftM (M.elems . moduleExports . envModule) ask
 
 -- | Halts generation and returns the given error message.
 abort :: String -> Generator a
-abort = lift . lift . Left
+abort = lift . lift . lift . Left
 
-execGenerator :: Interface -> Generator a -> Either String String
-execGenerator interface = execChunkWriterT . flip runReaderT (Env interface)
-
-sayBindingsHeader :: Generator ()
-sayBindingsHeader = do
-  say "////////// GENERATED FILE, EDITS WILL BE LOST //////////\n\n"
-  mapM_ sayInclude . interfaceBindingsIncludes =<< askInterface
-  say "\nextern \"C\" {\n"
-  mapM_ (sayExport False) =<< askExports
-  say "\n}\n"
-
-sayBindingsSource :: Generator ()
-sayBindingsSource = do
-  say "////////// GENERATED FILE, EDITS WILL BE LOST //////////\n\n"
-  iface <- askInterface
-  -- cstdlib is required for the free() call that 'classCppDecodeThenFree'
-  -- provides.
-  say $ includeToString $ includeStd "cstdlib"
-  say "\n"
-  say $ includeToString $ includeLocal $ interfaceBindingsHppPath iface
-  forM_ (interfaceCallbacksHppPath iface) $ say . includeToString . includeLocal
-  say "\nextern \"C\" {\n"
-  mapM_ (sayExport True) =<< askExports
-  say "\n}\n"
-
-sayCallbacksHeader :: Generator ()
-sayCallbacksHeader = do
-  say "////////// GENERATED FILE, EDITS WILL BE LOST //////////\n\n"
-  iface <- askInterface
-  let guardName = ("CPPOP_GEN_CB_" ++) $ interfaceName iface
-  says ["#ifndef ", guardName, "\n"]
-  says ["#define ", guardName, "\n"]
-  says ["\n", includeToString $ includeStd "memory", "\n"]  -- Needed for shared_ptr.
-  mapM_ sayInclude $ interfaceCallbacksIncludes iface
-  callbacks <- mapMaybe (\export -> case export of
-                           ExportCallback cb -> Just cb
-                           _ -> Nothing) <$>
-               askExports
-  forM_ callbacks $ sayExportCallback SayCallbackImpl False
-  say "\n#endif\n"
-
-sayCallbacksSource :: Generator ()
-sayCallbacksSource = do
-  say "////////// GENERATED FILE, EDITS WILL BE LOST //////////\n\n"
-  iface <- askInterface
-  maybe (abort $ "Interface " ++ show (interfaceName iface) ++
-         " requires a .hpp file path for generating callbacks.")
-        (say . includeToString . includeLocal) $
-    interfaceCallbacksHppPath iface
-  callbacks <- mapMaybe (\export -> case export of
-                           ExportCallback cb -> Just cb
-                           _ -> Nothing) <$>
-               askExports
-  forM_ callbacks $ sayExportCallback SayCallbackImpl True
-
-sayInclude :: Include -> Generator ()
-sayInclude = say . includeToString
+execGenerator :: Interface -> Module -> Maybe String -> Generator a -> Either String String
+execGenerator interface m maybeHeaderGuardName action = do
+  (contents, includes) <-
+    (runWriterT $
+     -- WriterT (S.Set Include) (Either String) String:
+     execChunkWriterT $
+     -- WriterT [Chunk] (WriterT (S.Set Include) (Either String)) a:
+     flip runReaderT (Env interface m) action)
+    :: Either String (String, S.Set Include)
+  return $ execChunkWriter $ do
+    say "////////// GENERATED FILE, EDITS WILL BE LOST //////////\n"
+    forM_ maybeHeaderGuardName $ \x -> do
+      says ["\n#ifndef ", x, "\n"]
+      says ["#define ", x, "\n"]
+    unless (S.null includes) $ do
+      say "\n"
+      forM_ includes $ say . includeToString
+    say "\nextern \"C\" {\n"
+    say contents
+    say "\n}  // extern \"C\"\n"
+    forM_ maybeHeaderGuardName $ \x -> do
+      says ["\n#endif  // ifndef ", x, "\n"]
 
 sayFunction :: String -> [String] -> Type -> Maybe (Generator ()) -> Generator ()
 sayFunction name paramNames t maybeBody = do
@@ -165,19 +146,33 @@ instance HasExternalName Function where
   getExternalName = fnExtName
 
 data Generation = Generation
-  { generatedBindingsHeader :: String
-  , generatedBindingsSource :: String
-  , generatedCallbacksHeader :: String
-  , generatedCallbacksSource :: String
+  { generatedFiles :: M.Map FilePath String
+    -- ^ A map from paths of generated files to the contents of those files.
+    -- The file paths are relative paths below the C++ generation root.
   }
 
 generate :: Interface -> Either String Generation
 generate interface =
-  Generation <$>
-  execGenerator interface sayBindingsHeader <*>
-  execGenerator interface sayBindingsSource <*>
-  execGenerator interface sayCallbacksHeader <*>
-  execGenerator interface sayCallbacksSource
+  fmap (Generation . M.fromList) $
+  execWriterT $
+  forM_ (M.elems $ interfaceModules interface) $ \m -> do
+    let headerGuard = concat ["CPPOP_MODULE_", interfaceName interface, "_", moduleName m]
+    header <- lift $ execGenerator interface m (Just headerGuard) sayModuleHeader
+    tell [(moduleHppPath m, header)]
+    source <- lift $ execGenerator interface m Nothing sayModuleSource
+    tell [(moduleCppPath m, source)]
+
+sayModuleHeader :: Generator ()
+sayModuleHeader = do
+  m <- askModule
+  addReqs $ moduleReqs m
+  mapM_ (sayExport False) $ M.elems $ moduleExports m
+
+sayModuleSource :: Generator ()
+sayModuleSource = do
+  m <- askModule
+  addInclude $ includeLocal $ moduleHppPath m
+  mapM_ (sayExport True) $ M.elems $ moduleExports m
 
 sayExport :: Bool -> Export -> Generator ()
 sayExport sayBody export = case export of
@@ -186,15 +181,19 @@ sayExport sayBody export = case export of
 
   ExportFn fn ->
     -- Export a single function.
-    sayExportFn (fnExtName fn)
-                (sayIdentifier $ fnIdentifier fn)
-                Nothing
-                (fnParams fn)
-                (fnReturn fn)
-                sayBody
-  ExportClass cls -> do
+    when sayBody $ do
+      addReqs $ fnUseReqs fn
+      sayExportFn (fnExtName fn)
+                  (sayIdentifier $ fnIdentifier fn)
+                  Nothing
+                  (fnParams fn)
+                  (fnReturn fn)
+                  sayBody
+
+  ExportClass cls -> when sayBody $ do
     let clsPtr = TPtr $ TObj cls
         justClsPtr = Just clsPtr
+    addReqs $ classUseReqs cls  -- This is needed at least for the delete function.
     -- Export each of the class's constructors.
     forM_ (classCtors cls) $ \ctor ->
       sayExportFn (ctorExtName ctor)
@@ -207,9 +206,7 @@ sayExport sayBody export = case export of
     sayFunction (classDeleteFnCppName cls)
                 ["self"]
                 (TFn [TPtr $ TConst $ TObj cls] TVoid) $
-      if sayBody
-      then Just $ say "delete self;\n"
-      else Nothing
+      Just $ say "delete self;\n"
     -- Export encode and decode functions for the class.
     sayClassEncodeFn sayBody cls
     sayClassDecodeFn sayBody cls
@@ -225,7 +222,8 @@ sayExport sayBody export = case export of
                   (methodParams method)
                   (methodReturn method)
                   sayBody
-  ExportCallback cb -> sayExportCallback SayCallbackBinding sayBody cb
+
+  ExportCallback cb -> sayExportCallback sayBody cb
 
 sayExportFn :: ExtName -> Generator () -> Maybe Type -> [Type] -> Type -> Bool -> Generator ()
 sayExportFn extName sayCppName maybeThisType paramTypes retType sayBody = do
@@ -234,6 +232,9 @@ sayExportFn extName sayCppName maybeThisType paramTypes retType sayBody = do
   let paramCTypes = zipWith fromMaybe paramTypes paramCTypeMaybes
   retCTypeMaybe <- typeToCType retType
   let retCType = fromMaybe retType retCTypeMaybe
+
+  addReqs . mconcat =<< mapM (typeUseReqs $ reqsForUse `mappend` reqsForCUse) (retType:paramTypes)
+
   sayFunction (externalNameToCpp extName)
               (maybe id (const ("self":)) maybeThisType $
                zipWith3 (\t ctm -> case t of
@@ -259,9 +260,11 @@ sayExportFn extName sayCppName maybeThisType paramTypes retType sayBody = do
           encoder <- fromMaybeM (abort $ "sayExportFn: Class lacks an encoder: " ++ show cls) $
                      classCppEncoder $ classEncoding cls
           case encoder of
-            CppCoderFn fn ->
+            CppCoderFn fn reqs -> do
+              addReqs reqs
               say "return " >> sayIdentifier fn >> say "(" >> sayCall >> say ");\n"
-            CppCoderExpr terms -> do
+            CppCoderExpr terms reqs -> do
+              addReqs reqs
               sayVar "result" Nothing (TRef $ TConst retType) >>
                 say " = " >> sayCall >> say ";\n"
               say "return " >> sayExpr "result" terms >> say ";\n"
@@ -290,9 +293,14 @@ sayArgRead dir (n, cppType, maybeCType) = case cppType of
     say " = "
     let inputVar = toArgNameAlt n
     case coder of
-      CppCoderFn fn -> sayIdentifier fn >> says ["(", inputVar, ");\n"]
-      CppCoderExpr terms -> sayExpr inputVar terms >> say ";\n"
-    when (dir == DoDecode && classCppDecodeThenFree encoding) $
+      CppCoderFn fn reqs -> do
+        addReqs reqs
+        sayIdentifier fn >> says ["(", inputVar, ");\n"]
+      CppCoderExpr terms reqs -> do
+        addReqs reqs
+        sayExpr inputVar terms >> say ";\n"
+    when (dir == DoDecode && classCppDecodeThenFree encoding) $ do
+      addReqs $ reqInclude $ includeStd "cstdlib"
       says ["free(", inputVar, ");\n"]
 
   -- Primitive types don't need to be encoded/decoded.  But it we maybeCType is
@@ -348,14 +356,16 @@ sayClassDecodeFn sayBody cls =
                 (TFn [TPtr $ TObj cls] cType) $
       if sayBody
       then Just $ case encoder of
-        CppCoderFn fn -> say "return " >> sayIdentifier fn >> say "(*ptr);\n"
-        CppCoderExpr terms -> say "return " >> sayExpr "(*ptr)" terms >> say ";\n"
+        CppCoderFn fn reqs -> do
+          addReqs reqs
+          say "return " >> sayIdentifier fn >> say "(*ptr);\n"
+        CppCoderExpr terms reqs -> do
+          addReqs reqs
+          say "return " >> sayExpr "(*ptr)" terms >> say ";\n"
       else Nothing
 
-data SayCallbackMode = SayCallbackImpl | SayCallbackBinding
-
-sayExportCallback :: SayCallbackMode -> Bool -> Callback -> Generator ()
-sayExportCallback mode sayBody cb = do
+sayExportCallback :: Bool -> Callback -> Generator ()
+sayExportCallback sayBody cb = do
   let className = callbackClassName cb
       implClassName = callbackImplClassName cb
       fnName = callbackFnName cb
@@ -369,103 +379,106 @@ sayExportCallback mode sayBody cb = do
   -- so determine what that function looks like.
   paramCTypes <- zipWith fromMaybe paramTypes <$> mapM typeToCType paramTypes
   retCType <- fromMaybe retType <$> typeToCType retType
+
+  addReqs . mconcat =<< mapM (typeUseReqs $ reqsForUse `mappend` reqsForCUse) (retType:paramTypes)
+
   let fnCType = TFn paramCTypes retCType
       fnPtrCType = TPtr fnCType
 
-  case mode of
-    SayCallbackBinding -> do
+  if not sayBody
+    then do
+      -- Render the class declarations into the header file.
+      addInclude $ includeStd "memory"  -- Needed for std::shared_ptr.
+
+      says ["\nclass ", implClassName, " {\n"]
+      say "public:\n"
+      says ["    explicit ", implClassName, "("] >> sayType Nothing fnPtrCType >>
+        say ", void(*)(void(*)()), bool);\n"
+      says ["    ~", implClassName, "();\n"]
+      say "    " >> sayVar "operator()" Nothing fnType >> say ";\n"
+      say "private:\n"
+      says ["    ", implClassName, "(const ", implClassName, "&);\n"]
+      says ["    ", implClassName, "& operator=(const ", implClassName, "&);\n"]
+      say "\n"
+      say "    " >> sayVar "f_" Nothing (TConst fnPtrCType) >> say ";\n"
+      say "    void (*const release_)(void(*)());\n"
+      say "    const bool releaseRelease_;\n"
+      say "};\n"
+
+      says ["\nclass ", className, " {\n"]
+      say "public:\n"
+      says ["    explicit ", className, "(", implClassName, "* impl) : impl_(impl) {}\n"]
+      say "    " >> sayVar "operator()" Nothing fnType >> say ";\n"
+      say "private:\n"
+      says ["    std::shared_ptr<", implClassName, "> impl_;\n"]
+      say "};\n"
+
+    else do
+      -- Render the classes' methods into the source file.  First render the
+      -- impl class's constructor.
+      says ["\n", implClassName, "::", implClassName, "("] >> sayVar "f" Nothing fnPtrCType >>
+        say ", void (*release)(void(*)()), bool releaseRelease) :\n"
+      say "    f_(f), release_(release), releaseRelease_(releaseRelease) {}\n"
+
+      -- Then render the destructor.
+      says ["\n", implClassName, "::~", implClassName, "() {\n"]
+      say "    if (release_) {\n"
+      say "        release_(reinterpret_cast<void(*)()>(f_));\n"
+      say "        if (releaseRelease_) {\n"
+      say "            release_(reinterpret_cast<void(*)()>(release_));\n"
+      say "        }\n"
+      say "    }\n"
+      say "}\n"
+
+      -- Render the impl operator() method, which does argument decoding and
+      -- return value encoding and passes C++ values to underlying function
+      -- poiner.
+      --
+      -- TODO Abstract the duplicated code here and in sayExportFn.
+      paramCTypeMaybes <- mapM typeToCType paramTypes
+      retCTypeMaybe <- typeToCType retType
+
+      sayFunction (implClassName ++ "::operator()")
+                  (zipWith (\ctm -> if isJust ctm then toArgNameAlt else toArgName)
+                   paramCTypeMaybes [1..paramCount])
+                  fnType $ Just $ do
+        -- Convert arguments that aren't passed in directly.
+        mapM_ (sayArgRead DoEncode) $ zip3 [1..] paramTypes paramCTypeMaybes
+        -- Invoke the function pointer into foreign code.
+        let sayCall = say "f_(" >> sayArgNames paramCount >> say ")"
+        case (retType, retCTypeMaybe) of
+          (TVoid, Nothing) -> sayCall >> say ";\n"
+          (_, Nothing) -> say "return " >> sayCall >> say ";\n"
+          (TObj cls, Just _) -> do
+            decoder <- fromMaybeM (abort $ "sayExportCallback: Class lacks a decoder: " ++
+                                   show cls) $
+                       classCppDecoder $ classEncoding cls
+            case decoder of
+              CppCoderFn fn reqs -> do
+                addReqs reqs
+                say "return " >> sayIdentifier fn >> say "(" >> sayCall >> say ");\n"
+              CppCoderExpr terms reqs -> do
+                addReqs reqs
+                sayVar "result" Nothing (TRef $ TConst retType) >>
+                  say " = " >> sayCall >> say ";\n"
+                say "return " >> sayExpr "result" terms >> say ";\n"
+          ts -> abort $ "sayExportCallback: Unexpected return types: " ++ show ts
+
+      -- Render the non-impl operator() method, which simply passes C++ values
+      -- along to the impl object.
+      sayFunction (className ++ "::operator()")
+                  (map toArgName [1..paramCount])
+                  fnType $ Just $
+        say "(*impl_)(" >> sayArgNames paramCount >> say ");\n"
+
       -- Render the function that creates a new callback object.
       let newCallbackFnType = TFn [ fnPtrCType
                                   , TPtr (TFn [TPtr $ TFn [] TVoid] TVoid)
                                   , TBool
                                   ]
                               cbType
-      sayFunction fnName ["f", "release", "releaseRelease"] newCallbackFnType $
-        if sayBody
-        then Just $ says ["return new ", implClassName, "(f, release, releaseRelease);\n"]
-        else Nothing
-
-    SayCallbackImpl ->
-      if sayBody
-      then do
-        -- Render the classes' methods into the source file.  First render the
-        -- impl class's constructor.
-        says ["\n", implClassName, "::", implClassName, "("] >> sayVar "f" Nothing fnPtrCType >>
-          say ", void (*release)(void(*)()), bool releaseRelease) :\n"
-        say "    f_(f), release_(release), releaseRelease_(releaseRelease) {}\n"
-
-        -- Then render the destructor.
-        says ["\n", implClassName, "::~", implClassName, "() {\n"]
-        say "    if (release_) {\n"
-        say "        release_(reinterpret_cast<void(*)()>(f_));\n"
-        say "        if (releaseRelease_) {\n"
-        say "            release_(reinterpret_cast<void(*)()>(release_));\n"
-        say "        }\n"
-        say "    }\n"
-        say "}\n"
-
-        -- Render the impl operator() method, which does argument decoding and
-        -- return value encoding and passes C++ values to underlying function
-        -- poiner.
-        --
-        -- TODO Abstract the duplicated code here and in sayExportFn.
-        paramCTypeMaybes <- mapM typeToCType paramTypes
-        retCTypeMaybe <- typeToCType retType
-        sayFunction (implClassName ++ "::operator()")
-                    (zipWith (\ctm -> if isJust ctm then toArgNameAlt else toArgName)
-                     paramCTypeMaybes [1..paramCount])
-                    fnType $ Just $ do
-          -- Convert arguments that aren't passed in directly.
-          mapM_ (sayArgRead DoEncode) $ zip3 [1..] paramTypes paramCTypeMaybes
-          -- Invoke the function pointer into foreign code.
-          let sayCall = say "f_(" >> sayArgNames paramCount >> say ")"
-          case (retType, retCTypeMaybe) of
-            (TVoid, Nothing) -> sayCall >> say ";\n"
-            (_, Nothing) -> say "return " >> sayCall >> say ";\n"
-            (TObj cls, Just _) -> do
-              decoder <- fromMaybeM (abort $ "sayExportCallback: Class lacks a decoder: " ++
-                                     show cls) $
-                         classCppDecoder $ classEncoding cls
-              case decoder of
-                CppCoderFn fn ->
-                  say "return " >> sayIdentifier fn >> say "(" >> sayCall >> say ");\n"
-                CppCoderExpr terms -> do
-                  sayVar "result" Nothing (TRef $ TConst retType) >>
-                    say " = " >> sayCall >> say ";\n"
-                  say "return " >> sayExpr "result" terms >> say ";\n"
-            ts -> abort $ "sayExportCallback: Unexpected return types: " ++ show ts
-
-        -- Render the non-impl operator() method, which simply passes C++ values
-        -- along to the impl object.
-        sayFunction (className ++ "::operator()")
-                    (map toArgName [1..paramCount])
-                    fnType $ Just $
-          say "(*impl_)(" >> sayArgNames paramCount >> say ");\n"
-
-      else do
-        -- Render the class declarations into the header file.
-        says ["\nclass ", implClassName, " {\n"]
-        say "public:\n"
-        says ["    explicit ", implClassName, "("] >> sayType Nothing fnPtrCType >>
-          say ", void(*)(void(*)()), bool);\n"
-        says ["    ~", implClassName, "();\n"]
-        say "    " >> sayVar "operator()" Nothing fnType >> say ";\n"
-        say "private:\n"
-        says ["    ", implClassName, "(const ", implClassName, "&);\n"]
-        says ["    ", implClassName, "& operator=(const ", implClassName, "&);\n"]
-        say "\n"
-        say "    " >> sayVar "f_" Nothing (TConst fnPtrCType) >> say ";\n"
-        say "    void (*const release_)(void(*)());\n"
-        say "    const bool releaseRelease_;\n"
-        say "};\n"
-
-        says ["\nclass ", className, " {\n"]
-        say "public:\n"
-        says ["    explicit ", className, "(", implClassName, "* impl) : impl_(impl) {}\n"]
-        say "    " >> sayVar "operator()" Nothing fnType >> say ";\n"
-        say "private:\n"
-        says ["    std::shared_ptr<", implClassName, "> impl_;\n"]
-        say "};\n"
+      sayFunction fnName ["f", "release", "releaseRelease"] newCallbackFnType $ Just $
+        says ["return new ", implClassName, "(f, release, releaseRelease);\n"]
 
 -- | Returns a 'Type' iff there is a C type distinct from the given C++ type
 -- that should be used for conversion.
@@ -481,3 +494,88 @@ typeToCType t = case t of
           TObj cls' -> abort $ "typeToCType: Class's C type cannot be an object: " ++ show cls'
           TConst t'' -> ensureNonObj t''
           _ -> return t'
+
+data ReqsType = ReqsType
+  { reqsTypeUse :: Bool
+  , reqsTypeCUse :: Bool
+  , reqsTypeEncode :: Bool
+  , reqsTypeDecode :: Bool
+  }
+
+instance Monoid ReqsType where
+  mempty = ReqsType False False False False
+
+  mappend (ReqsType a b c d) (ReqsType a' b' c' d') =
+    ReqsType (a || a') (b || b') (c || c') (d || d')
+
+reqsForUse :: ReqsType
+reqsForUse = mempty { reqsTypeUse = True }
+
+reqsForCUse :: ReqsType
+reqsForCUse = mempty { reqsTypeCUse = True }
+
+reqsForEncode :: ReqsType
+reqsForEncode = mempty { reqsTypeUse = True, reqsTypeCUse = True, reqsTypeEncode = True }
+
+reqsForDecode :: ReqsType
+reqsForDecode = mempty { reqsTypeUse = True, reqsTypeCUse = True, reqsTypeDecode = True }
+
+reqsWithoutCoding :: ReqsType -> ReqsType
+reqsWithoutCoding rt = rt { reqsTypeEncode = False, reqsTypeDecode = False }
+
+typeUseReqs :: ReqsType -> Type -> Generator Reqs
+typeUseReqs rt t = case t of
+  TVoid -> return mempty
+  TBool -> return mempty
+  TChar -> return mempty
+  TUChar -> return mempty
+  TShort -> return mempty
+  TUShort -> return mempty
+  TInt -> return mempty
+  TUInt -> return mempty
+  TLong -> return mempty
+  TULong -> return mempty
+  TLLong -> return mempty
+  TULLong -> return mempty
+  TFloat -> return mempty
+  TDouble -> return mempty
+  TSize -> return sizeTReqs
+  TSSize -> return sizeTReqs
+  TEnum e -> return $ enumUseReqs e
+  TArray _ t' -> typeUseReqs rt t'
+  TPtr t' -> typeUseReqs rt t'
+  TRef t' -> typeUseReqs rt t'
+  TFn paramTypes retType ->
+    -- Is the right 'ReqsType' being used recursively here?
+    mconcat <$> mapM (typeUseReqs $ reqsWithoutCoding rt) (retType:paramTypes)
+  TCallback cb -> do
+    cbClassReqs <- reqInclude . includeLocal . moduleHppPath <$>
+                   findExportModule (callbackExtName cb)
+    -- Is the right 'ReqsType' being used recursively here?
+    fnTypeReqs <- typeUseReqs (reqsWithoutCoding rt) $ callbackToTFn cb
+    return $ cbClassReqs `mappend` fnTypeReqs
+  TObj cls -> do
+    let encoding = classEncoding cls
+        reqsSum =
+          -- These are roughly in order of decreasing use, for performance.
+          (if reqsTypeEncode rt
+           then maybe id mappend (cppCoderReqs <$> classCppEncoder encoding)
+           else id) $
+          (if reqsTypeDecode rt
+           then maybe id mappend (cppCoderReqs <$> classCppDecoder encoding)
+           else id) $
+          (if reqsTypeCUse rt then mappend $ classCppCTypeReqs encoding else id) $
+          (if reqsTypeUse rt then classUseReqs cls else mempty)
+    return reqsSum
+  TOpaque _ -> return mempty
+  TBlob -> return mempty
+  TConst t' -> typeUseReqs rt t'
+
+sizeTReqs :: Reqs
+sizeTReqs = reqInclude $ includeStd "cstddef"
+
+findExportModule :: ExtName -> Generator Module
+findExportModule extName =
+  fromMaybeM (abort $ concat
+              ["findExportModule: Can't find module exporting ", fromExtName extName, "."]) =<<
+  fmap (M.lookup extName . interfaceNamesToModules) askInterface

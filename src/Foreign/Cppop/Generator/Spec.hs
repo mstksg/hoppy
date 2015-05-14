@@ -2,22 +2,37 @@ module Foreign.Cppop.Generator.Spec (
   -- * Interfaces
   Interface,
   ErrorMsg,
+  HaskellImport,
   interface,
   interfaceName,
-  interfaceBindingsCppPath,
-  interfaceBindingsHppPath,
-  interfaceBindingsIncludes,
-  interfaceCallbacksCppPath,
-  interfaceCallbacksHppPath,
-  interfaceCallbacksIncludes,
-  interfaceHaskellImports,
-  interfaceExports,
-  interfaceExportsByName,
+  interfaceModules,
+  interfaceNamesToModules,
+  interfaceHaskellModuleBase,
+  addInterfaceHaskellModuleBase,
   -- * C++ includes
   Include,
   includeStd,
   includeLocal,
   includeToString,
+  -- * Modules
+  Module,
+  moduleName,
+  moduleHppPath,
+  moduleCppPath,
+  moduleExports,
+  moduleHaskellName,
+  moduleReqs,
+  makeModule,
+  modifyModule,
+  modifyModule',
+  addModuleExports,
+  addModuleHaskellName,
+  -- * Requirements
+  Reqs,
+  reqsIncludes,
+  reqInclude,
+  HasUseReqs (..),
+  addReqIncludes,
   -- * Exports
   ExtName,
   toExtName,
@@ -37,11 +52,11 @@ module Foreign.Cppop.Generator.Spec (
   ident5,
   -- * Basic types
   Type (..),
-  CppEnum, makeEnum, enumIdentifier, enumExtName, enumValueNames,
+  CppEnum, makeEnum, enumIdentifier, enumExtName, enumValueNames, enumUseReqs,
   Purity (..),
-  Function, makeFn, fnIdentifier, fnExtName, fnPurity, fnParams, fnReturn,
+  Function, makeFn, fnIdentifier, fnExtName, fnPurity, fnParams, fnReturn, fnUseReqs,
   Class, makeClass, classIdentifier, classExtName, classSuperclasses, classCtors, classMethods,
-  classEncoding,
+  classEncoding, classUseReqs,
   Ctor, makeCtor, ctorExtName, ctorParams,
   Method,
   MethodApplicability (..),
@@ -55,6 +70,7 @@ module Foreign.Cppop.Generator.Spec (
   classModifyEncoding,
   classCopyEncodingFrom,
   CppCoder (..),
+  cppCoderReqs,
   HaskellEncoding (..),
   -- * Callbacks
   Callback, makeCallback, callbackExtName, callbackParams, callbackReturn, callbackToTFn,
@@ -62,47 +78,38 @@ module Foreign.Cppop.Generator.Spec (
 
 import Control.Applicative ((<$>), (<*>))
 import Control.Arrow ((&&&))
+import Control.Monad (unless)
+import Control.Monad.Except (MonadError, Except, runExcept, throwError)
+import Control.Monad.State (MonadState, StateT, execStateT, gets, modify)
 import Data.Char (isAlpha, isAlphaNum)
 import Data.Function (on)
 import Data.List (intercalate)
-import qualified Data.Map as Map
-import Data.Map (Map)
-import Data.Maybe (catMaybes, fromMaybe)
-import Data.Monoid (mappend)
+import qualified Data.Map as M
+import Data.Maybe (fromMaybe)
+import Data.Monoid (Monoid, mappend, mconcat, mempty)
+import qualified Data.Set as S
 import Language.Haskell.Syntax (HsType)
 
 type ErrorMsg = String
+
+type HaskellImport = String
 
 -- | A complete specification of a C++ API.  Generators for different languages,
 -- including the server generator for C++, use these to produce their output.
 data Interface = Interface
   { interfaceName :: String
     -- ^ Textual name of the interface.
-  , interfaceBindingsCppPath :: FilePath
-    -- ^ A path to a file into which to write C++ bindings.  This path will be
-    -- created relative to a root C++ path passed into the generator at runtime.
-  , interfaceBindingsHppPath :: FilePath
-    -- ^ The corresponding header file for 'interfaceBindingsCppPath'.
-  , interfaceBindingsIncludes :: [Include]
-    -- ^ Includes that will be added to the binding header and source files.
-  , interfaceCallbacksCppPath :: Maybe FilePath
-    -- ^ A path to a file into which to write C++ callbacks.  This path will be
-    -- created relative to a root C++ path passed into the generator at runtime.
-  , interfaceCallbacksHppPath :: Maybe FilePath
-    -- ^ The corresponding header file for 'interfaceCallbacksHppPath'.
-  , interfaceCallbacksIncludes :: [Include]
-    -- ^ Includes that will be added to the callback header and source files.
-  , interfaceHaskellImports :: [String]
-    -- ^ Imports that will be added to the generated Haskell bindings.
-  , interfaceExports :: [Export]
-    -- ^ The complete list of bindings to be generated.
-  , interfaceExportsByName :: Map ExtName Export
-    -- ^ A map of the bindings to be generated.
+  , interfaceModules :: M.Map String Module
+    -- ^ All of the individual modules, by name.
+  , interfaceNamesToModules :: M.Map ExtName Module
+    -- ^ Maps each 'ExtName' exported by some module to the module that exports
+    -- the name.
+  , interfaceHaskellModuleBase :: Maybe [String]
   } deriving (Show)
 
 -- | An @#include@ directive in a C++ file.
 data Include = Include { includeToString :: String }
-             deriving (Show)
+             deriving (Eq, Ord, Show)
 
 -- | Creates an @#include \<...\>@ directive.
 includeStd :: String -> Include
@@ -116,46 +123,198 @@ includeLocal path = Include $ "#include \"" ++ path ++ "\"\n"
 -- performed; if the resulting interface would be invalid, an error message is
 -- returned instead.
 interface :: String  -- ^ 'interfaceName'
-          -> FilePath  -- ^ 'interfaceBindingsCppPath'
-          -> FilePath  -- ^ 'interfaceBindingsHppPath'
-          -> [Include]  -- ^ 'interfaceBindingsIncludes'
-          -> Maybe (FilePath, FilePath, [Include])
-          -- ^ If present, then @('interfaceCallbacksCppPath',
-          -- 'interfaceCallbacksHppPath', 'interfaceCallbacksIncludes')@.
-          -> [String]  -- ^ 'interfaceHaskellImports'
-          -> [Export]  -- ^ 'interfaceExports'
+          -> [Module]  -- ^ 'interfaceModules'
           -> Either ErrorMsg Interface
-interface ifName bindingsCppPath bindingsHppPath bindingsIncludes
-          maybeCallbacksPathsAndIncludes haskellImports exports = do
-  -- Check for multiple definitions of a single external name.
-  let directory = Map.fromListWith mappend $ flip map exports $
-                  \e -> (exportExtName e, [e])
-      dupErrorMsgs = catMaybes $ flip map (Map.assocs directory) $ \(name, exports) ->
-        let erroneous = case exports of
-              _:_:_ -> True  -- Multiple exports.
-              _ -> False
-        in if erroneous
-           then Just $ unlines $
-                ("- " ++ show name) :
-                map (("  - " ++) . show) exports
-           else Nothing
-  case dupErrorMsgs of
-    _:_:_ -> Left $ unlines $ "Some external names were declared multiple times:" : dupErrorMsgs
-    _:_ -> Left $ unlines $ "An external name was declared multiple times:" : dupErrorMsgs
-    _ -> return ()
+interface ifName modules = do
+  -- TODO Check for duplicate module names.
+  -- TODO Check for duplicate module file paths.
+
+  -- Check for multiple modules exporting an ExtName.
+  let extNamesToModules :: M.Map ExtName [Module]
+      extNamesToModules =
+        M.unionsWith (++) $
+        map (\m -> fmap (const [m]) $ moduleExports m) modules
+
+      extNamesInMultipleModules :: [(ExtName, [Module])]
+      extNamesInMultipleModules =
+        M.toList $
+        M.filter (\modules -> case modules of
+                     _:_:_ -> True
+                     _ -> False)
+        extNamesToModules
+
+  unless (null extNamesInMultipleModules) $
+    Left $ unlines $
+    "Some external name(s) were are exported by multiple modules:" :
+    map (\(extName, modules) ->
+          concat ["- ", fromExtName extName, ": ", show (map moduleName modules)])
+        extNamesInMultipleModules
 
   return Interface
     { interfaceName = ifName
-    , interfaceBindingsCppPath = bindingsCppPath
-    , interfaceBindingsHppPath = bindingsHppPath
-    , interfaceBindingsIncludes = bindingsIncludes
-    , interfaceCallbacksCppPath = fmap (\(a,_,_) -> a) maybeCallbacksPathsAndIncludes
-    , interfaceCallbacksHppPath = fmap (\(_,b,_) -> b) maybeCallbacksPathsAndIncludes
-    , interfaceCallbacksIncludes = maybe [] (\(_,_,c) -> c) maybeCallbacksPathsAndIncludes
-    , interfaceHaskellImports = haskellImports
-    , interfaceExports = exports
-    , interfaceExportsByName = Map.fromList $ map (exportExtName &&& id) exports
+    , interfaceModules = M.fromList $ map (moduleName &&& id) modules
+    , interfaceNamesToModules = M.map (\[x] -> x) extNamesToModules
+    , interfaceHaskellModuleBase = Nothing
     }
+
+addInterfaceHaskellModuleBase :: [String] -> Interface -> Either String Interface
+addInterfaceHaskellModuleBase modulePath iface = case interfaceHaskellModuleBase iface of
+  Nothing -> Right iface { interfaceHaskellModuleBase = Just modulePath }
+  Just existingPath ->
+    Left $ concat
+    [ "addInterfaceHaskellModuleBase: Trying to add Haskell module base "
+    , intercalate "." modulePath, " to interface ", show (interfaceName iface)
+    , " which already has a module base ", intercalate "." existingPath
+    ]
+
+data Module = Module
+  { moduleName :: String
+  , moduleHppPath :: String
+  , moduleCppPath :: String
+  , moduleExports :: M.Map ExtName Export
+  , moduleReqs :: Reqs
+  , moduleHaskellName :: Maybe [String]
+  }
+
+instance Eq Module where
+  (==) = (==) `on` moduleName
+
+instance Show Module where
+  show m = concat ["<Module ", moduleName m, ">"]
+
+instance HasUseReqs Module where
+  getUseReqs = moduleReqs
+  setUseReqs reqs m = m { moduleReqs = reqs }
+
+makeModule :: String  -- ^ The module name.
+           -> String
+           -- ^ The path within a project to a C++ header file to generate.
+           -> String
+           -- ^ The path within a project to a C++ source file to generate.
+           -> Module
+makeModule name hppPath cppPath = Module
+  { moduleName = name
+  , moduleHppPath = hppPath
+  , moduleCppPath = cppPath
+  , moduleExports = M.empty
+  , moduleReqs = mempty
+  , moduleHaskellName = Nothing
+  }
+
+modifyModule :: Module -> StateT Module (Except String) () -> Either String Module
+modifyModule m action = runExcept $ execStateT action m
+
+modifyModule' :: Module -> StateT Module (Except String) () -> Module
+modifyModule' m action = case modifyModule m action of
+  Left errorMsg ->
+    error $ concat
+    ["modifyModule' failed to modify module ", show (moduleName m), ": ", errorMsg]
+  Right m' -> m'
+
+addModuleExports :: (MonadError String m, MonadState Module m) => [Export] -> m ()
+addModuleExports exports = do
+  existingExports <- gets moduleExports
+  let newExports = M.fromList $ map (exportExtName &&& id) exports
+      duplicateNames = (S.intersection `on` M.keysSet) existingExports newExports
+  if S.null duplicateNames
+    then modify $ \m -> m { moduleExports = existingExports `mappend` newExports }
+    else throwError $
+         "addModuleExports: The following ExtNames are being defined multiple times: " ++
+         show duplicateNames
+
+addModuleHaskellName :: (MonadError String m, MonadState Module m) => [String] -> m ()
+addModuleHaskellName name = do
+  existingName <- gets moduleHaskellName
+  case existingName of
+    Nothing -> modify $ \m -> m { moduleHaskellName = Just name }
+    Just name' ->
+      throwError $ "addModuleHaskellName: Module already has Haskell name " ++
+      show name' ++ "; trying to add name " ++ show name ++ "."
+
+-- The C++ header for a function (or ctor, method) binding requires includes for
+-- the types mentioned in the parameter and return types.  The C++ source for a
+-- function binding additionally requires includes for any necessary
+-- conversions.  The C++ header (resp. source) requirements for a class binding
+-- are the union of the header (resp. source) requirements of the constituent
+-- ctors and methods.  Requirements for callbacks are the same as the
+-- requirements for function bindings.
+--
+-- The requirements for a type, if the type is scalar, are constant.  Primitive
+-- types have no requirements.  size_t and ssize_t require <cstddef>.  Types
+-- that reference classes require those classes' class includes (distinct from
+-- the requirements for the class's bindings).
+--
+-- getExportBindingReqs :: DoEnc|NoEnc -> Export -> Reqs
+--   getFunctionBindingReqs :: DoEnc|NoEnc -> Export -> Reqs
+--   getClassBindingReqs :: DoEnc|NoEnc -> Export -> Reqs
+--   getCallbackBindingReqs :: DoEnc|NoEnc -> Export -> Reqs
+--     getTypeReqs :: Maybe (Enc|Dec) -> Type -> Reqs
+--       getClassUseReqs :: Maybe (Enc|Dec) -> Class -> Reqs
+--
+-- *Binding* vs. *use* requirements for a class.
+--
+-- TODO Some includes may be replaced with forward declarations.  The paragraphs
+-- above ignore that fact.
+--
+-- For Haskell!
+--
+-- For a function binding, we require everything required to reference, and
+-- encode or decode the types.
+--
+-- TODO Not really, if we only take function param
+--
+-- getExportBindingHsReqs :: Enc|Dec ->
+--     getTypeReqs :: zz
+
+-- Classes have "use", "cuse", "encode", and "decode" reqs.  "encode" and
+-- "decode" imply "cuse".
+--
+-- Requirements to use a type in a specific location are parameterized by the
+-- set of class use cases above.
+--
+-- function, header: nothing.
+--
+-- function, source: use function; use+decode param types; use+encode ret type.
+--
+-- class, header: nothing.
+--
+-- class, source: use class type (at least for gendel); use class encode reqs
+-- (for *gendec*); use class decode reqs (for *genenc*); recur into ctors and
+-- methods using "function, source" rules.
+--
+-- callback, header: recur into the ctype of the TFn.
+--
+-- callback, source: same as "function, source" for the TFn.
+--
+-- enum, header/source: none
+
+
+data Reqs = Reqs
+  { reqsIncludes :: S.Set Include
+  } deriving (Show)
+
+instance Monoid Reqs where
+  mempty = Reqs mempty
+
+  mappend (Reqs incl) (Reqs incl') = Reqs $ mappend incl incl'
+
+  mconcat reqs = Reqs $ mconcat $ map reqsIncludes reqs
+
+reqInclude :: Include -> Reqs
+reqInclude include = mempty { reqsIncludes = S.singleton include }
+
+class HasUseReqs a where
+  getUseReqs :: a -> Reqs
+
+  setUseReqs :: Reqs -> a -> a
+  setUseReqs = modifyUseReqs . const
+
+  modifyUseReqs :: (Reqs -> Reqs) -> a -> a
+  modifyUseReqs f x = setUseReqs (f $ getUseReqs x) x
+
+addReqIncludes :: HasUseReqs a => [Include] -> a -> a
+addReqIncludes includes =
+  modifyUseReqs $ mappend mempty { reqsIncludes = S.fromList includes }
 
 -- | An external name is a string that Cppop clients use to uniquely identify an
 -- object to invoke at runtime.  An external name must start with an alphabetic
@@ -195,7 +354,7 @@ exportExtName export = case export of
   ExportEnum e -> enumExtName e
   ExportFn f -> fnExtName f
   ExportClass c -> classExtName c
-  ExportCallback c -> callbackExtName c
+  ExportCallback cb -> callbackExtName cb
 
 -- | An absolute path from the top-level C++ namespace down to some named
 -- object.
@@ -284,10 +443,15 @@ data CppEnum = CppEnum
     -- ^ The numeric values and names of the enum values.  A single value's name
     -- is broken up into words.  How the words and ext name get combined to make
     -- a name in a particular foreign language depends on the language.
+  , enumUseReqs :: Reqs
   } deriving (Show)
 
 instance Eq CppEnum where
   (==) = (==) `on` enumIdentifier
+
+instance HasUseReqs CppEnum where
+  getUseReqs = enumUseReqs
+  setUseReqs reqs e = e { enumUseReqs = reqs }
 
 makeEnum :: Identifier  -- ^ 'enumIdentifier'
          -> Maybe ExtName
@@ -295,8 +459,8 @@ makeEnum :: Identifier  -- ^ 'enumIdentifier'
          -- the identifier if absent.
          -> [(Int, [String])]  -- ^ 'enumValueNames'
          -> CppEnum
-makeEnum identifier maybeExtName =
-  CppEnum identifier $ extNameOrIdentifier identifier maybeExtName
+makeEnum identifier maybeExtName valueNames =
+  CppEnum identifier (extNameOrIdentifier identifier maybeExtName) valueNames mempty
 
 -- | Calls to pure functions will be executed non-strictly by Haskell.  Calls to
 -- impure functions must execute in the IO monad.
@@ -313,8 +477,14 @@ data Function = Function
   , fnPurity :: Purity
   , fnParams :: [Type]
   , fnReturn :: Type
+  , fnUseReqs :: Reqs
+    -- ^ Requirements for a binding to call the function.
   }
   deriving (Show)
+
+instance HasUseReqs Function where
+  getUseReqs = fnUseReqs
+  setUseReqs reqs fn = fn { fnUseReqs = reqs }
 
 makeFn :: Identifier
        -> Maybe ExtName
@@ -324,8 +494,10 @@ makeFn :: Identifier
        -> [Type]  -- ^ Parameter types.
        -> Type  -- ^ Return type.
        -> Function
-makeFn identifier maybeExtName =
-  Function identifier $ extNameOrIdentifier identifier maybeExtName
+makeFn identifier maybeExtName purity paramTypes retType =
+  Function identifier
+           (extNameOrIdentifier identifier maybeExtName)
+           purity paramTypes retType mempty
 
 -- | A C++ class declaration.
 data Class = Class
@@ -335,11 +507,17 @@ data Class = Class
   , classCtors :: [Ctor]
   , classMethods :: [Method]
   , classEncoding :: ClassEncoding
+  , classUseReqs :: Reqs
+    -- ^ Requirements for a 'Type' to reference this class.
   }
   deriving (Show)
 
 instance Eq Class where
   (==) = (==) `on` classIdentifier
+
+instance HasUseReqs Class where
+  getUseReqs = classUseReqs
+  setUseReqs reqs cls = cls { classUseReqs = reqs }
 
 makeClass :: Identifier
           -> Maybe ExtName
@@ -356,6 +534,7 @@ makeClass identifier maybeExtName supers ctors methods = Class
   , classCtors = ctors
   , classMethods = methods
   , classEncoding = classEncodingNone
+  , classUseReqs = mempty
   }
 
 -- | When a class object is returned from a function or taken as a parameter by
@@ -385,6 +564,8 @@ data ClassEncoding = ClassEncoding
     -- ^ The intermediate C type that will be used for conversions.  @Nothing@
     -- means that the class will not supported decoding from or encoding to a
     -- foreign type.
+  , classCppCTypeReqs :: Reqs
+    -- ^ Requirements for a binding to use the class's C type.
   , classCppDecoder :: Maybe CppCoder
     -- ^ The conversion process from a C type to a C++ object.  @Nothing@ means
     -- that the class will not support decoding from a foreign type.
@@ -401,7 +582,7 @@ data ClassEncoding = ClassEncoding
 
 -- | Encoding parameters for a class that is not encodable or decodable.
 classEncodingNone :: ClassEncoding
-classEncodingNone = ClassEncoding Nothing Nothing False Nothing Nothing
+classEncodingNone = ClassEncoding Nothing mempty Nothing False Nothing Nothing
 
 -- | Modifies classes' 'ClassEncoding' structures with a given function.
 classModifyEncoding :: (ClassEncoding -> ClassEncoding) -> Class -> Class
@@ -414,14 +595,18 @@ classCopyEncodingFrom source target = target { classEncoding = classEncoding sou
 
 -- | The means of decoding and encoding a class in C++.
 data CppCoder =
-  CppCoderFn Identifier
+  CppCoderFn Identifier Reqs
   -- ^ The named function will be called to decode the C type (when decoding) or
   -- to encode the C++ type (when encoding).
-  | CppCoderExpr [Maybe String]
+  | CppCoderExpr [Maybe String] Reqs
     -- ^ A C++ expression made from the concatenation of all of the strings will
     -- be used.  For each @Nothing@, the name of an input variable will be
     -- substituted.
   deriving (Show)
+
+cppCoderReqs :: CppCoder -> Reqs
+cppCoderReqs (CppCoderFn _ reqs) = reqs
+cppCoderReqs (CppCoderExpr _ reqs) = reqs
 
 -- | Conversions of C++ class objects in Haskell.
 data HaskellEncoding = HaskellEncoding
@@ -434,6 +619,9 @@ data HaskellEncoding = HaskellEncoding
     -- ^ Decoding function, of type @ct -> IO ht@.
   , haskellEncodingEncoder :: String
     -- ^ Encoding function, of type @ht -> IO ct@.
+  , haskellEncodingImports :: S.Set HaskellImport
+    -- ^ Imports necessary to make use of the Haskell type and references in the
+    -- encoding and decoding expressions.
   } deriving (Show)
 
 -- | A C++ class constructor declaration.

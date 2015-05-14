@@ -4,13 +4,19 @@ module Foreign.Cppop.Runtime.Support (
   encodeAs,
   Decodable (..),
   CCallback (..),
+  freeHaskellFunPtrFunPtr,
   decodeAndFreeCString,
   coerceIntegral,
   ) where
 
 import Data.Typeable (Typeable, typeOf)
-import Foreign (Ptr, free)
+import Foreign (FunPtr, Ptr, free, freeHaskellFunPtr)
 import Foreign.C (CString, peekCString)
+import System.IO.Unsafe (unsafePerformIO)
+
+foreign import ccall "wrapper" newFreeHaskellFunPtrFunPtr
+  :: (FunPtr (IO ()) -> IO ())
+  -> IO (FunPtr (FunPtr (IO ()) -> IO ()))
 
 -- | An instance of this class represents a pointer to a C++ object.
 class CppPtr this where
@@ -55,6 +61,11 @@ class Decodable cppPtrType hsType | cppPtrType -> hsType where
 -- | Internal type that represents a pointer to a C++ callback object (callback
 -- impl object, specifically).
 newtype CCallback fnHsCType = CCallback (Ptr ())
+
+freeHaskellFunPtrFunPtr :: FunPtr (FunPtr (IO ()) -> IO ())
+{-# NOINLINE freeHaskellFunPtrFunPtr #-}
+freeHaskellFunPtrFunPtr =
+  unsafePerformIO $ newFreeHaskellFunPtrFunPtr freeHaskellFunPtr
 
 decodeAndFreeCString :: CString -> IO String
 decodeAndFreeCString cstr = do
