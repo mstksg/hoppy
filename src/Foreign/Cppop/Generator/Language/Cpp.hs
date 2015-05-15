@@ -103,7 +103,7 @@ execGenerator interface m maybeHeaderGuardName action = do
      -- WriterT (S.Set Include) (Either String) String:
      execChunkWriterT $
      -- WriterT [Chunk] (WriterT (S.Set Include) (Either String)) a:
-     flip runReaderT (Env interface m) action)
+     runReaderT action $ Env interface m)
     :: Either String (String, S.Set Include)
   return $ execChunkWriter $ do
     say "////////// GENERATED FILE, EDITS WILL BE LOST //////////\n"
@@ -116,7 +116,7 @@ execGenerator interface m maybeHeaderGuardName action = do
     say "\nextern \"C\" {\n"
     say contents
     say "\n}  // extern \"C\"\n"
-    forM_ maybeHeaderGuardName $ \x -> do
+    forM_ maybeHeaderGuardName $ \x ->
       says ["\n#endif  // ifndef ", x, "\n"]
 
 sayFunction :: String -> [String] -> Type -> Maybe (Generator ()) -> Generator ()
@@ -540,7 +540,7 @@ typeUseReqs rt t = case t of
         reqsSum =
           -- These are roughly in order of decreasing use, for performance.
           (if reqsTypeCUse rt then mappend $ classCppCTypeReqs encoding else id) $
-          (if reqsTypeUse rt then classUseReqs cls else mempty)
+          if reqsTypeUse rt then classUseReqs cls else mempty
     return reqsSum
   TConst t' -> typeUseReqs rt t'
 

@@ -108,10 +108,8 @@ processArgs stateVar args =
           putStrLn $ "--gen-cpp: Failed to generate: " ++ errorMsg
           exitFailure
         Right gen -> do
-          forM_ (M.toList $ Cpp.generatedFiles gen) $ \(subpath, contents) -> do
-            let path = baseDir </> subpath
-            createDirectoryIfMissing True $ takeDirectory path
-            writeFile path contents
+          forM_ (M.toList $ Cpp.generatedFiles gen) $
+            uncurry $ writeGeneratedFile baseDir
           (GenCpp baseDir:) <$> processArgs stateVar rest
 
     "--gen-hs":baseDir:rest -> do
@@ -127,15 +125,19 @@ processArgs stateVar args =
           putStrLn $ "--gen-hs: Failed to generate: " ++ errorMsg
           exitFailure
         Right gen -> do
-          forM_ (M.toList $ Haskell.generatedFiles gen) $ \(subpath, contents) -> do
-            let path = baseDir </> subpath
-            createDirectoryIfMissing True $ takeDirectory path
-            writeFile path contents
+          forM_ (M.toList $ Haskell.generatedFiles gen) $
+            uncurry $ writeGeneratedFile baseDir
           (GenHaskell baseDir:) <$> processArgs stateVar rest
 
     arg:_ -> do
       putStrLn $ "Invalid option or missing argument for " ++ arg ++ "."
       exitFailure
+
+writeGeneratedFile :: FilePath -> FilePath -> String -> IO ()
+writeGeneratedFile baseDir subpath contents = do
+  let path = baseDir </> subpath
+  createDirectoryIfMissing True $ takeDirectory path
+  writeFile path contents
 
 withCurrentCache :: MVar AppState -> (InterfaceCache -> IO (InterfaceCache, a)) -> IO a
 withCurrentCache stateVar fn = modifyMVar stateVar $ \state -> do

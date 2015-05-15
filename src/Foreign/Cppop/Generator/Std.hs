@@ -14,7 +14,7 @@ import Language.Haskell.Syntax (
 {-# ANN module "HLint: ignore Use camelCase" #-}
 
 mod_std :: Module
-mod_std = modifyModule' (makeModule "std" "std.hpp" "std.cpp") $ do
+mod_std = modifyModule' (makeModule "std" "std.hpp" "std.cpp") $
   addModuleExports [ExportClass c_std__string]
 
 c_std__string :: Class

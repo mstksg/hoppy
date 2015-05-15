@@ -133,7 +133,7 @@ interface ifName modules = do
   let extNamesToModules :: M.Map ExtName [Module]
       extNamesToModules =
         M.unionsWith (++) $
-        map (\m -> fmap (const [m]) $ moduleExports m) modules
+        map (\m -> const [m] <$> moduleExports m) modules
 
       extNamesInMultipleModules :: [(ExtName, [Module])]
       extNamesInMultipleModules =
