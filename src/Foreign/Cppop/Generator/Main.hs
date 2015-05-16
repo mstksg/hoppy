@@ -11,6 +11,7 @@ import Data.List (intercalate)
 import qualified Data.Map as M
 import Data.Map (Map)
 import Data.Maybe (fromMaybe)
+import Foreign.Cppop.Common (writeFileIfDifferent)
 import qualified Foreign.Cppop.Generator.Language.Cpp as Cpp
 import qualified Foreign.Cppop.Generator.Language.Haskell as Haskell
 import Foreign.Cppop.Generator.Spec
@@ -137,7 +138,7 @@ writeGeneratedFile :: FilePath -> FilePath -> String -> IO ()
 writeGeneratedFile baseDir subpath contents = do
   let path = baseDir </> subpath
   createDirectoryIfMissing True $ takeDirectory path
-  writeFile path contents
+  writeFileIfDifferent path contents
 
 withCurrentCache :: MVar AppState -> (InterfaceCache -> IO (InterfaceCache, a)) -> IO a
 withCurrentCache stateVar fn = modifyMVar stateVar $ \state -> do
