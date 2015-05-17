@@ -59,12 +59,14 @@ module Foreign.Cppop.Generator.Spec (
   Function, makeFn, fnIdentifier, fnExtName, fnPurity, fnParams, fnReturn, fnUseReqs,
   Class, makeClass, classIdentifier, classExtName, classSuperclasses, classCtors, classMethods,
   classConversions, classUseReqs,
-  Ctor, makeCtor, ctorExtName, ctorParams,
+  Ctor, makeCtor, mkCtor, ctorExtName, ctorParams,
   Method,
   MethodApplicability (..),
   Constness (..),
   Staticness (..),
-  makeMethod, methodCName, methodExtName, methodApplicability, methodPurity, methodParams,
+  makeMethod, mkMethod, mkMethod', mkConstMethod, mkConstMethod', mkStaticMethod, mkStaticMethod',
+  mkProps, mkProp, mkStaticProp, mkBoolIsProp, mkBoolHasProp,
+  methodCName, methodExtName, methodApplicability, methodPurity, methodParams,
   methodReturn, methodConst, methodStatic,
   -- ** Conversions to and from foreign values
   ClassConversions (..),
@@ -91,7 +93,7 @@ import Control.Arrow ((&&&))
 import Control.Monad (liftM2, unless)
 import Control.Monad.Except (MonadError, Except, runExcept, throwError)
 import Control.Monad.State (MonadState, StateT, execStateT, get, modify)
-import Data.Char (isAlpha, isAlphaNum)
+import Data.Char (isAlpha, isAlphaNum, toUpper)
 import Data.Function (on)
 import Data.List (intercalate)
 import qualified Data.Map as M
@@ -580,6 +582,10 @@ makeCtor :: ExtName
          -> Ctor
 makeCtor = Ctor
 
+mkCtor :: Class -> String -> [Type] -> Ctor
+mkCtor this name =
+  makeCtor (toExtName $ fromExtName (classExtName this) ++ "_" ++ name)
+
 -- | A C++ class method declaration.
 data Method = Method
   { methodCName :: String
@@ -605,15 +611,6 @@ data Constness = Nonconst | Const
 data Staticness = Nonstatic | Static
                deriving (Eq, Show)
 
-makeMethod :: String  -- ^ The C name of the method.
-           -> ExtName
-           -> MethodApplicability
-           -> Purity
-           -> [Type]  -- ^ Parameter types.
-           -> Type  -- ^ Return type.
-           -> Method
-makeMethod = Method
-
 methodConst :: Method -> Constness
 methodConst method = case methodApplicability method of
   MConst -> Const
@@ -623,6 +620,84 @@ methodStatic :: Method -> Staticness
 methodStatic method = case methodApplicability method of
   MStatic -> Static
   _ -> Nonstatic
+
+makeMethod :: String  -- ^ The C name of the method.
+           -> ExtName
+           -> MethodApplicability
+           -> Purity
+           -> [Type]  -- ^ Parameter types.
+           -> Type  -- ^ Return type.
+           -> Method
+makeMethod = Method
+
+mkMethod :: Class -> String -> [Type] -> Type -> Method
+mkMethod this name =
+  makeMethod name (toExtName $ fromExtName (classExtName this) ++ "_" ++ name)
+  MNormal Nonpure
+
+mkMethod' :: Class -> String -> String -> [Type] -> Type -> Method
+mkMethod' this cName hsName =
+  makeMethod cName (toExtName $ fromExtName (classExtName this) ++ "_" ++ hsName)
+  MNormal Nonpure
+
+mkConstMethod :: Class -> String -> [Type] -> Type -> Method
+mkConstMethod this name =
+  makeMethod name (toExtName $ fromExtName (classExtName this) ++ "_" ++ name)
+  MConst Nonpure
+
+mkConstMethod' :: Class -> String -> String -> [Type] -> Type -> Method
+mkConstMethod' this cName hsName =
+  makeMethod cName (toExtName $ fromExtName (classExtName this) ++ "_" ++ hsName)
+  MConst Nonpure
+
+mkStaticMethod :: Class -> String -> [Type] -> Type -> Method
+mkStaticMethod this name =
+  makeMethod name (toExtName $ fromExtName (classExtName this) ++ "_" ++ name)
+  MStatic Nonpure
+
+mkStaticMethod' :: Class -> String -> String -> [Type] -> Type -> Method
+mkStaticMethod' this cName hsName =
+  makeMethod cName (toExtName $ fromExtName (classExtName this) ++ "_" ++ hsName)
+  MStatic Nonpure
+
+mkProps :: [[Method]] -> [Method]
+mkProps = concat
+
+mkProp :: Class -> String -> Type -> [Method]
+mkProp this name t =
+  let c:cs = name
+      setName = 's' : 'e' : 't' : toUpper c : cs
+  in [ mkConstMethod this name [] t
+     , mkMethod this setName [t] TVoid
+     ]
+
+mkStaticProp :: Class -> String -> Type -> [Method]
+mkStaticProp this name t =
+  let c:cs = name
+      setName = 's' : 'e' : 't' : toUpper c : cs
+  in [ mkStaticMethod this name [] t
+     , mkStaticMethod this setName [t] TVoid
+     ]
+
+mkBoolIsProp :: Class -> String -> [Method]
+mkBoolIsProp this name =
+  let c:cs = name
+      name' = toUpper c : cs
+      isName = 'i':'s':name'
+      setName = 's':'e':'t':name'
+  in [ mkConstMethod this isName [] TBool
+     , mkMethod this setName [TBool] TVoid
+     ]
+
+mkBoolHasProp :: Class -> String -> [Method]
+mkBoolHasProp this name =
+  let c:cs = name
+      name' = toUpper c : cs
+      hasName = 'h':'a':'s':name'
+      setName = 's':'e':'t':name'
+  in [ mkConstMethod this hasName [] TBool
+     , mkMethod this setName [TBool] TVoid
+     ]
 
 -- | A non-C++ function that can be invoked via a C++ functor.
 data Callback = Callback
