@@ -74,7 +74,7 @@ getModuleName interface m =
   fromMaybe [toModuleName $ moduleName m] (moduleHaskellName m)
 
 toModuleName :: String -> String
-toModuleName (x:xs) = toUpper x : map toLower xs
+toModuleName (x:xs) = toUpper x : xs
 toModuleName "" = ""
 
 type HsExport = String
