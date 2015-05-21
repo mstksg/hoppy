@@ -12,6 +12,7 @@ import Data.List (intersperse)
 import Data.Tree (flatten, unfoldTree)
 import qualified Data.Map as M
 import Data.Maybe (isJust, mapMaybe)
+import Data.Monoid (mconcat)
 import Foreign.Cppop.Common
 import Foreign.Cppop.Generator.Spec
 import Foreign.Cppop.Generator.Language.Cpp.General (
@@ -76,9 +77,7 @@ sayExportEnum mode enum = case mode of
     let hsTypeName = toHsEnumTypeName enum
         values :: [(Int, String)]
         values = map (second $ toHsEnumCtorName enum) $ enumValueNames enum
-    addImportForPrelude
-    addImport "Prelude (($))"
-    addImport "Prelude ((++))"
+    addImports $ mconcat [hsImports "Prelude" ["($)", "(++)"], hsImportForPrelude]
 
     -- Print out the data declaration.
     ln
@@ -135,11 +134,10 @@ sayExportFn mode name methodInfo purity paramTypes retType =
       -- namely ($) and (>>=).  (So finish the line with ($).)
       lineEnd <- case purity of
         Nonpure -> return [" ="]
-        Pure -> do addImport "Prelude (($))"
-                   addImportForUnsafeIO
+        Pure -> do addImports $ mconcat [hsImport1 "Prelude" "($)", hsImportForUnsafeIO]
                    return [" = CppopSIU.unsafePerformIO $"]
       saysLn $ hsFnName : map (' ':) argNamesWithThis ++ lineEnd
-      addImport "Prelude ((>>=))"
+      addImports $ hsImport1 "Prelude" "(>>=)"
       indent $ do
         forM_ (zip3 paramTypes argNames convertedArgNames) $ \(t, argName, argName') ->
           sayEncode t [" ", argName, " >>= \\", argName', " ->"]
@@ -199,9 +197,7 @@ sayExportCallback mode cb = do
 
   case mode of
     SayExportForeignImports -> do
-      addImportForForeign
-      addImportForPrelude
-      addImportForSupport
+      addImports $ mconcat [hsImportForForeign, hsImportForPrelude, hsImportForSupport]
       let hsFunPtrType = HsTyApp (HsTyCon $ UnQual $ HsIdent "CppopF.FunPtr") hsFnCType
           hsFunPtrImportType =
             HsTyFun hsFnCType $
@@ -230,8 +226,7 @@ sayExportCallback mode cb = do
          show cb) =<<
         cppTypeToHsTypeAndUse HsHsSide fnType
 
-      addImportForPrelude
-      addImportForSupport
+      addImports $ mconcat [hsImportForPrelude, hsImportForSupport]
       let wholeFnType =
             HsTyFun hsFnHsType $
             HsTyApp (HsTyCon $ UnQual $ HsIdent "CppopP.IO") $
@@ -246,7 +241,7 @@ sayExportCallback mode cb = do
         sayLet
           [do saysLn ["f'c ", unwords argNames, " ="]
               indent $ do
-                addImport "Prelude ((>>=))"
+                addImports $ hsImport1 "Prelude" "(>>=)"
                 forM_ (zip3 paramTypes argNames argNames') $ \(t, argName, argName') ->
                   sayDecode t [" ", argName, " >>= \\", argName', " ->"]
                 saysLn $ "f'hs" : map (' ':) argNames' ++ [" >>="]
@@ -257,37 +252,35 @@ sayExportCallback mode cb = do
 
 sayEncode :: Type -> [String] -> Generator ()
 sayEncode t suffix = case t of
-  TVoid -> addImportForPrelude >> saysLn ("CppopP.return" : suffix)
-  TBool -> addImportForPrelude >> saysLn ("CppopP.return" : suffix)
-  TChar -> addImportForPrelude >> saysLn ("CppopP.return" : suffix)
-  TUChar -> addImportForPrelude >> saysLn ("CppopP.return" : suffix)
-  TShort -> addImportForPrelude >> saysLn ("CppopP.return" : suffix)
-  TUShort -> addImportForPrelude >> saysLn ("CppopP.return" : suffix)
-  TInt -> addImportForPrelude >> saysLn ("CppopP.return" : suffix)
-  TUInt -> addImportForPrelude >> saysLn ("CppopP.return" : suffix)
-  TLong -> addImportForPrelude >> saysLn ("CppopP.return" : suffix)
-  TULong -> addImportForPrelude >> saysLn ("CppopP.return" : suffix)
-  TLLong -> addImportForPrelude >> saysLn ("CppopP.return" : suffix)
-  TULLong -> addImportForPrelude >> saysLn ("CppopP.return" : suffix)
-  TFloat -> addImportForPrelude >> saysLn ("CppopP.return" : suffix)
-  TDouble -> addImportForPrelude >> saysLn ("CppopP.return" : suffix)
-  TSize -> addImportForPrelude >> saysLn ("CppopP.return" : suffix)
-  TSSize -> addImportForPrelude >> saysLn ("CppopP.return" : suffix)
+  TVoid -> addImports hsImportForPrelude >> saysLn ("CppopP.return" : suffix)
+  TBool -> addImports hsImportForPrelude >> saysLn ("CppopP.return" : suffix)
+  TChar -> addImports hsImportForPrelude >> saysLn ("CppopP.return" : suffix)
+  TUChar -> addImports hsImportForPrelude >> saysLn ("CppopP.return" : suffix)
+  TShort -> addImports hsImportForPrelude >> saysLn ("CppopP.return" : suffix)
+  TUShort -> addImports hsImportForPrelude >> saysLn ("CppopP.return" : suffix)
+  TInt -> addImports hsImportForPrelude >> saysLn ("CppopP.return" : suffix)
+  TUInt -> addImports hsImportForPrelude >> saysLn ("CppopP.return" : suffix)
+  TLong -> addImports hsImportForPrelude >> saysLn ("CppopP.return" : suffix)
+  TULong -> addImports hsImportForPrelude >> saysLn ("CppopP.return" : suffix)
+  TLLong -> addImports hsImportForPrelude >> saysLn ("CppopP.return" : suffix)
+  TULLong -> addImports hsImportForPrelude >> saysLn ("CppopP.return" : suffix)
+  TFloat -> addImports hsImportForPrelude >> saysLn ("CppopP.return" : suffix)
+  TDouble -> addImports hsImportForPrelude >> saysLn ("CppopP.return" : suffix)
+  TSize -> addImports hsImportForPrelude >> saysLn ("CppopP.return" : suffix)
+  TSSize -> addImports hsImportForPrelude >> saysLn ("CppopP.return" : suffix)
   -- TODO The coersion here is unnecssary if we replace the C numeric types with
   -- their Haskell ones across the board (e.g. CInt -> Int).
-  TEnum _ -> do addImport "Prelude ((.))"
-                addImportForPrelude
-                addImportForSupport
+  TEnum _ -> do addImports $ mconcat [hsImport1 "Prelude" "(.)",
+                                      hsImportForPrelude,
+                                      hsImportForSupport]
                 saysLn $ "(CppopP.return . CppopFCRS.coerceIntegral . CppopP.fromEnum)" : suffix
   TPtr (TObj cls) -> do
-    addImport "Prelude ((.))"
-    addImportForPrelude
+    addImports $ mconcat [hsImport1 "Prelude" "(.)", hsImportForPrelude]
     saysLn $ "(CppopP.return . " : toHsCastMethodName Nonconst cls : ")" : suffix
   TPtr (TConst (TObj cls)) -> do
-    addImport "Prelude ((.))"
-    addImportForPrelude
+    addImports $ mconcat [hsImport1 "Prelude" "(.)", hsImportForPrelude]
     saysLn $ "(CppopP.return . " : toHsCastMethodName Const cls : ")" : suffix
-  TPtr _ -> addImportForPrelude >> saysLn ("CppopP.return" : suffix)
+  TPtr _ -> addImports hsImportForPrelude >> saysLn ("CppopP.return" : suffix)
   TRef {} -> abort "sayEncode: TRef unimplemented."
   TFn {} -> abort "sayEncode: TFn unimplemented."
   TCallback cb -> do
@@ -295,7 +288,7 @@ sayEncode t suffix = case t of
     saysLn $ toHsCallbackCtorName cb : suffix
   TObj cls -> case classHaskellType $ classEncoding cls of
     Just encoding -> do
-      addImportSet $ haskellEncodingFnImports encoding
+      addImports $ haskellEncodingFnImports encoding
       -- TODO Use the Encode class here?
       saysLn $ "(" : haskellEncodingEncoder encoding : ")" : suffix
     Nothing -> abort $ "sayEncode: Can't encode class: " ++ show cls
@@ -303,35 +296,35 @@ sayEncode t suffix = case t of
 
 sayDecode :: Type -> [String] -> Generator ()
 sayDecode t suffix = case t of
-  TVoid -> addImportForPrelude >> saysLn ("CppopP.return" : suffix)
-  TBool -> addImportForPrelude >> saysLn ("CppopP.return" : suffix)
-  TChar -> addImportForPrelude >> saysLn ("CppopP.return" : suffix)
-  TUChar -> addImportForPrelude >> saysLn ("CppopP.return" : suffix)
-  TShort -> addImportForPrelude >> saysLn ("CppopP.return" : suffix)
-  TUShort -> addImportForPrelude >> saysLn ("CppopP.return" : suffix)
-  TInt -> addImportForPrelude >> saysLn ("CppopP.return" : suffix)
-  TUInt -> addImportForPrelude >> saysLn ("CppopP.return" : suffix)
-  TLong -> addImportForPrelude >> saysLn ("CppopP.return" : suffix)
-  TULong -> addImportForPrelude >> saysLn ("CppopP.return" : suffix)
-  TLLong -> addImportForPrelude >> saysLn ("CppopP.return" : suffix)
-  TULLong -> addImportForPrelude >> saysLn ("CppopP.return" : suffix)
-  TFloat -> addImportForPrelude >> saysLn ("CppopP.return" : suffix)
-  TDouble -> addImportForPrelude >> saysLn ("CppopP.return" : suffix)
-  TSize -> addImportForPrelude >> saysLn ("CppopP.return" : suffix)
-  TSSize -> addImportForPrelude >> saysLn ("CppopP.return" : suffix)
+  TVoid -> addImports hsImportForPrelude >> saysLn ("CppopP.return" : suffix)
+  TBool -> addImports hsImportForPrelude >> saysLn ("CppopP.return" : suffix)
+  TChar -> addImports hsImportForPrelude >> saysLn ("CppopP.return" : suffix)
+  TUChar -> addImports hsImportForPrelude >> saysLn ("CppopP.return" : suffix)
+  TShort -> addImports hsImportForPrelude >> saysLn ("CppopP.return" : suffix)
+  TUShort -> addImports hsImportForPrelude >> saysLn ("CppopP.return" : suffix)
+  TInt -> addImports hsImportForPrelude >> saysLn ("CppopP.return" : suffix)
+  TUInt -> addImports hsImportForPrelude >> saysLn ("CppopP.return" : suffix)
+  TLong -> addImports hsImportForPrelude >> saysLn ("CppopP.return" : suffix)
+  TULong -> addImports hsImportForPrelude >> saysLn ("CppopP.return" : suffix)
+  TLLong -> addImports hsImportForPrelude >> saysLn ("CppopP.return" : suffix)
+  TULLong -> addImports hsImportForPrelude >> saysLn ("CppopP.return" : suffix)
+  TFloat -> addImports hsImportForPrelude >> saysLn ("CppopP.return" : suffix)
+  TDouble -> addImports hsImportForPrelude >> saysLn ("CppopP.return" : suffix)
+  TSize -> addImports hsImportForPrelude >> saysLn ("CppopP.return" : suffix)
+  TSSize -> addImports hsImportForPrelude >> saysLn ("CppopP.return" : suffix)
   -- TODO The coersion here is unnecssary if we replace the C numeric types with
   -- their Haskell ones across the board (e.g. CInt -> Int).
-  TEnum _ -> do addImport "Prelude ((.))"
-                addImportForPrelude
-                addImportForSupport
+  TEnum _ -> do addImports $ mconcat [hsImport1 "Prelude" "(.)",
+                                      hsImportForPrelude,
+                                      hsImportForSupport]
                 saysLn $ "(CppopP.return . CppopP.toEnum . CppopFCRS.coerceIntegral)" : suffix
-  TPtr _ -> addImportForPrelude >> saysLn ("CppopP.return" : suffix)
+  TPtr _ -> addImports hsImportForPrelude >> saysLn ("CppopP.return" : suffix)
   TRef {} -> abort "sayDecode: TRef unimplemented."
   TFn {} -> abort "sayDecode: TFn unimplemented."
   TCallback {} -> abort "sayDecode: TCallback unimplemented."
   TObj cls -> case classHaskellType $ classEncoding cls of
     Just encoding -> do
-      addImportSet $ haskellEncodingFnImports encoding
+      addImports $ haskellEncodingFnImports encoding
       saysLn $ "(" : haskellEncodingDecoder encoding : ")" : suffix
     Nothing -> abort $ "sayDecode: Can't decode class: " ++ show cls
   TConst t' -> sayDecode t' suffix
@@ -343,9 +336,9 @@ sayExportClass mode cls = do
       -- It doesn't matter when we emit the imports the class requires, but we
       -- only need to do it once.
       forM_ (classHaskellType $ classEncoding cls) $ \encoding -> do
-        addImportSet $ haskellEncodingTypeImports encoding
-        addImportSet $ haskellEncodingCTypeImports encoding
-        addImportSet $ haskellEncodingFnImports encoding
+        addImports $ haskellEncodingTypeImports encoding
+        addImports $ haskellEncodingCTypeImports encoding
+        addImports $ haskellEncodingFnImports encoding
       mapM_ addImportsForSuperclasses $ classSuperclasses cls
 
       sayExportClassHsCtors mode cls
@@ -391,9 +384,7 @@ sayExportClassHsClass cls cst = do
           Nonconst -> toHsClassName Const cls : map (toHsClassName Nonconst) supers
       hsCastMethodName = toHsCastMethodName cst cls
 
-  addImport "Prelude ((.))"
-  addImportForForeign
-  addImportForSupport
+  addImports $ mconcat [hsImport1 "Prelude" "(.)", hsImportForForeign, hsImportForSupport]
   ln
   saysLn $
     "class (" :
@@ -423,8 +414,7 @@ sayExportClassHsStaticMethods cls =
 sayExportClassHsType :: Class -> Constness -> Generator ()
 sayExportClassHsType cls cst = do
   let hsTypeName = toHsDataTypeName cst cls
-  addImportForForeign
-  addImportForSupport
+  addImports $ mconcat [hsImportForForeign, hsImportForSupport]
   ln
   saysLn ["newtype ", hsTypeName, " = ", hsTypeName, " (CppopF.Ptr ", hsTypeName, ")"]
   ln
@@ -432,7 +422,7 @@ sayExportClassHsType cls cst = do
   saysLn ["  toPtr (", hsTypeName, " ptr) = ptr"]
   deleteTail <- case cst of
     Const -> return []
-    Nonconst -> do addImport "Prelude ((.))"
+    Nonconst -> do addImports $ hsImport1 "Prelude" "(.)"
                    return [" . ", toHsCastMethodName Const cls]
   saysLn $ "  delete = " : toHsClassDeleteFnName cls : deleteTail
   ln
@@ -446,7 +436,7 @@ sayExportClassHsNull :: Class -> Generator ()
 sayExportClassHsNull cls = do
   let clsExtName = classExtName cls
       clsHsNullName = toHsClassNullName cls
-  addImportForForeign
+  addImports hsImportForForeign
   ln
   saysLn [clsHsNullName, " :: ", toHsTypeName Nonconst clsExtName]
   saysLn [clsHsNullName, " = ", toHsTypeName Nonconst clsExtName, " CppopF.nullPtr"]
@@ -462,7 +452,7 @@ sayExportClassHsSpecialFns mode cls = do
   -- Say the delete function.
   case mode of
     SayExportForeignImports -> do
-      addImportForPrelude
+      addImports hsImportForPrelude
       saysLn ["foreign import ccall \"", classDeleteFnCppName cls, "\" ",
               toHsClassDeleteFnName cls, " :: ", toHsDataTypeName Const cls,
               " -> CppopP.IO ()"]
@@ -482,16 +472,16 @@ sayExportClassHsSpecialFns mode cls = do
       SayExportForeignImports -> do
         let hsPtrType = HsTyCon $ UnQual $ HsIdent typeName
             hsConstPtrType = HsTyCon $ UnQual $ HsIdent typeNameConst
-        addImportForPrelude
+        addImports hsImportForPrelude
         saysLn ["foreign import ccall \"", classEncodeFnCppName cls, "\" ",
                 toHsClassEncodeFnName cls, " :: ", prettyPrint (fnInIO cType hsPtrType)]
         saysLn ["foreign import ccall \"", classDecodeFnCppName cls, "\" ",
                 toHsClassDecodeFnName cls, " :: ", prettyPrint (fnInIO hsConstPtrType cType)]
 
       SayExportDecls -> do
-        addImportForPrelude
-        addImportForSupport
-        addImport "Control.Monad ((>=>))"
+        addImports $ mconcat [hsImport1 "Control.Monad" "(>=>)",
+                              hsImportForPrelude,
+                              hsImportForSupport]
 
         -- Say the Encodable instances.
         ln
@@ -546,7 +536,7 @@ fnToHsTypeAndUse side methodInfo purity paramTypes returnType = do
           hsReturn' <- case purity of
             Pure -> return hsReturn
             Nonpure -> do
-              addImportForPrelude
+              addImports hsImportForPrelude
               return $ HsTyApp (HsTyCon $ UnQual $ HsIdent "CppopP.IO") hsReturn
           return $ Just $ HsQualType context $ foldr HsTyFun hsReturn' hsParams
 

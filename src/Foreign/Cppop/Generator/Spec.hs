@@ -74,11 +74,21 @@ module Foreign.Cppop.Generator.Spec (
   HaskellEncoding (..),
   -- * Callbacks
   Callback, makeCallback, callbackExtName, callbackParams, callbackReturn, callbackToTFn,
+  -- * Haskell imports
+  HsModuleName, HsImportSet, HsImportKey (..), HsImportSpecs (..), HsImportName, HsImportVal (..),
+  hsWholeModuleImport, hsQualifiedImport, hsImport1, hsImport1', hsImports, hsImports',
+  -- ** Internal to Cppop
+  getHsImportSet,
+  hsImportForForeign,
+  hsImportForForeignC,
+  hsImportForPrelude,
+  hsImportForSupport,
+  hsImportForUnsafeIO,
   ) where
 
 import Control.Applicative ((<$>), (<*>))
 import Control.Arrow ((&&&))
-import Control.Monad (unless)
+import Control.Monad (liftM2, unless)
 import Control.Monad.Except (MonadError, Except, runExcept, throwError)
 import Control.Monad.State (MonadState, StateT, execStateT, gets, modify)
 import Data.Char (isAlpha, isAlphaNum)
@@ -558,11 +568,11 @@ data HaskellEncoding = HaskellEncoding
     -- ^ Decoding function, of type @ct -> IO ht@.
   , haskellEncodingEncoder :: String
     -- ^ Encoding function, of type @ht -> IO ct@.
-  , haskellEncodingTypeImports :: S.Set HaskellImport
+  , haskellEncodingTypeImports :: HsImportSet
     -- ^ Imports necessary to make use of @ht@.
-  , haskellEncodingCTypeImports :: S.Set HaskellImport
+  , haskellEncodingCTypeImports :: HsImportSet
     -- ^ Imports necessary to make use of @ct@.
-  , haskellEncodingFnImports :: S.Set HaskellImport
+  , haskellEncodingFnImports :: HsImportSet
     -- ^ Imports necessary to make use of @haskellEncodingDecoder@ and
     -- @haskellEncodingDecoder@.
   } deriving (Show)
@@ -637,3 +647,116 @@ makeCallback = Callback
 -- | Creates a 'TFn' from a callback's parameter and return types.
 callbackToTFn :: Callback -> Type
 callbackToTFn = TFn <$> callbackParams <*> callbackReturn
+
+-- | A collection of imports for a Haskell module.  This is a monoid: import
+-- Statements are merged to give the union of imported bindings.
+--
+-- This structure supports two specific types of imports:
+--     - @import Foo (...)@
+--     - @import qualified Foo as Bar@
+-- Imports with @as@ but without @qualified@, and @qualified@ imports with a
+-- spec list, are not supported.  This satisfies the needs of the code
+-- generator, and keeps the merging logic simple.
+newtype HsImportSet = HsImportSet { getHsImportSet :: M.Map HsImportKey HsImportSpecs }
+                    deriving (Show)
+
+instance Monoid HsImportSet where
+  mempty = HsImportSet M.empty
+
+  mappend (HsImportSet m) (HsImportSet m') =
+    HsImportSet $ M.unionWith mergeImportSpecs m m'
+
+  mconcat sets =
+    HsImportSet $ M.unionsWith mergeImportSpecs $ map getHsImportSet sets
+
+-- | A Haskell module name.
+type HsModuleName = String
+
+-- | References an occurrence of an import statement, under which bindings can
+-- be imported.  Only imported specs under equal 'HsImportKey's may be merged.
+data HsImportKey = HsImportKey
+  { hsImportModule :: HsModuleName
+  , hsImportQualifiedName :: Maybe HsModuleName
+  } deriving (Eq, Ord, Show)
+
+-- | A specification of bindings to import from a module.  If 'Nothing', then
+-- the entire module is imported.  If @'Just' 'M.empty'@, then only instances
+-- are imported.
+newtype HsImportSpecs = HsImportSpecs
+  { getHsImportSpecs :: Maybe (M.Map HsImportName HsImportVal)
+  } deriving (Show)
+
+mergeImportSpecs :: HsImportSpecs -> HsImportSpecs -> HsImportSpecs
+mergeImportSpecs (HsImportSpecs s) (HsImportSpecs s') = HsImportSpecs $ liftM2 mergeMaps s s'
+  where mergeMaps m m' = M.unionWith mergeValues m m'
+        mergeValues v v' = case (v, v') of
+          (HsImportValAll, _) -> HsImportValAll
+          (_, HsImportValAll) -> HsImportValAll
+          (HsImportValSome s, HsImportValSome s') -> HsImportValSome $ s ++ s'
+          (x@(HsImportValSome _), _) -> x
+          (_, x@(HsImportValSome _)) -> x
+          (HsImportVal, HsImportVal) -> HsImportVal
+
+-- | An identifier that can be imported from a module.  Symbols may be used here
+-- when surrounded by parentheses.  Examples are @\"fmap\"@ and @\"(++)\"@.
+type HsImportName = String
+
+-- | Specifies how a name is imported.
+data HsImportVal =
+  HsImportVal
+  -- ^ The name is imported, and nothing underneath it is.
+  | HsImportValSome [HsImportName]
+    -- ^ The name is imported, as are specific names underneath it.  This is a
+    -- @X (a, b, c)@ import.
+  | HsImportValAll
+    -- ^ The name is imported, along with all names underneath it.  This is a @X
+    -- (..)@ import.
+  deriving (Show)
+
+-- | An import for the entire contents of a Haskell module.
+hsWholeModuleImport :: HsModuleName -> HsImportSet
+hsWholeModuleImport moduleName =
+  HsImportSet $ M.singleton (HsImportKey moduleName Nothing) $
+  HsImportSpecs Nothing
+
+-- | A qualified import of a Haskell module.
+hsQualifiedImport :: HsModuleName -> HsModuleName -> HsImportSet
+hsQualifiedImport moduleName qualifiedName =
+  HsImportSet $ M.singleton (HsImportKey moduleName $ Just qualifiedName) $
+  HsImportSpecs Nothing
+
+-- | An import of a single name from a Haskell module.
+hsImport1 :: HsModuleName -> HsImportName -> HsImportSet
+hsImport1 moduleName valueName = hsImport1' moduleName valueName HsImportVal
+
+-- | A detailed import of a single name from a Haskell module.
+hsImport1' :: HsModuleName -> HsImportName -> HsImportVal -> HsImportSet
+hsImport1' moduleName valueName valueType =
+  HsImportSet $ M.singleton (HsImportKey moduleName Nothing) $
+  HsImportSpecs $ Just $ M.singleton valueName valueType
+
+-- | An import of multiple names from a Haskell module.
+hsImports :: HsModuleName -> [HsImportName] -> HsImportSet
+hsImports moduleName names =
+  hsImports' moduleName $ map (\name -> (name, HsImportVal)) names
+
+-- | A detailed import of multiple names from a Haskell module.
+hsImports' :: HsModuleName -> [(HsImportName, HsImportVal)] -> HsImportSet
+hsImports' moduleName values =
+  HsImportSet $ M.singleton (HsImportKey moduleName Nothing) $
+  HsImportSpecs $ Just $ M.fromList values
+
+hsImportForForeign :: HsImportSet
+hsImportForForeign = hsQualifiedImport "Foreign" "CppopF"
+
+hsImportForForeignC :: HsImportSet
+hsImportForForeignC = hsQualifiedImport "Foreign.C" "CppopFC"
+
+hsImportForPrelude :: HsImportSet
+hsImportForPrelude = hsQualifiedImport "Prelude" "CppopP"
+
+hsImportForSupport :: HsImportSet
+hsImportForSupport = hsQualifiedImport "Foreign.Cppop.Runtime.Support" "CppopFCRS"
+
+hsImportForUnsafeIO :: HsImportSet
+hsImportForUnsafeIO = hsQualifiedImport "System.IO.Unsafe" "CppopSIU"

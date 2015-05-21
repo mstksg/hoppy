@@ -2,7 +2,6 @@ module Foreign.Cppop.Generator.Language.Haskell.General (
   getModuleName,
   toModuleName,
   HsExport,
-  HsImport,
   -- * Code generators
   Generator,
   runGenerator,
@@ -12,15 +11,8 @@ module Foreign.Cppop.Generator.Language.Haskell.General (
   addExport,
   addExports,
   -- * Imports
-  addImport,
   addImports,
-  addImportSet,
   importHsModuleForExtName,
-  -- ** Internal to Cppop
-  addImportForForeign,
-  addImportForPrelude,
-  addImportForSupport,
-  addImportForUnsafeIO,
   -- * Code generation
   sayLn,
   saysLn,
@@ -53,11 +45,10 @@ import Control.Monad.Trans (lift)
 import Control.Monad.Writer (WriterT, censor, runWriterT, tell)
 import Data.Char (toLower, toUpper)
 import Data.Foldable (forM_)
-import Data.List (intercalate)
+import Data.List (intercalate, intersperse)
 import qualified Data.Map as M
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, isJust)
 import Data.Monoid (Monoid, mappend, mconcat, mempty)
-import qualified Data.Set as S
 import Foreign.Cppop.Generator.Spec
 import qualified Language.Haskell.Pretty as P
 import Language.Haskell.Syntax (
@@ -79,24 +70,90 @@ toModuleName "" = ""
 
 type HsExport = String
 
-type HsImport = String
+-- | Renders a set of imports in Haskell syntax on multiple lines.
+renderImports :: HsImportSet -> [String]
+renderImports = map renderModuleImport . M.assocs . getHsImportSet
+  where -- | Renders an import as a string that contains one or more lines.
+        renderModuleImport :: (HsImportKey, HsImportSpecs) -> String
+        renderModuleImport (key, specs) =
+          let moduleName = hsImportModule key
+              maybeQualifiedName = hsImportQualifiedName key
+              isQual = isJust maybeQualifiedName
+          in case getHsImportSpecs specs of
+            Nothing -> case maybeQualifiedName of
+              Nothing -> "import " ++ moduleName
+              Just qualifiedName -> concat ["import qualified ", moduleName, " as ", qualifiedName]
+            Just specMap ->
+              let specWords :: [String]
+                  specWords = concatWithCommas $ map renderSpecAsWords $ M.assocs specMap
+                  singleLineImport :: String
+                  singleLineImport =
+                    concat $
+                    (if isQual then "import qualified " else "import ") :
+                    moduleName : " (" : intersperse " " specWords ++
+                    case maybeQualifiedName of
+                      Nothing -> [")"]
+                      Just qualifiedName -> [") as ", qualifiedName]
+              in if null $ drop maxLineLength singleLineImport
+                 then singleLineImport
+                 else intercalate "\n" $
+                      ("import " ++ moduleName ++ " (") :
+                      groupWordsIntoLines specWords ++
+                      case maybeQualifiedName of
+                        Nothing -> ["  )"]
+                        Just qualifiedName -> ["  ) as " ++ qualifiedName]
 
-{- TODO Use an import structure that merges imports correctly?
+        -- | Takes an import spec, and returns a list of words that comprise
+        -- that spec.  Line breaking may be performed by the caller only between
+        -- these words.
+        renderSpecAsWords :: (HsImportName, HsImportVal) -> [String]
+        renderSpecAsWords (name, val) = case val of
+          HsImportVal -> [name]
+          -- When we export specific subnames under a name, then we put a
+          -- non-breaking space between the outer name and the first inner name,
+          -- just for a little readability.
+          HsImportValSome parts -> case parts of
+            [] -> [name ++ " ()"]
+            [part] -> [concat [name, " (", part, ")"]]
+            part0:parts -> let (parts', [partN]) = splitAt (length parts - 1) parts
+                           in concat [name, " (", part0, ","] :
+                              map (++ ",") parts' ++
+                              [partN ++ ")"]
+          HsImportValAll -> [name ++ " (..)"]
 
-newtype HsImportSet = HsImportSet { getHsImportSet :: M.Map String (Maybe [String]) }
+        -- | Takes a list of list of words.  Concatenates to get a list of
+        -- words, appending a comma to the final word in each list of words.
+        concatWithCommas :: [[String]] -> [String]
+        concatWithCommas [] = []
+        concatWithCommas ss =
+          let (ss', ssLast@[_]) = splitAt (length ss - 1) ss
+          in concat $ map (onLast (++ ",")) ss' ++ ssLast
 
-data HsImportSpecs = ...
+        -- | Applies a function to the final element of a list, if the list is
+        -- nonempty.
+        onLast :: (a -> a) -> [a] -> [a]
+        onLast _ [] = []
+        onLast f xs = let (xs', [x]) = splitAt (length xs - 1) xs
+                      in xs' ++ [f x]
 
-instance Monoid HsImportSet where
-  mempty = M.empty
+        -- | Takes a list of words, and returns a list of lines with the words
+        -- flowed.
+        groupWordsIntoLines :: [String] -> [String]
+        groupWordsIntoLines [] = []
+        groupWordsIntoLines words =
+          let (wordCount, line, _) =
+                last $
+                takeWhile (\(wordCount, _, len) -> wordCount <= 1 || len <= maxLineLength) $
+                scanl (\(wordCount, acc, len) word ->
+                        (wordCount + 1,
+                         concat [acc, " ", word],
+                         len + 1 + length word))
+                      (0, "", 0)
+                      words
+          in line : groupWordsIntoLines (drop wordCount words)
 
-  mappend (HsImportSet m) (HsImportSet m') = HsImportSet $ M.unionWith mergeImport m m'
-
-  mconcat sets = M.unionsWith mergeImport map getHsImportSet sets
-
-mergeImport :: Maybe [String] -> Maybe [String] -> Maybe [String]
-mergeImport = liftM2 (++)
--}
+        maxLineLength :: Int
+        maxLineLength = 100
 
 type Generator = ReaderT Env (WriterT Output (Either String))
 
@@ -113,12 +170,12 @@ askModuleName = envModuleName <$> ask
 
 data Output = Output
   { outputExports :: [HsExport]
-  , outputImports :: S.Set HsImport
+  , outputImports :: HsImportSet
   , outputBody :: [String]
   }
 
 instance Monoid Output where
-  mempty = Output [] S.empty []
+  mempty = Output mempty mempty mempty
 
   (Output e i b) `mappend` (Output e' i' b') =
     Output (e `mappend` e') (i `mappend` i') (b `mappend` b')
@@ -143,9 +200,9 @@ runGenerator iface moduleName generator = do
               concat ["module ", moduleName, " ("] :
               map (\export -> concat ["  ", export, ","]) exports ++
               ["  ) where"]
-        , if S.null imports
+        , if M.null $ getHsImportSet imports
           then []
-          else "" : map (\i -> "import " ++ i) (S.toList imports)
+          else "" : renderImports imports
         , [""]
         , outputBody output
         ]
@@ -164,29 +221,8 @@ addExport = addExports . (:[])
 addExports :: [HsExport] -> Generator ()
 addExports exports = tell $ mempty { outputExports = exports }
 
-addImport :: HsImport -> Generator ()
-addImport = addImportSet . S.singleton
-
-addImports :: [HsImport] -> Generator ()
-addImports = addImportSet . S.fromList
-
-addImportSet :: S.Set HsImport -> Generator ()
-addImportSet imports = tell $ mempty { outputImports = imports }
-
-addImportForForeign :: Generator ()
-addImportForForeign = addImport "qualified Foreign as CppopF"
-
-addImportForForeignC :: Generator ()
-addImportForForeignC = addImport "qualified Foreign.C as CppopFC"
-
-addImportForPrelude :: Generator ()
-addImportForPrelude = addImport "qualified Prelude as CppopP"
-
-addImportForSupport :: Generator ()
-addImportForSupport = addImport "qualified Foreign.Cppop.Runtime.Support as CppopFCRS"
-
-addImportForUnsafeIO :: Generator ()
-addImportForUnsafeIO = addImport "qualified System.IO.Unsafe as CppopSIU"
+addImports :: HsImportSet -> Generator ()
+addImports imports = tell mempty { outputImports = imports }
 
 importHsModuleForExtName :: ExtName -> Generator ()
 importHsModuleForExtName extName = do
@@ -196,7 +232,7 @@ importHsModuleForExtName extName = do
       let ownerModuleName = getModuleName iface ownerModule
       currentModuleName <- askModuleName
       when (currentModuleName /= ownerModuleName) $
-        addImport ownerModuleName
+        addImports $ hsWholeModuleImport ownerModuleName
     Nothing ->
       abort $ "importHsModuleForExtName: Couldn't find module for ExtName " ++
       show (fromExtName extName) ++ ", maybe you forgot to include it in an exports list?"
@@ -281,31 +317,31 @@ encodingTypeForSide :: HsTypeSide -> HaskellEncoding -> HsType
 encodingTypeForSide HsCSide = haskellEncodingCType
 encodingTypeForSide HsHsSide = haskellEncodingType
 
-encodingTypeImportsForSide :: HsTypeSide -> HaskellEncoding -> S.Set HaskellImport
+encodingTypeImportsForSide :: HsTypeSide -> HaskellEncoding -> HsImportSet
 encodingTypeImportsForSide HsCSide = haskellEncodingCTypeImports
 encodingTypeImportsForSide HsHsSide = haskellEncodingTypeImports
 
 cppTypeToHsTypeAndUse :: HsTypeSide -> Type -> Generator (Maybe HsType)
 cppTypeToHsTypeAndUse side t = case t of
   TVoid -> return $ Just $ HsTyCon $ Special HsUnitCon
-  TBool -> Just (HsTyCon $ UnQual $ HsIdent "CppopP.Bool") <$ addImportForPrelude
-  TChar -> Just (HsTyCon $ UnQual $ HsIdent "CppopFC.CChar") <$ addImportForForeignC
-  TUChar -> Just (HsTyCon $ UnQual $ HsIdent "CppopFC.CUChar") <$ addImportForForeignC
-  TShort -> Just (HsTyCon $ UnQual $ HsIdent "CppopFC.CShort") <$ addImportForForeignC
-  TUShort -> Just (HsTyCon $ UnQual $ HsIdent "CppopFC.CUShort") <$ addImportForForeignC
-  TInt -> Just (HsTyCon $ UnQual $ HsIdent "CppopFC.CInt") <$ addImportForForeignC
-  TUInt -> Just (HsTyCon $ UnQual $ HsIdent "CppopFC.CUInt") <$ addImportForForeignC
-  TLong -> Just (HsTyCon $ UnQual $ HsIdent "CppopFC.CLong") <$ addImportForForeignC
-  TULong -> Just (HsTyCon $ UnQual $ HsIdent "CppopFC.CULong") <$ addImportForForeignC
-  TLLong -> Just (HsTyCon $ UnQual $ HsIdent "CppopFC.CLLong") <$ addImportForForeignC
-  TULLong -> Just (HsTyCon $ UnQual $ HsIdent "CppopFC.CULLong") <$ addImportForForeignC
-  TFloat -> Just (HsTyCon $ UnQual $ HsIdent "CppopFC.CFloat") <$ addImportForForeignC
-  TDouble -> Just (HsTyCon $ UnQual $ HsIdent "CppopFC.CDouble") <$ addImportForForeignC
-  TSize -> Just (HsTyCon $ UnQual $ HsIdent "CppopFC.CSize") <$ addImportForForeignC
+  TBool -> Just (HsTyCon $ UnQual $ HsIdent "CppopP.Bool") <$ addImports hsImportForPrelude
+  TChar -> Just (HsTyCon $ UnQual $ HsIdent "CppopFC.CChar") <$ addImports hsImportForForeignC
+  TUChar -> Just (HsTyCon $ UnQual $ HsIdent "CppopFC.CUChar") <$ addImports hsImportForForeignC
+  TShort -> Just (HsTyCon $ UnQual $ HsIdent "CppopFC.CShort") <$ addImports hsImportForForeignC
+  TUShort -> Just (HsTyCon $ UnQual $ HsIdent "CppopFC.CUShort") <$ addImports hsImportForForeignC
+  TInt -> Just (HsTyCon $ UnQual $ HsIdent "CppopFC.CInt") <$ addImports hsImportForForeignC
+  TUInt -> Just (HsTyCon $ UnQual $ HsIdent "CppopFC.CUInt") <$ addImports hsImportForForeignC
+  TLong -> Just (HsTyCon $ UnQual $ HsIdent "CppopFC.CLong") <$ addImports hsImportForForeignC
+  TULong -> Just (HsTyCon $ UnQual $ HsIdent "CppopFC.CULong") <$ addImports hsImportForForeignC
+  TLLong -> Just (HsTyCon $ UnQual $ HsIdent "CppopFC.CLLong") <$ addImports hsImportForForeignC
+  TULLong -> Just (HsTyCon $ UnQual $ HsIdent "CppopFC.CULLong") <$ addImports hsImportForForeignC
+  TFloat -> Just (HsTyCon $ UnQual $ HsIdent "CppopFC.CFloat") <$ addImports hsImportForForeignC
+  TDouble -> Just (HsTyCon $ UnQual $ HsIdent "CppopFC.CDouble") <$ addImports hsImportForForeignC
+  TSize -> Just (HsTyCon $ UnQual $ HsIdent "CppopFC.CSize") <$ addImports hsImportForForeignC
   TSSize -> return Nothing
   TEnum e ->
     Just . HsTyCon . UnQual . HsIdent <$> case side of
-      HsCSide -> "CppopFC.CInt" <$ addImportForPrelude
+      HsCSide -> "CppopFC.CInt" <$ addImports hsImportForPrelude
       HsHsSide -> toHsEnumTypeName e <$ importHsModuleForExtName (enumExtName e)
   TPtr (TObj cls) -> do
     importHsModuleForExtName $ classExtName cls
@@ -317,7 +353,7 @@ cppTypeToHsTypeAndUse side t = case t of
     paramHsTypesMaybe <- sequence <$> mapM (cppTypeToHsTypeAndUse side) paramTypes
     retHsTypeMaybe <- cppTypeToHsTypeAndUse side retType
     sideFn <- case side of
-      HsCSide -> do addImportForForeign
+      HsCSide -> do addImports hsImportForForeign
                     return $ HsTyApp $ HsTyCon $ UnQual $ HsIdent "CppopF.FunPtr"
       HsHsSide -> return id
     case paramHsTypesMaybe of
@@ -325,11 +361,11 @@ cppTypeToHsTypeAndUse side t = case t of
       Just paramHsTypes -> case retHsTypeMaybe of
         Nothing -> return Nothing
         Just retHsType -> do
-          addImportForPrelude
+          addImports hsImportForPrelude
           return $ Just $ sideFn $
             foldr HsTyFun (HsTyApp (HsTyCon $ UnQual $ HsIdent "CppopP.IO") retHsType) paramHsTypes
   TPtr t' -> do
-    addImportForForeign
+    addImports hsImportForForeign
     fmap (HsTyApp $ HsTyCon $ UnQual $ HsIdent "CppopF.Ptr") <$>
       cppTypeToHsTypeAndUse side t'
   TRef {} -> return Nothing
@@ -341,7 +377,7 @@ cppTypeToHsTypeAndUse side t = case t of
       Just paramHsTypes -> case retHsTypeMaybe of
         Nothing -> return Nothing
         Just retHsType -> do
-          addImportForPrelude
+          addImports hsImportForPrelude
           return $ Just $
             foldr HsTyFun (HsTyApp (HsTyCon $ UnQual $ HsIdent "CppopP.IO") retHsType) paramHsTypes
   TCallback cb -> do
@@ -351,11 +387,11 @@ cppTypeToHsTypeAndUse side t = case t of
       Just hsType -> case side of
         HsHsSide -> return hsTypeMaybe
         HsCSide -> do
-          addImportForSupport
+          addImports hsImportForSupport
           return $ Just $ HsTyApp (HsTyCon $ UnQual $ HsIdent "CppopFCRS.CCallback") hsType
   TObj cls -> do
     forM_ (encodingTypeImportsForSide side <$> classHaskellType (classEncoding cls))
-      addImportSet
+      addImports
     return $ fmap (encodingTypeForSide side) $ classHaskellType $ classEncoding cls
   TConst t' -> cppTypeToHsTypeAndUse side t'
 

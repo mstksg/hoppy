@@ -3,7 +3,7 @@ module Foreign.Cppop.Generator.Std (
   c_std__string,
   ) where
 
-import qualified Data.Set as S
+import Data.Monoid (mappend)
 import Foreign.Cppop.Generator.Spec
 import Language.Haskell.Syntax (
   HsName (HsIdent),
@@ -33,13 +33,9 @@ c_std__string =
              , haskellEncodingCType = HsTyCon $ UnQual $ HsIdent "CppopFC.CString"
              , haskellEncodingDecoder = "CppopFCRS.decodeAndFreeCString"
              , haskellEncodingEncoder = "CppopFC.newCString"
-             , haskellEncodingTypeImports = S.singleton "qualified Prelude as CppopP"
-             , haskellEncodingCTypeImports = S.singleton "qualified Foreign.C as CppopFC"
-             , haskellEncodingFnImports =
-               S.fromList
-               [ "qualified Foreign.C as CppopFC"
-               , "qualified Foreign.Cppop.Runtime.Support as CppopFCRS"
-               ]
+             , haskellEncodingTypeImports = hsImportForPrelude
+             , haskellEncodingCTypeImports = hsImportForForeignC
+             , haskellEncodingFnImports = hsImportForForeignC `mappend` hsImportForSupport
              }
            }) $
   makeClass (ident1 "std" "string") (Just $ toExtName "StdString")
