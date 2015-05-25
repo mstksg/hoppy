@@ -705,7 +705,7 @@ data HsImportSpecs = HsImportSpecs
 mergeImportSpecs :: HsImportSpecs -> HsImportSpecs -> HsImportSpecs
 mergeImportSpecs (HsImportSpecs mm s) (HsImportSpecs mm' s') =
   HsImportSpecs (liftM2 mergeMaps mm mm') (s || s')
-  where mergeMaps m m' = M.unionWith mergeValues m m'
+  where mergeMaps = M.unionWith mergeValues
         mergeValues v v' = case (v, v') of
           (HsImportValAll, _) -> HsImportValAll
           (_, HsImportValAll) -> HsImportValAll

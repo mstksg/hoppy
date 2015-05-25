@@ -7,15 +7,10 @@ module Foreign.Cppop.Common (
   ) where
 
 import Control.Applicative ((<$>))
-import Control.Exception (bracket, evaluate)
+import Control.Exception (evaluate)
 import Control.Monad (when)
 import System.Directory (doesFileExist)
-import System.IO (
-  IOMode (ReadMode),
-  hClose,
-  hGetContents,
-  openFile,
-  )
+import System.IO (IOMode (ReadMode), hGetContents, withFile)
 
 -- | @fromMaybeM m x = maybe m return x@
 fromMaybeM :: Monad m => m a -> Maybe a -> m a
@@ -42,7 +37,7 @@ writeFileIfDifferent path newContents = do
              then (newContents /=) <$> readStrictly
              else return True
   when doWrite $ writeFile path newContents
-  where readStrictly = bracket (openFile path ReadMode) hClose $ \handle -> do
+  where readStrictly = withFile path ReadMode $ \handle -> do
             contents <- hGetContents handle
             _ <- evaluate $ length contents
             return contents

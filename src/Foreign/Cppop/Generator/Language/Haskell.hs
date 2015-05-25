@@ -116,7 +116,7 @@ generateSource m = do
   forM_ (moduleExports m) $ sayExport SayExportDecls
 
 generateBootSource :: Module -> Generator ()
-generateBootSource m = do
+generateBootSource m =
   forM_ (moduleExports m) $ sayExport SayExportBoot
 
 data SayExportMode = SayExportForeignImports | SayExportDecls | SayExportBoot
