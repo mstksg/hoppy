@@ -335,6 +335,7 @@ data CallDirection =
 
 sayArgProcessing :: CallDirection -> Type -> String -> String -> Generator ()
 sayArgProcessing dir t fromVar toVar = case t of
+  TVar _ -> abort $ freeVarErrorMsg "sayArgProcessing" t
   TVoid -> abort "sayArgProcessing: TVoid is not a valid argument type."
   TBool -> doPrimitive
   TChar -> doPrimitive
@@ -393,6 +394,7 @@ sayArgProcessing dir t fromVar toVar = case t of
 
 sayCallAndProcessReturn :: CallDirection -> Type -> [String] -> Generator ()
 sayCallAndProcessReturn dir t callWords = case t of
+  TVar _ -> abort $ freeVarErrorMsg "sayCallAndProcessReturn" t
   TVoid -> sayCall
   TBool -> sayCall
   TChar -> sayCall

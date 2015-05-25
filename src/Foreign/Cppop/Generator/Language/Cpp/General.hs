@@ -149,6 +149,9 @@ sayType' t maybeParamNames outerPrec unwrappedOuter =
               then unwrappedOuter
               else say "(" >> unwrappedOuter >> say ")"
   in case t of
+    -- TODO A TVar here should bail with freeVarErrorMsg as in other places; but
+    -- this monad doesn't have failure yet.
+    TVar v -> say v >> outer
     TVoid -> say "void" >> outer
     TBool -> say "bool" >> outer
     TChar -> say "char" >> outer

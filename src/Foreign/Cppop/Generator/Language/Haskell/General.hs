@@ -343,6 +343,7 @@ data HsTypeSide = HsCSide | HsHsSide
 
 cppTypeToHsTypeAndUse :: HsTypeSide -> Type -> Generator (Maybe HsType)
 cppTypeToHsTypeAndUse side t = case t of
+  TVar _ -> abort $ freeVarErrorMsg "cppTypeToHsTypeAndUse" t
   TVoid -> return $ Just $ HsTyCon $ Special HsUnitCon
   TBool -> Just (HsTyCon $ UnQual $ HsIdent "CppopP.Bool") <$ addImports hsImportForPrelude
   TChar -> Just (HsTyCon $ UnQual $ HsIdent "CppopFC.CChar") <$ addImports hsImportForForeignC

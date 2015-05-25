@@ -50,6 +50,7 @@ module Foreign.Cppop.Generator.Spec (
   identT, identT', ident1T, ident2T, ident3T, ident4T, ident5T,
   -- * Basic types
   Type (..),
+  freeVarErrorMsg,
   CppEnum, makeEnum, enumIdentifier, enumExtName, enumValueNames, enumUseReqs,
   Purity (..),
   Function, makeFn, fnIdentifier, fnExtName, fnPurity, fnParams, fnReturn, fnUseReqs,
@@ -419,7 +420,8 @@ ident5T a b c d e f ts =
 --
 -- TODO Support templated functions and classes.
 data Type =
-  TVoid  -- ^ @void@
+  TVar String  -- ^ A type variable.  May appear within a template.
+  | TVoid  -- ^ @void@
   | TBool  -- ^ @bool@
   | TChar  -- ^ @char@
   | TUChar  -- ^ @unsigned char@
@@ -445,6 +447,14 @@ data Type =
   | TObj Class  -- ^ An instance of a class.
   | TConst Type  -- ^ A @const@ version of another type.
   deriving (Eq, Show)
+
+-- | Returns an error message that indicates that @caller@ received a 'TVar'
+-- where one is not accepted.
+freeVarErrorMsg :: String -> Type -> String
+freeVarErrorMsg caller t = concat $ case t of
+  TVar v -> [caller, ": Unexpected free template type variable ", show v, "."]
+  _ -> ["freeVarErrorMsg: Expected a TVar from caller ", show caller,
+        " but instead received ", show t, "."]
 
 -- | A C++ enum declaration.
 data CppEnum = CppEnum
