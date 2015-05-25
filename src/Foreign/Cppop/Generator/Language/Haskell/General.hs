@@ -3,9 +3,12 @@ module Foreign.Cppop.Generator.Language.Haskell.General (
   toModuleName,
   HsExport,
   -- * Code generators
+  Partial (..),
+  Output (..),
   Generator,
   runGenerator,
   execGenerator,
+  renderPartial,
   abort,
   -- * Exports
   addExport,
@@ -39,16 +42,19 @@ module Foreign.Cppop.Generator.Language.Haskell.General (
   ) where
 
 import Control.Applicative ((<$), (<$>))
+import Control.Arrow (first)
 import Control.Monad (when)
 import Control.Monad.Reader (ReaderT, ask, runReaderT)
 import Control.Monad.Trans (lift)
 import Control.Monad.Writer (WriterT, censor, runWriterT, tell)
 import Data.Char (toLower, toUpper)
 import Data.Foldable (forM_)
+import Data.Function (on)
 import Data.List (intercalate, intersperse)
 import qualified Data.Map as M
 import Data.Maybe (fromMaybe, isJust)
 import Data.Monoid (Monoid, mappend, mconcat, mempty)
+import Data.Tuple (swap)
 import Foreign.Cppop.Generator.Spec
 import qualified Language.Haskell.Pretty as P
 import Language.Haskell.Syntax (
@@ -79,17 +85,24 @@ renderImports = map renderModuleImport . M.assocs . getHsImportSet
           let moduleName = hsImportModule key
               maybeQualifiedName = hsImportQualifiedName key
               isQual = isJust maybeQualifiedName
+              importPrefix = if hsImportSource specs
+                             then "import {-# SOURCE #-} "
+                             else "import "
+              importQualifiedPrefix =
+                if hsImportSource specs
+                then "import {-# SOURCE #-} qualified "
+                else "import qualified "
           in case getHsImportSpecs specs of
             Nothing -> case maybeQualifiedName of
-              Nothing -> "import " ++ moduleName
-              Just qualifiedName -> concat ["import qualified ", moduleName, " as ", qualifiedName]
+              Nothing -> importPrefix ++ moduleName
+              Just qualifiedName -> concat [importQualifiedPrefix, moduleName, " as ", qualifiedName]
             Just specMap ->
               let specWords :: [String]
                   specWords = concatWithCommas $ map renderSpecAsWords $ M.assocs specMap
                   singleLineImport :: String
                   singleLineImport =
                     concat $
-                    (if isQual then "import qualified " else "import ") :
+                    (if isQual then importQualifiedPrefix else importPrefix) :
                     moduleName : " (" : intersperse " " specWords ++
                     case maybeQualifiedName of
                       Nothing -> [")"]
@@ -97,7 +110,7 @@ renderImports = map renderModuleImport . M.assocs . getHsImportSet
               in if null $ drop maxLineLength singleLineImport
                  then singleLineImport
                  else intercalate "\n" $
-                      ("import " ++ moduleName ++ " (") :
+                      (importPrefix ++ moduleName ++ " (") :
                       groupWordsIntoLines specWords ++
                       case maybeQualifiedName of
                         Nothing -> ["  )"]
@@ -168,6 +181,17 @@ askInterface = envInterface <$> ask
 askModuleName :: Generator String
 askModuleName = envModuleName <$> ask
 
+data Partial = Partial
+  { partialModuleHsName :: String
+  , partialOutput :: Output
+  }
+
+instance Eq Partial where
+  (==) = (==) `on` partialModuleHsName
+
+instance Ord Partial where
+  compare = compare `on` partialModuleHsName
+
 data Output = Output
   { outputExports :: [HsExport]
   , outputImports :: HsImportSet
@@ -185,19 +209,28 @@ instance Monoid Output where
            (mconcat $ map outputImports os)
            (mconcat $ map outputBody os)
 
-runGenerator :: Interface -> String -> Generator a -> Either String (String, a)
-runGenerator iface moduleName generator = do
-  (value, output) <- runWriterT $ runReaderT generator $ Env iface moduleName
-  let imports = outputImports output
+runGenerator :: Interface -> String -> Generator a -> Either String (Partial, a)
+runGenerator iface modName generator =
+  fmap (first (Partial modName) . swap) $ runWriterT $ runReaderT generator $ Env iface modName
+
+execGenerator :: Interface -> String -> Generator a -> Either String Partial
+execGenerator iface modName =
+  fmap fst . runGenerator iface modName
+
+renderPartial :: Partial -> String
+renderPartial partial =
+  let modName = partialModuleHsName partial
+      output = partialOutput partial
+      imports = outputImports output
       body =
         intercalate "\n" $ concat
         [ [ "---------- GENERATED FILE, EDITS WILL BE LOST ----------"
           , ""
           ]
         , case outputExports output of
-            [] -> [concat ["module ", moduleName, " where"]]
+            [] -> [concat ["module ", modName, " where"]]
             exports ->
-              concat ["module ", moduleName, " ("] :
+              concat ["module ", modName, " ("] :
               map (\export -> concat ["  ", export, ","]) exports ++
               ["  ) where"]
         , if M.null $ getHsImportSet imports
@@ -206,10 +239,7 @@ runGenerator iface moduleName generator = do
         , [""]
         , outputBody output
         ]
-  return (body, value)
-
-execGenerator :: Interface -> String -> Generator a -> Either String String
-execGenerator iface moduleName = fmap fst . runGenerator iface moduleName
+  in body
 
 -- | Halts generation and returns the given error message.
 abort :: String -> Generator a

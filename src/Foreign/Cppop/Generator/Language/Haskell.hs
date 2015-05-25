@@ -7,12 +7,16 @@ module Foreign.Cppop.Generator.Language.Haskell (
 import Control.Applicative ((<$>), (<*>), pure)
 import Control.Arrow ((&&&), second)
 import Control.Monad (forM, when)
+import Control.Monad.Trans (lift)
+import Control.Monad.Writer (execWriterT, tell)
 import Data.Foldable (forM_)
+import Data.Graph (SCC (AcyclicSCC, CyclicSCC), stronglyConnComp)
 import Data.List (intersperse)
 import Data.Tree (flatten, unfoldTree)
 import qualified Data.Map as M
 import Data.Maybe (isJust, mapMaybe)
 import Data.Monoid (mconcat)
+import qualified Data.Set as S
 import Foreign.Cppop.Common
 import Foreign.Cppop.Generator.Spec
 import Foreign.Cppop.Generator.Language.Cpp.General (
@@ -40,12 +44,64 @@ data Generation = Generation
   }
 
 generate :: Interface -> Either String Generation
-generate iface =
-  fmap (Generation . M.fromList) $
-  forM (M.elems $ interfaceModules iface) $ \m ->
-  let moduleName = getModuleName iface m
-  in (,) (listSubst '.' pathSeparator moduleName <.> "hs") . prependExtensions <$>
-     execGenerator iface moduleName (generateSource m)
+generate iface = do
+  -- Build the partial generation of each module.
+  modPartials <- forM (M.elems $ interfaceModules iface) $ \m ->
+    (,) m <$> execGenerator iface (getModuleName iface m) (generateSource m)
+
+  -- Compute the strongly connected components.  If there is a nontrivial SCC,
+  -- then there is a module import cycle that we'll have to break with hs-boot
+  -- files.
+  let partialsByHsName :: M.Map HsModuleName Partial
+      partialsByHsName = M.fromList $ map ((partialModuleHsName &&& id) . snd) modPartials
+
+      sccInput :: [((Module, Partial), Partial, [Partial])]
+      sccInput = flip map modPartials $ \x@(_, p) ->
+        (x, p,
+         mapMaybe (flip M.lookup partialsByHsName . hsImportModule) $
+         M.keys $ getHsImportSet $ outputImports $ partialOutput p)
+
+      sccs :: [SCC (Module, Partial)]
+      sccs = stronglyConnComp sccInput
+
+  fileContents <- execWriterT $ forM_ sccs $ \scc -> case scc of
+    AcyclicSCC (_, p) -> tell [finishPartial p "hs"]
+    CyclicSCC mps -> do
+      let cycleModNames = S.fromList $ map (partialModuleHsName . snd) mps
+      forM_ mps $ \(m, p) -> do
+        -- Create a boot partial.
+        pBoot <- lift $ execGenerator iface (partialModuleHsName p) (generateBootSource m)
+
+        -- Change the source and boot partials so that all imports of modules in
+        -- this cycle are {-# SOURCE #-} imports.
+        let p' = setSourceImports cycleModNames p
+            pBoot' = setSourceImports cycleModNames pBoot
+
+        -- Emit the completed partials.
+        tell [finishPartial p' "hs", finishPartial pBoot' "hs-boot"]
+
+  return $ Generation $ M.fromList fileContents
+
+  where finishPartial :: Partial -> String -> (FilePath, String)
+        finishPartial p fileExt =
+          (listSubst '.' pathSeparator (partialModuleHsName p) <.> fileExt,
+           prependExtensions $ renderPartial p)
+
+        setSourceImports :: S.Set HsModuleName -> Partial -> Partial
+        setSourceImports modulesToSourceImport p =
+          let output = partialOutput p
+              imports = outputImports output
+              imports' = makeHsImportSet $
+                         M.mapWithKey (setSourceImportIfIn modulesToSourceImport) $
+                         getHsImportSet imports
+              output' = output { outputImports = imports' }
+          in p { partialOutput = output' }
+
+        setSourceImportIfIn :: S.Set HsModuleName -> HsImportKey -> HsImportSpecs -> HsImportSpecs
+        setSourceImportIfIn modulesToSourceImport key specs =
+          if hsImportModule key `S.member` modulesToSourceImport
+          then specs { hsImportSource = True }
+          else specs
 
 prependExtensions :: String -> String
 prependExtensions =
@@ -59,7 +115,11 @@ generateSource m = do
   forM_ (moduleExports m) $ sayExport SayExportForeignImports
   forM_ (moduleExports m) $ sayExport SayExportDecls
 
-data SayExportMode = SayExportForeignImports | SayExportDecls
+generateBootSource :: Module -> Generator ()
+generateBootSource m = do
+  forM_ (moduleExports m) $ sayExport SayExportBoot
+
+data SayExportMode = SayExportForeignImports | SayExportDecls | SayExportBoot
 
 sayExport :: SayExportMode -> Export -> Generator ()
 sayExport mode export = case export of
@@ -73,6 +133,7 @@ sayExportEnum :: SayExportMode -> CppEnum -> Generator ()
 sayExportEnum mode enum = case mode of
   -- Nothing to import from the C++ side of an enum.
   SayExportForeignImports -> return ()
+
   SayExportDecls -> do
     let hsTypeName = toHsEnumTypeName enum
         values :: [(Int, String)]
@@ -100,6 +161,17 @@ sayExportEnum mode enum = case mode of
       saysLn ["toEnum n = CppopP.error $ ",
               show (concat ["Unknown ", hsTypeName, " numeric value: "]),
               " ++ CppopP.show n"]
+
+  SayExportBoot -> do
+    let hsTypeName = toHsEnumTypeName enum
+    addImports hsImportForPrelude
+    ln
+    saysLn ["data ", hsTypeName]
+    saysLn ["instance CppopP.Bounded ", hsTypeName]
+    saysLn ["instance CppopP.Enum ", hsTypeName]
+    saysLn ["instance CppopP.Eq ", hsTypeName]
+    saysLn ["instance CppopP.Ord ", hsTypeName]
+    saysLn ["instance CppopP.Show ", hsTypeName]
 
 sayExportFn :: SayExportMode -> ExtName -> Maybe (Constness, Class) -> Purity -> [Type] -> Type -> Generator ()
 sayExportFn mode name methodInfo purity paramTypes retType =
@@ -152,6 +224,11 @@ sayExportFn mode name methodInfo purity paramTypes retType =
 
         sayDecode retType []
 
+    SayExportBoot ->
+      -- Functions (methods included) cannot be referenced from other exports,
+      -- so we don't need to emit anything.
+      return ()
+
 -- | Prints \"foreign import\" statements and an internal callback construction
 -- function for a given 'Callback' specification.  For example, for a callback
 -- of 'HsHsSide' type @Int -> String -> IO Int@, we will generate the following
@@ -195,6 +272,19 @@ sayExportCallback mode cb = do
      show cb) =<<
     cppTypeToHsTypeAndUse HsCSide fnType
 
+  hsFnHsType <-
+    fromMaybeM
+    (abort $ "sayExportCallback: Couldn't create a function Haskell-side type for callback: " ++
+     show cb) =<<
+    cppTypeToHsTypeAndUse HsHsSide fnType
+
+  let getWholeFnType = do
+        addImports $ mconcat [hsImportForPrelude, hsImportForSupport]
+        return $
+          HsTyFun hsFnHsType $
+          HsTyApp (HsTyCon $ UnQual $ HsIdent "CppopP.IO") $
+          HsTyApp (HsTyCon $ UnQual $ HsIdent "CppopFCRS.CCallback") hsFnCType
+
   case mode of
     SayExportForeignImports -> do
       addImports $ mconcat [hsImportForForeign, hsImportForPrelude, hsImportForSupport]
@@ -220,18 +310,8 @@ sayExportCallback mode cb = do
               prettyPrint hsCallbackCtorImportType]
 
     SayExportDecls -> do
-      hsFnHsType <-
-        fromMaybeM
-        (abort $ "sayExportCallback: Couldn't create a function Haskell-side type for callback: " ++
-         show cb) =<<
-        cppTypeToHsTypeAndUse HsHsSide fnType
-
-      addImports $ mconcat [hsImportForPrelude, hsImportForSupport]
-      let wholeFnType =
-            HsTyFun hsFnHsType $
-            HsTyApp (HsTyCon $ UnQual $ HsIdent "CppopP.IO") $
-            HsTyApp (HsTyCon $ UnQual $ HsIdent "CppopFCRS.CCallback") hsFnCType
-          paramCount = length paramTypes
+      wholeFnType <- getWholeFnType
+      let paramCount = length paramTypes
           argNames = map toArgName [1..paramCount]
           argNames' = map (++ "'") argNames
       ln
@@ -249,6 +329,11 @@ sayExportCallback mode cb = do
           Nothing
         saysLn ["f'p <- ", hsFnName'newFunPtr, " f'c"]
         saysLn [hsFnName'newCallback, " f'p CppopFCRS.freeHaskellFunPtrFunPtr CppopP.False"]
+
+    SayExportBoot -> do
+      wholeFnType <- getWholeFnType
+      ln
+      saysLn [hsFnName, " :: ", prettyPrint wholeFnType]
 
 sayEncode :: Type -> [String] -> Generator ()
 sayEncode t suffix = case t of
@@ -339,7 +424,6 @@ sayExportClass mode cls = do
         addImports $ haskellEncodingTypeImports encoding
         addImports $ haskellEncodingCTypeImports encoding
         addImports $ haskellEncodingFnImports encoding
-      mapM_ addImportsForSuperclasses $ classSuperclasses cls
 
       sayExportClassHsCtors mode cls
 
@@ -352,56 +436,69 @@ sayExportClass mode cls = do
          methodParams <*> methodReturn) method
 
     SayExportDecls -> do
-      sayExportClassHsClass cls Const
-      sayExportClassHsClass cls Nonconst
+      sayExportClassHsClass True cls Const
+      sayExportClassHsClass True cls Nonconst
 
       sayExportClassHsStaticMethods cls
 
       -- Create a newtype for referencing foreign objects with pointers.  The
       -- newtype is not used with encodings of value objects.
-      sayExportClassHsType cls Const
-      sayExportClassHsType cls Nonconst
+      sayExportClassHsType True cls Const
+      sayExportClassHsType True cls Nonconst
 
       sayExportClassHsNull cls
       sayExportClassHsCtors mode cls
 
+    SayExportBoot -> do
+      sayExportClassHsClass False cls Const
+      sayExportClassHsClass False cls Nonconst
+
+      sayExportClassHsType False cls Const
+      sayExportClassHsType False cls Nonconst
+
   sayExportClassHsSpecialFns mode cls
 
-  where addImportsForSuperclasses :: Class -> Generator ()
-        addImportsForSuperclasses superclass = do
-          addImportForClass superclass
-          mapM_ addImportsForSuperclasses $ classSuperclasses superclass
-
-sayExportClassHsClass :: Class -> Constness -> Generator ()
-sayExportClassHsClass cls cst = do
+sayExportClassHsClass :: Bool -> Class -> Constness -> Generator ()
+sayExportClassHsClass doDecls cls cst = do
   let hsTypeName = toHsDataTypeName cst cls
       hsClassName = toHsClassName cst cls
-      supers = classSuperclasses cls
-      hsSupers =
-        (\x -> if null x then ["CppopFCRS.CppPtr"] else x) $
-        case cst of
-          Const -> map (toHsClassName Const) supers
-          Nonconst -> toHsClassName Const cls : map (toHsClassName Nonconst) supers
       hsCastMethodName = toHsCastMethodName cst cls
+      supers = classSuperclasses cls
 
-  addImports $ mconcat [hsImport1 "Prelude" "(.)", hsImportForForeign, hsImportForSupport]
+  forM_ supers $ importHsModuleForExtName . classExtName
+  hsSupers <-
+    (\x -> if null x
+           then do addImports hsImportForSupport
+                   return ["CppopFCRS.CppPtr"]
+           else return x) $
+    case cst of
+      Const -> map (toHsClassName Const) supers
+      Nonconst -> toHsClassName Const cls : map (toHsClassName Nonconst) supers
+
+  -- Print the class definition.
   ln
   saysLn $
     "class (" :
     intersperse ", " (map (++ " this") hsSupers) ++
-    [") => ", hsClassName, " this where"]
-  indent $ do
-    saysLn [hsCastMethodName, " :: this -> ", hsTypeName]
+    [") => ", hsClassName, " this"]
+
+  -- Print the up-cast function.
+  ln
+  saysLn [hsCastMethodName, " :: ", hsClassName, " this => this -> ", hsTypeName]
+  when doDecls $ do
+    addImports $ mconcat [hsImport1 "Prelude" "(.)", hsImportForForeign, hsImportForSupport]
     saysLn [hsCastMethodName, " = ", hsTypeName, " . CppopF.castPtr . CppopFCRS.toPtr"]
 
+  -- Print the non-static methods.
+  when doDecls $ do
     let methods = filter ((cst ==) . methodConst) $ classMethods cls
     forM_ methods $ \method ->
       when (methodStatic method == Nonstatic) $
       (sayExportFn SayExportDecls <$> methodExtName <*>
        pure (case methodApplicability method of
-               MNormal -> Just (Nonconst, cls)
-               MStatic -> error "sayExportClassHsClass: MStatic after Nonstatic, impossible case."
-               MConst -> Just (Const, cls)) <*>
+                MNormal -> Just (Nonconst, cls)
+                MStatic -> error "sayExportClassHsClass: MStatic after Nonstatic, impossible case."
+                MConst -> Just (Const, cls)) <*>
        methodPurity <*> methodParams <*> methodReturn) method
 
 sayExportClassHsStaticMethods :: Class -> Generator ()
@@ -411,23 +508,26 @@ sayExportClassHsStaticMethods cls =
     (sayExportFn SayExportDecls <$> methodExtName <*> pure Nothing <*> methodPurity <*>
      methodParams <*> methodReturn) method
 
-sayExportClassHsType :: Class -> Constness -> Generator ()
-sayExportClassHsType cls cst = do
+sayExportClassHsType :: Bool -> Class -> Constness -> Generator ()
+sayExportClassHsType doDecls cls cst = do
   let hsTypeName = toHsDataTypeName cst cls
   addImports $ mconcat [hsImportForForeign, hsImportForSupport]
   ln
   saysLn ["newtype ", hsTypeName, " = ", hsTypeName, " (CppopF.Ptr ", hsTypeName, ")"]
   ln
-  saysLn ["instance CppopFCRS.CppPtr ", hsTypeName, " where"]
-  saysLn ["  toPtr (", hsTypeName, " ptr) = ptr"]
-  deleteTail <- case cst of
-    Const -> return []
-    Nonconst -> do addImports $ hsImport1 "Prelude" "(.)"
-                   return [" . ", toHsCastMethodName Const cls]
-  saysLn $ "  delete = " : toHsClassDeleteFnName cls : deleteTail
-  ln
+  if doDecls
+    then do saysLn ["instance CppopFCRS.CppPtr ", hsTypeName, " where"]
+            saysLn ["  toPtr (", hsTypeName, " ptr) = ptr"]
+            deleteTail <- case cst of
+              Const -> return []
+              Nonconst -> do addImports $ hsImport1 "Prelude" "(.)"
+                             return [" . ", toHsCastMethodName Const cls]
+            saysLn $ "  delete = " : toHsClassDeleteFnName cls : deleteTail
+            ln
+    else saysLn ["instance CppopFCRS.CppPtr ", hsTypeName]
   let neededInstances = flatten $ unfoldTree (id &&& classSuperclasses) cls
   forM_ neededInstances $ \cls' -> do
+    addImportForClass cls'
     saysLn ["instance ", toHsClassName Const cls', " ", hsTypeName]
     when (cst == Nonconst) $
       saysLn ["instance ", toHsClassName Nonconst cls', " ", hsTypeName]
@@ -459,6 +559,7 @@ sayExportClassHsSpecialFns mode cls = do
     -- The user interface to this is the generic 'delete' function, rendered
     -- elsewhere.
     SayExportDecls -> return ()
+    SayExportBoot -> return ()
 
   -- Say Encodable and Decodable instances, if the class is encodable and
   -- decodable.
@@ -506,6 +607,14 @@ sayExportClassHsSpecialFns mode cls = do
           saysLn ["decode = ", toHsClassDecodeFnName cls, " >=>"]
           indent $ sayDecode (TObj cls) []
 
+      SayExportBoot -> do
+        addImports hsImportForSupport
+        ln
+        saysLn ["instance CppopFCRS.Encodable ", typeName, " (", hsTypeStr, ")"]
+        saysLn ["instance CppopFCRS.Encodable ", typeNameConst, " (", hsTypeStr, ")"]
+        saysLn ["instance CppopFCRS.Decodable ", typeName, " (", hsTypeStr, ")"]
+        saysLn ["instance CppopFCRS.Decodable ", typeNameConst, " (", hsTypeStr, ")"]
+
   where fnInIO :: HsType -> HsType -> HsType
         fnInIO arg result =
           HsTyFun arg $ HsTyApp (HsTyCon $ UnQual $ HsIdent "CppopP.IO") result
@@ -517,15 +626,15 @@ fnToHsTypeAndUse :: HsTypeSide
                  -> Type
                  -> Generator (Maybe HsQualType)
 fnToHsTypeAndUse side methodInfo purity paramTypes returnType = do
-  params <- zipWithM (curry contextForParam) [1..] paramTypes
+  params <- mapM contextForParam $
+            (case methodInfo of
+                Just (cst, cls) -> [("this", case cst of
+                                        Nonconst -> TPtr $ TObj cls
+                                        Const -> TPtr $ TConst $ TObj cls)]
+                Nothing -> []) ++
+            zip (map toArgName [1..]) paramTypes
   let context = mapMaybe fst params :: HsContext
-      hsParamsMaybe =
-        (case methodInfo of
-            Just (cst, cls) -> case side of
-              HsHsSide -> (HsTyVar (HsIdent "this") :)
-              HsCSide -> (HsTyVar (HsIdent $ toHsDataTypeName cst cls) :)
-            Nothing -> id) <$>
-        mapM snd params
+      hsParamsMaybe = mapM snd params
   case hsParamsMaybe of
     Nothing -> return Nothing
     Just hsParams -> do
@@ -540,23 +649,23 @@ fnToHsTypeAndUse side methodInfo purity paramTypes returnType = do
               return $ HsTyApp (HsTyCon $ UnQual $ HsIdent "CppopP.IO") hsReturn
           return $ Just $ HsQualType context $ foldr HsTyFun hsReturn' hsParams
 
-  where contextForParam :: (Int, Type) -> Generator (Maybe HsAsst, Maybe HsType)
-        contextForParam (i, t) = case t of
+  where contextForParam :: (String, Type) -> Generator (Maybe HsAsst, Maybe HsType)
+        contextForParam (s, t) = case t of
           TPtr (TObj cls) -> do
             addImportForClass cls
             return $ case side of
-              HsHsSide -> let t' = HsTyVar $ HsIdent $ toArgName i
+              HsHsSide -> let t' = HsTyVar $ HsIdent s
                           in (Just (UnQual $ HsIdent $ toHsClassName Nonconst cls, [t']),
                               Just t')
               HsCSide -> (Nothing, Just $ HsTyVar $ HsIdent $ toHsDataTypeName Nonconst cls)
           TPtr (TConst (TObj cls)) -> do
             addImportForClass cls
             return $ case side of
-              HsHsSide -> let t' = HsTyVar $ HsIdent $ toArgName i
+              HsHsSide -> let t' = HsTyVar $ HsIdent s
                           in (Just (UnQual $ HsIdent $ toHsClassName Const cls, [t']),
                               Just t')
               HsCSide -> (Nothing, Just $ HsTyVar $ HsIdent $ toHsDataTypeName Const cls)
-          TConst t' -> contextForParam (i, t')
+          TConst t' -> contextForParam (s, t')
           _ -> (,) Nothing <$> cppTypeToHsTypeAndUse side t
 
 addImportForClass :: Class -> Generator ()

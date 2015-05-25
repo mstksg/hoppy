@@ -25,6 +25,8 @@ module Foreign.Cppop.Generator.Spec (
   makeModule,
   modifyModule,
   modifyModule',
+  setModuleHppPath,
+  setModuleCppPath,
   addModuleExports,
   addModuleHaskellName,
   -- * Requirements
@@ -78,6 +80,7 @@ module Foreign.Cppop.Generator.Spec (
   HsModuleName, HsImportSet, HsImportKey (..), HsImportSpecs (..), HsImportName, HsImportVal (..),
   hsWholeModuleImport, hsQualifiedImport, hsImport1, hsImport1', hsImports, hsImports',
   -- ** Internal to Cppop
+  makeHsImportSet,
   getHsImportSet,
   hsImportForForeign,
   hsImportForForeignC,
@@ -189,6 +192,9 @@ data Module = Module
 instance Eq Module where
   (==) = (==) `on` moduleName
 
+instance Ord Module where
+  compare = compare `on` moduleName
+
 instance Show Module where
   show m = concat ["<Module ", moduleName m, ">"]
 
@@ -220,6 +226,12 @@ modifyModule' m action = case modifyModule m action of
     error $ concat
     ["modifyModule' failed to modify module ", show (moduleName m), ": ", errorMsg]
   Right m' -> m'
+
+setModuleHppPath :: MonadState Module m => String -> m ()
+setModuleHppPath path = modify $ \m -> m { moduleHppPath = path }
+
+setModuleCppPath :: MonadState Module m => String -> m ()
+setModuleCppPath path = modify $ \m -> m { moduleCppPath = path }
 
 addModuleExports :: (MonadError String m, MonadState Module m) => [Export] -> m ()
 addModuleExports exports = do
@@ -669,6 +681,9 @@ instance Monoid HsImportSet where
   mconcat sets =
     HsImportSet $ M.unionsWith mergeImportSpecs $ map getHsImportSet sets
 
+makeHsImportSet :: M.Map HsImportKey HsImportSpecs -> HsImportSet
+makeHsImportSet = HsImportSet
+
 -- | A Haskell module name.
 type HsModuleName = String
 
@@ -682,12 +697,14 @@ data HsImportKey = HsImportKey
 -- | A specification of bindings to import from a module.  If 'Nothing', then
 -- the entire module is imported.  If @'Just' 'M.empty'@, then only instances
 -- are imported.
-newtype HsImportSpecs = HsImportSpecs
+data HsImportSpecs = HsImportSpecs
   { getHsImportSpecs :: Maybe (M.Map HsImportName HsImportVal)
+  , hsImportSource :: Bool
   } deriving (Show)
 
 mergeImportSpecs :: HsImportSpecs -> HsImportSpecs -> HsImportSpecs
-mergeImportSpecs (HsImportSpecs s) (HsImportSpecs s') = HsImportSpecs $ liftM2 mergeMaps s s'
+mergeImportSpecs (HsImportSpecs mm s) (HsImportSpecs mm' s') =
+  HsImportSpecs (liftM2 mergeMaps mm mm') (s || s')
   where mergeMaps m m' = M.unionWith mergeValues m m'
         mergeValues v v' = case (v, v') of
           (HsImportValAll, _) -> HsImportValAll
@@ -717,13 +734,13 @@ data HsImportVal =
 hsWholeModuleImport :: HsModuleName -> HsImportSet
 hsWholeModuleImport moduleName =
   HsImportSet $ M.singleton (HsImportKey moduleName Nothing) $
-  HsImportSpecs Nothing
+  HsImportSpecs Nothing False
 
 -- | A qualified import of a Haskell module.
 hsQualifiedImport :: HsModuleName -> HsModuleName -> HsImportSet
 hsQualifiedImport moduleName qualifiedName =
   HsImportSet $ M.singleton (HsImportKey moduleName $ Just qualifiedName) $
-  HsImportSpecs Nothing
+  HsImportSpecs Nothing False
 
 -- | An import of a single name from a Haskell module.
 hsImport1 :: HsModuleName -> HsImportName -> HsImportSet
@@ -733,7 +750,7 @@ hsImport1 moduleName valueName = hsImport1' moduleName valueName HsImportVal
 hsImport1' :: HsModuleName -> HsImportName -> HsImportVal -> HsImportSet
 hsImport1' moduleName valueName valueType =
   HsImportSet $ M.singleton (HsImportKey moduleName Nothing) $
-  HsImportSpecs $ Just $ M.singleton valueName valueType
+  HsImportSpecs (Just $ M.singleton valueName valueType) False
 
 -- | An import of multiple names from a Haskell module.
 hsImports :: HsModuleName -> [HsImportName] -> HsImportSet
@@ -744,7 +761,7 @@ hsImports moduleName names =
 hsImports' :: HsModuleName -> [(HsImportName, HsImportVal)] -> HsImportSet
 hsImports' moduleName values =
   HsImportSet $ M.singleton (HsImportKey moduleName Nothing) $
-  HsImportSpecs $ Just $ M.fromList values
+  HsImportSpecs (Just $ M.fromList values) False
 
 hsImportForForeign :: HsImportSet
 hsImportForForeign = hsQualifiedImport "Foreign" "CppopF"
