@@ -371,7 +371,7 @@ cppTypeToHsTypeAndUse side t = case t of
   TSSize -> return Nothing
   TEnum e ->
     Just . HsTyCon . UnQual . HsIdent <$> case side of
-      HsCSide -> "CppopFC.CInt" <$ addImports hsImportForPrelude
+      HsCSide -> "CppopFC.CInt" <$ addImports hsImportForForeignC
       HsHsSide -> toHsEnumTypeName e <$ importHsModuleForExtName (enumExtName e)
   TPtr (TObj cls) -> do
     importHsModuleForExtName $ classExtName cls
