@@ -42,16 +42,12 @@ module Foreign.Cppop.Generator.Spec (
   Export (..),
   exportExtName,
   Identifier,
-  idNamespaces,
-  idName,
-  idToString,
-  ident,
-  ident',
-  ident1,
-  ident2,
-  ident3,
-  ident4,
-  ident5,
+  identifierParts,
+  IdPart,
+  idPartBase,
+  idPartArgs,
+  ident, ident', ident1, ident2, ident3, ident4, ident5,
+  identT, identT', ident1T, ident2T, ident3T, ident4T, ident5T,
   -- * Basic types
   Type (..),
   CppEnum, makeEnum, enumIdentifier, enumExtName, enumValueNames, enumUseReqs,
@@ -315,8 +311,9 @@ toExtName str = case str of
 
 -- | Generates an 'ExtName' from an 'Identifier', if the given name is absent.
 extNameOrIdentifier :: Identifier -> Maybe ExtName -> ExtName
-extNameOrIdentifier identifier =
-  fromMaybe $ toExtName $ idName identifier
+extNameOrIdentifier ident = fromMaybe $ case identifierParts ident of
+  [] -> error "extNameOrIdentifier: Invalid empty identifier."
+  parts -> toExtName $ idPartBase $ last parts
 
 -- | Specifies some C++ object (function or class) to give access to.
 data Export =
@@ -336,49 +333,86 @@ exportExtName export = case export of
 
 -- | An absolute path from the top-level C++ namespace down to some named
 -- object.
-data Identifier = Identifier
-  { idNamespaces :: [String]
-    -- ^ Returns the namespaces of an identifier; i.e., all components except the last.
-  , idName :: String
-    -- ^ Returns the last component of the identifier.
-  }
-  deriving (Eq)
+newtype Identifier = Identifier { identifierParts :: [IdPart] }
+                   deriving (Eq, Show)
 
 instance Show Identifier where
-  show identifier = concat ["<Identifier ", idToString identifier, ">"]
+  show ident =
+    (\words -> concat $ "<Identifier " : words ++ ">") $
+    intersperse "::" $
+    concatMap (\part -> case idPartArgs part of
+                  Nothing -> [idPartBase part]
+                  Just args -> idPartBase part : "<" :
+                               intersperse ", " (map show args) ++ [">"]) $
+    identifierParts ident
 
--- | Converts an identifier to its C++ form.
-idToString :: Identifier -> String
-idToString identifier =
-  intercalate "::" $ idNamespaces identifier ++ [idName identifier]
+data IdPart = IdPart
+  { idPartBase :: String
+  , idPartArgs :: Maybe [Type]
+  } deriving (Eq, Show)
 
--- | Creates an identifier of the form @::a@.
+-- | Creates an identifier of the form @a@.
 ident :: String -> Identifier
-ident = Identifier []
+ident a = Identifier [IdPart a Nothing]
 
--- | Creates an identifier of the form @::a1::a2::...::aN::b@.
-ident' :: [String] -> String -> Identifier
-ident' = Identifier
+-- | Creates an identifier of the form @a1::a2::...::aN@.
+ident' :: [String] -> Identifier
+ident' = Identifier . map (\x -> IdPart x Nothing)
 
--- | Creates an identifier of the form @::a::b@.
+-- | Creates an identifier of the form @a::b@.
 ident1 :: String -> String -> Identifier
-ident1 ns1 = ident' [ns1]
+ident1 a b = ident' [a, b]
 
--- | Creates an identifier of the form @::a::b::c@.
+-- | Creates an identifier of the form @a::b::c@.
 ident2 :: String -> String -> String -> Identifier
-ident2 ns1 ns2 = ident' [ns1, ns2]
+ident2 a b c = ident' [a, b, c]
 
--- | Creates an identifier of the form @::a::b::c::d@.
+-- | Creates an identifier of the form @a::b::c::d@.
 ident3 :: String -> String -> String -> String -> Identifier
-ident3 ns1 ns2 ns3 = ident' [ns1, ns2, ns3]
+ident3 a b c d = ident' [a, b, c, d]
 
--- | Creates an identifier of the form @::a::b::c::d::e@.
+-- | Creates an identifier of the form @a::b::c::d::e@.
 ident4 :: String -> String -> String -> String -> String -> Identifier
-ident4 ns1 ns2 ns3 ns4 = ident' [ns1, ns2, ns3, ns4]
+ident4 a b c d e = ident' [a, b, c, d, e]
 
--- | Creates an identifier of the form @::a::b::c::d::e::f@.
+-- | Creates an identifier of the form @a::b::c::d::e::f@.
 ident5 :: String -> String -> String -> String -> String -> String -> Identifier
-ident5 ns1 ns2 ns3 ns4 ns5 = ident' [ns1, ns2, ns3, ns4, ns5]
+ident5 a b c d e f = ident' [a, b, c, d, e, f]
+
+-- | Creates an identifier of the form @a<...>@.
+identT :: String -> [Type] -> Identifier
+identT a ts = Identifier [IdPart a $ Just ts]
+
+-- | Creates an identifier with arbitrary many templated and non-templated
+-- parts.
+identT' :: [(String, Maybe [Type])] -> Identifier
+identT' = Identifier . map (uncurry IdPart)
+
+-- | Creates an identifier of the form @a::b<...>@.
+ident1T :: String -> String -> [Type] -> Identifier
+ident1T a b ts = Identifier [IdPart a Nothing, IdPart b $ Just ts]
+
+-- | Creates an identifier of the form @a::b::c<...>@.
+ident2T :: String -> String -> String -> [Type] -> Identifier
+ident2T a b c ts = Identifier [IdPart a Nothing, IdPart b Nothing, IdPart c $ Just ts]
+
+-- | Creates an identifier of the form @a::b::c::d<...>@.
+ident3T :: String -> String -> String -> String -> [Type] -> Identifier
+ident3T a b c d ts =
+  Identifier [IdPart a Nothing, IdPart b Nothing, IdPart c Nothing,
+              IdPart d $ Just ts]
+
+-- | Creates an identifier of the form @a::b::c::d::e<...>@.
+ident4T :: String -> String -> String -> String -> String -> [Type] -> Identifier
+ident4T a b c d e ts =
+  Identifier [IdPart a Nothing, IdPart b Nothing, IdPart c Nothing,
+              IdPart d Nothing, IdPart e $ Just ts]
+
+-- | Creates an identifier of the form @a::b::c::d::e::f<...>@.
+ident5T :: String -> String -> String -> String -> String -> String -> [Type] -> Identifier
+ident5T a b c d e f ts =
+  Identifier [IdPart a Nothing, IdPart b Nothing, IdPart c Nothing,
+              IdPart d Nothing, IdPart e Nothing, IdPart f $ Just ts]
 
 -- | Concrete C++ types.  It is possible to represent invalid C++ types with
 -- this, but that may result in undefined behaviour or invalid code generation.
