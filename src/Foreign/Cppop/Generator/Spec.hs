@@ -34,6 +34,7 @@ module Foreign.Cppop.Generator.Spec (
   reqsIncludes,
   reqInclude,
   HasUseReqs (..),
+  addUseReqs,
   addReqIncludes,
   -- * Exports
   ExtName,
@@ -50,10 +51,18 @@ module Foreign.Cppop.Generator.Spec (
   identT, identT', ident1T, ident2T, ident3T, ident4T, ident5T,
   -- * Basic types
   Type (..),
+  HasTVars (..),
   freeVarErrorMsg,
+  -- ** Enums
   CppEnum, makeEnum, enumIdentifier, enumExtName, enumValueNames, enumUseReqs,
   Purity (..),
+  -- ** Functions
   Function, makeFn, fnIdentifier, fnExtName, fnPurity, fnParams, fnReturn, fnUseReqs,
+  -- *** Function templates
+  FnTemplate, makeFnTemplate, instantiateFnTemplate, instantiateFnTemplate',
+  fnTemplateIdentifier, fnTemplateExtNamePrefix, fnTemplateVars, fnTemplatePurity, fnTemplateParams,
+  fnTemplateReturn, fnTemplateUseReqs,
+  -- ** Classes
   Class, makeClass, classIdentifier, classExtName, classSuperclasses, classCtors, classMethods,
   classConversions, classUseReqs,
   Ctor, makeCtor, mkCtor, ctorExtName, ctorParams,
@@ -65,12 +74,17 @@ module Foreign.Cppop.Generator.Spec (
   mkProps, mkProp, mkStaticProp, mkBoolIsProp, mkBoolHasProp,
   methodCName, methodExtName, methodApplicability, methodPurity, methodParams,
   methodReturn, methodConst, methodStatic,
-  -- ** Conversions to and from foreign values
+  -- *** Conversions to and from foreign values
   ClassConversions (..),
   classConversionsNone,
   classModifyConversions,
   ClassHaskellConversion (..),
-  -- * Callbacks
+  -- *** Class templates
+  ClassTemplate, ClassTemplateSuper (..), makeClassTemplate, instantiateClassTemplate,
+  instantiateClassTemplate',
+  classTemplateIdentifier, classTemplateExtNamePrefix, classTemplateVars, classTemplateSuperclasses,
+  classTemplateCtors, classTemplateMethods, classTemplateUseReqs,
+  -- ** Callbacks
   Callback, makeCallback, callbackExtName, callbackParams, callbackReturn, callbackToTFn,
   -- * Haskell imports
   HsModuleName, HsImportSet, HsImportKey (..), HsImportSpecs (..), HsImportName, HsImportVal (..),
@@ -87,16 +101,19 @@ module Foreign.Cppop.Generator.Spec (
 
 import Control.Applicative ((<$>), (<*>))
 import Control.Arrow ((&&&))
-import Control.Monad (liftM2, unless)
+import Control.Monad (forM, liftM2, unless, when)
 import Control.Monad.Except (MonadError, Except, runExcept, throwError)
 import Control.Monad.State (MonadState, StateT, execStateT, get, modify)
+import Control.Monad.Trans (lift)
 import Data.Char (isAlpha, isAlphaNum, toUpper)
 import Data.Function (on)
-import Data.List (intercalate)
+import Data.List (intercalate, intersperse)
 import qualified Data.Map as M
 import Data.Maybe (fromMaybe)
 import Data.Monoid (Monoid, mappend, mconcat, mempty)
 import qualified Data.Set as S
+import Foreign.Cppop.Common
+import Foreign.Cppop.Common.Consume
 import Language.Haskell.Syntax (HsType)
 
 type ErrorMsg = String
@@ -283,6 +300,10 @@ class HasUseReqs a where
   modifyUseReqs :: (Reqs -> Reqs) -> a -> a
   modifyUseReqs f x = setUseReqs (f $ getUseReqs x) x
 
+-- | Adds to a type's requirements.
+addUseReqs :: HasUseReqs a => Reqs -> a -> a
+addUseReqs reqs x = modifyUseReqs (mappend reqs) x
+
 -- | Adds a list of includes to the requirements of a type.
 addReqIncludes :: HasUseReqs a => [Include] -> a -> a
 addReqIncludes includes =
@@ -316,6 +337,12 @@ extNameOrIdentifier ident = fromMaybe $ case identifierParts ident of
   [] -> error "extNameOrIdentifier: Invalid empty identifier."
   parts -> toExtName $ idPartBase $ last parts
 
+-- | Like 'extNameOrIdentifier', but works with strings rather than 'ExtName's.
+stringOrIdentifier :: Identifier -> Maybe String -> String
+stringOrIdentifier ident = fromMaybe $ case identifierParts ident of
+  [] -> error "stringOrIdentifier: Invalid empty identifier."
+  parts -> idPartBase $ last parts
+
 -- | Specifies some C++ object (function or class) to give access to.
 data Export =
   ExportEnum CppEnum
@@ -335,7 +362,24 @@ exportExtName export = case export of
 -- | An absolute path from the top-level C++ namespace down to some named
 -- object.
 newtype Identifier = Identifier { identifierParts :: [IdPart] }
-                   deriving (Eq, Show)
+                   deriving (Eq)
+
+instance Show Identifier where
+  show ident =
+    intercalate "::" $
+    concatMap (\part -> case idPartArgs part of
+                  Nothing -> [idPartBase part]
+                  Just args -> idPartBase part : "<" :
+                               intersperse ", " (map show args) ++ [">"]) $
+    identifierParts ident
+
+instance HasTVars Identifier where
+  substTVar var val =
+    Identifier .
+    map (\part -> part { idPartArgs =
+                            fmap (map $ substTVar var val) $
+                            idPartArgs part }) .
+    identifierParts
 
 instance Show Identifier where
   show ident =
@@ -448,6 +492,62 @@ data Type =
   | TConst Type  -- ^ A @const@ version of another type.
   deriving (Eq, Show)
 
+instance HasTVars Type where
+  substTVar var val t = case t of
+    TVar v | v == var -> val
+           | otherwise -> t
+    TVoid -> t
+    TBool -> t
+    TChar -> t
+    TUChar -> t
+    TShort -> t
+    TUShort -> t
+    TInt -> t
+    TUInt -> t
+    TLong -> t
+    TULong -> t
+    TLLong -> t
+    TULLong -> t
+    TFloat -> t
+    TDouble -> t
+    TSize -> t
+    TSSize -> t
+    TEnum _ -> t
+    TPtr t' -> recur t'
+    TRef t' -> recur t'
+    TFn paramTypes retType -> TFn (map recur paramTypes) $ recur retType
+    TCallback _ -> t
+    TObj _ -> t
+    TConst t' -> recur t'
+    where recur = substTVar var val
+
+typeIsConcrete :: Type -> Bool
+typeIsConcrete t = case t of
+  TVar _ -> False
+  TVoid -> True
+  TBool -> True
+  TChar -> True
+  TUChar -> True
+  TShort -> True
+  TUShort -> True
+  TInt -> True
+  TUInt -> True
+  TLong -> True
+  TULong -> True
+  TLLong -> True
+  TULLong -> True
+  TFloat -> True
+  TDouble -> True
+  TSize -> True
+  TSSize -> True
+  TEnum _ -> True
+  TPtr t' -> typeIsConcrete t'
+  TRef t' -> typeIsConcrete t'
+  TFn paramTypes retType -> all typeIsConcrete paramTypes && typeIsConcrete retType
+  TCallback _ -> True
+  TObj _ -> True
+  TConst t' -> typeIsConcrete t'
+
 -- | Returns an error message that indicates that @caller@ received a 'TVar'
 -- where one is not accepted.
 freeVarErrorMsg :: String -> Type -> String
@@ -455,6 +555,15 @@ freeVarErrorMsg caller t = concat $ case t of
   TVar v -> [caller, ": Unexpected free template type variable ", show v, "."]
   _ -> ["freeVarErrorMsg: Expected a TVar from caller ", show caller,
         " but instead received ", show t, "."]
+
+class HasTVars a where
+  -- @substTVar var val x@ replaces all occurrences of @'TVar' var@ in @x@ with
+  -- @val@.  (Classes and callbacks pointed to by 'TCallback' and 'TObj' are not
+  -- recurred into.)
+  substTVar :: String -> Type -> a -> a
+
+  substTVars :: [(String, Type)] -> a -> a
+  substTVars vs x = foldr (uncurry substTVar) x vs
 
 -- | A C++ enum declaration.
 data CppEnum = CppEnum
@@ -518,6 +627,14 @@ instance HasUseReqs Function where
   getUseReqs = fnUseReqs
   setUseReqs reqs fn = fn { fnUseReqs = reqs }
 
+instance HasTVars Function where
+  substTVar var val fn =
+    fn { fnIdentifier = substTVar var val $ fnIdentifier fn
+       , fnParams = map subst $ fnParams fn
+       , fnReturn = subst $ fnReturn fn
+       }
+    where subst = substTVar var val
+
 makeFn :: Identifier
        -> Maybe ExtName
        -- ^ An optional external name; will be automatically derived from
@@ -531,6 +648,71 @@ makeFn identifier maybeExtName purity paramTypes retType =
            (extNameOrIdentifier identifier maybeExtName)
            purity paramTypes retType mempty
 
+data FnTemplate = FnTemplate
+  { fnTemplateIdentifier :: Identifier
+  , fnTemplateExtNamePrefix :: String
+  , fnTemplateVars :: [String]
+  , fnTemplatePurity :: Purity
+  , fnTemplateParams :: [Type]
+  , fnTemplateReturn :: Type
+  , fnTemplateUseReqs :: Reqs
+  }
+
+instance Show FnTemplate where
+  show tmpl =
+    concat ["<FnTemplate ", show (fnTemplateIdentifier tmpl), ">"]
+
+instance HasUseReqs FnTemplate where
+  getUseReqs = fnTemplateUseReqs
+  setUseReqs reqs fnTemplate = fnTemplate { fnTemplateUseReqs = reqs }
+
+makeFnTemplate ::
+  Identifier
+  -> Maybe String
+  -- ^ An optional prefix for the external name of functions instantiated from
+  -- this template.  Will use the last component of the identifier if absent.
+  -> [String]  -- ^ The names of type variables.
+  -> Purity
+  -> [Type]  -- ^ Parameter types.
+  -> Type  -- ^ Return type.
+  -> FnTemplate
+makeFnTemplate ident maybeExtNamePrefix vars purity paramTypes retType =
+  FnTemplate ident (stringOrIdentifier ident maybeExtNamePrefix)
+             vars purity paramTypes retType mempty
+
+instantiateFnTemplate
+  :: FnTemplate  -- ^ The template to instantiate.
+  -> String
+  -- ^ A suffix to append to the prefix given to 'makeFnTemplate' to form a
+  -- complete 'ExtName' for the function.
+  -> [Type]  -- ^ Types to substitute for the type variables in the template.
+  -> Reqs  -- ^ Requirements for the type variables.
+  -> Either String Function
+instantiateFnTemplate tmpl extNameSuffix typeArgs typeArgUseReqs = do
+  -- Ensure that the right number of type arguments are passed in.
+  let ident = fnTemplateIdentifier tmpl
+      vars = fnTemplateVars tmpl
+      varCount = length vars
+      argCount = length typeArgs
+  when (argCount /= varCount) $
+    Left $ concat $
+    ["instantiateFnTemplate: ", show argCount, " argument(s) given for ", show varCount,
+     "-parameter function template ", show ident, "."]
+
+  Right $
+    addUseReqs (fnTemplateUseReqs tmpl `mappend` typeArgUseReqs) $
+    substTVars (zip vars typeArgs) $
+    makeFn ident
+           (Just $ toExtName $ fnTemplateExtNamePrefix tmpl ++ extNameSuffix)
+           (fnTemplatePurity tmpl)
+           (fnTemplateParams tmpl)
+           (fnTemplateReturn tmpl)
+
+instantiateFnTemplate' :: FnTemplate -> String -> [Type] -> Reqs -> Function
+instantiateFnTemplate' tmpl extNameSuffix typeArgs typeArgUseReqs =
+  either error id $
+  instantiateFnTemplate tmpl extNameSuffix typeArgs typeArgUseReqs
+
 -- | A C++ class declaration.
 data Class = Class
   { classIdentifier :: Identifier
@@ -541,6 +723,7 @@ data Class = Class
   , classConversions :: ClassConversions
   , classUseReqs :: Reqs
     -- ^ Requirements for a 'Type' to reference this class.
+  , classInstantiationInfo :: Maybe ClassInstantiationInfo
   }
 
 instance Eq Class where
@@ -553,6 +736,20 @@ instance Show Class where
 instance HasUseReqs Class where
   getUseReqs = classUseReqs
   setUseReqs reqs cls = cls { classUseReqs = reqs }
+
+instance HasTVars Class where
+  substTVar var val cls =
+    cls { classIdentifier = substTVar var val $ classIdentifier cls
+        , classCtors = map doCtor $ classCtors cls
+        , classMethods = map doMethod $ classMethods cls
+        }
+    where doCtor ctor =
+            ctor { ctorParams = map subst $ ctorParams ctor }
+          doMethod method =
+            method { methodParams = map subst $ methodParams method
+                   , methodReturn = subst $ methodReturn method
+                   }
+          subst = substTVar var val
 
 makeClass :: Identifier
           -> Maybe ExtName
@@ -570,6 +767,7 @@ makeClass identifier maybeExtName supers ctors methods = Class
   , classMethods = methods
   , classConversions = classConversionsNone
   , classUseReqs = mempty
+  , classInstantiationInfo = Nothing
   }
 
 -- | When a class object is returned from a function or taken as a parameter by
@@ -817,6 +1015,174 @@ mkBoolHasProp this name =
   in [ mkConstMethod this hasName [] TBool
      , mkMethod this setName [TBool] TVoid
      ]
+
+-- TODO Support parameterized class template encoding.
+data ClassTemplate = ClassTemplate
+  { classTemplateIdentifier :: Identifier
+  , classTemplateExtNamePrefix :: String
+  , classTemplateVars :: [String]
+  , classTemplateSuperclasses :: [ClassTemplateSuper]
+  , classTemplateCtors :: [Ctor]
+  , classTemplateMethods :: [Method]
+  , classTemplateUseReqs :: Reqs
+  }
+
+instance Eq ClassTemplate where
+  (==) = (==) `on` classTemplateIdentifier
+
+instance Show ClassTemplate where
+  show tmpl =
+    concat ["<ClassTemplate ", show (classTemplateIdentifier tmpl), ">"]
+
+instance HasUseReqs ClassTemplate where
+  getUseReqs = classTemplateUseReqs
+  setUseReqs reqs classTemplate = classTemplate { classTemplateUseReqs = reqs }
+
+data ClassTemplateSuper =
+  ClassTemplateSuperClass Class
+  -- ^ A non-templated superclass for a templated class.
+  | ClassTemplateSuperTemplate ClassTemplate [Type]
+    -- ^ A templated superclass for a templated class.
+
+makeClassTemplate ::
+  Identifier
+  -- ^ Identifier for the class template.  Should include 'TVar's for all type
+  -- variables.
+  -> Maybe String
+  -- ^ An optional prefix for the external name of classes instantiated from
+  -- this template.  Will use the last component of the identifier if absent.
+  -> [String]  -- ^ The names of type variables.
+  -> [ClassTemplateSuper]  -- ^ Superclasses.
+  -> [Ctor]  -- ^ Constructors, as in a non-template class.
+  -> [Method]  -- ^ Methods, as in a non-template class.
+  -> ClassTemplate
+makeClassTemplate ident maybeExtNamePrefix vars supers ctors methods =
+  ClassTemplate ident (stringOrIdentifier ident maybeExtNamePrefix)
+                vars supers ctors methods mempty
+
+instantiateClassTemplate ::
+  ClassTemplate  -- ^ The template to instantiate.
+  -> String
+  -- ^ A suffix to append to the prefix given to 'makeClassTemplate' to form a
+  -- complete 'ExtName' for the class.
+  -> [Type]  -- ^ Types to substitute for the type variables in the template.
+  -> [Class]
+  -- ^ Instantiated class templates for all derived class templates
+  -- ('ClassTemplateSuperTemplate').  Derived templates are not instantiated
+  -- automatically because things like the 'ExtName' must be set manually, so
+  -- the manually instantiated supers must be passed in here.  This list should
+  -- not contain any entries for non-template supers
+  -- ('ClassTemplateSuperClass').
+  -> Reqs  -- ^ Requirements for the type variables.
+  -> Either String Class
+instantiateClassTemplate tmpl extNameSuffix typeArgs instantiatedSupers typeArgUseReqs = do
+  -- Ensure that the right number of type arguments are passed in.
+  let ident = classTemplateIdentifier tmpl
+      supers = classTemplateSuperclasses tmpl
+      vars = classTemplateVars tmpl
+      varCount = length vars
+      argCount = length typeArgs
+  when (argCount /= varCount) $
+    Left $ concat
+    ["instantiateClassTemplate: ", show argCount, " argument(s) given for ", show varCount,
+     "-parameter class template ", show ident, "."]
+
+  -- Ensure that 'typeArgs' contains no type variables (since in this context
+  -- they would be free).
+  case filter (not . typeIsConcrete) typeArgs of
+    [] -> return ()
+    ts -> Left $ concat
+          ["instantiateClassTemplate: Can't instantiate template ", show ident,
+           " with types that contain free variables: ", show ts]
+
+  -- Build the list of concrete superclasses (no templates), ensuring that the
+  -- instantiated superclasses given for any template superclasses are
+  -- instantiated from the expected templates.
+  let templateSuperCount = length $
+                           filter (\super -> case super of
+                                      ClassTemplateSuperClass {} -> False
+                                      ClassTemplateSuperTemplate {} -> True)
+                           supers
+      instantiatedSuperCount = length instantiatedSupers
+  when (instantiatedSuperCount /= templateSuperCount) $
+    Left $ concat
+    ["instantiateClassTemplate: Template ", show ident, " has ", show templateSuperCount,
+     " template superclass(es), but was given ", show instantiatedSuperCount,
+     " instantiated superclass(es) during instantiation."]
+  (unusedInstantiatedSupers, concreteSupers) <-
+    runConsumeT instantiatedSupers $ forM supers $ \super -> case super of
+      ClassTemplateSuperClass cls -> return cls
+      ClassTemplateSuperTemplate superTmpl superTypeArgs -> do
+        -- Read the already-instaniated superclass from the supplied list.  We
+        -- checked counts above, so there should be one.
+        superCls <-
+          fromMaybeM (error $ concat
+                      ["instantiateClassTemplate: Internal error, ran out of instantiated ",
+                       "superclasses with template ", show ident, "."]) =<<
+          next
+
+        -- Ensure that 'superCls' is instantiated from 'superTmpl' with the
+        -- correct type arguments.
+        unless (classIsInstantiatedFromTemplate superCls superTmpl superTypeArgs) $
+          lift $ Left $ concat
+          ["instantiateClassTemplate: Superclass ", show (classExtName superCls),
+           " is not an instantiation of template ", show (classTemplateIdentifier superTmpl),
+           " with types ", show superTypeArgs, ", while instantiating template ",
+           show ident, "."]
+
+        return superCls
+  unless (null unusedInstantiatedSupers) $
+    Left $ concat
+    ["instantiateClassTemplate: Internal error, unused instantiated superclasses with template ",
+     show ident, "."]
+
+  -- Prefix "${classExtName}_" into method and ctor external names.
+  let clsExtName = classTemplateExtNamePrefix tmpl ++ extNameSuffix :: String
+      ctors = flip map (classTemplateCtors tmpl) $ \ctor ->
+        ctor { ctorExtName =
+                  toExtName $ concat [clsExtName, "_", fromExtName $ ctorExtName ctor] }
+      methods = flip map (classTemplateMethods tmpl) $ \method ->
+        method { methodExtName =
+                    toExtName $ concat [clsExtName, "_", fromExtName $ methodExtName method] }
+
+  return $
+    addClassInstantiationInfo tmpl typeArgs $
+    addUseReqs (classTemplateUseReqs tmpl `mappend` typeArgUseReqs) $
+    substTVars (zip vars typeArgs) $
+    makeClass ident
+              (Just $ toExtName clsExtName)
+              concreteSupers
+              ctors
+              methods
+
+instantiateClassTemplate' :: ClassTemplate -> String -> [Type] -> [Class] -> Reqs -> Class
+instantiateClassTemplate' tmpl extNameSuffix typeArgs instantiatedSupers typeArgUseReqs =
+  either error id $
+  instantiateClassTemplate tmpl extNameSuffix typeArgs instantiatedSupers typeArgUseReqs
+
+data ClassInstantiationInfo = ClassInstantiationInfo
+  { classInstantiationTemplate :: ClassTemplate
+  , classInstantiationTypeArgs :: [Type]
+  } deriving (Eq)
+
+instance Show ClassInstantiationInfo where
+  show info =
+    concat ["<ClassInstantiationInfo ", show (classInstantiationTemplate info),
+            " ", show (classInstantiationTypeArgs info)]
+
+addClassInstantiationInfo :: ClassTemplate -> [Type] -> Class -> Class
+addClassInstantiationInfo tmpl typeArgs cls = case classInstantiationInfo cls of
+  Nothing -> cls { classInstantiationInfo = Just $ ClassInstantiationInfo tmpl typeArgs }
+  Just info ->
+    error $ concat
+    ["addClassInstantiationInfo: ", show cls, " already has ", show info,
+     ", trying to add ", show tmpl, " and ", show typeArgs, "."]
+
+classIsInstantiatedFromTemplate :: Class -> ClassTemplate -> [Type] -> Bool
+classIsInstantiatedFromTemplate cls tmpl typeArgs = case classInstantiationInfo cls of
+  Nothing -> False
+  Just info -> classInstantiationTemplate info == tmpl &&
+               classInstantiationTypeArgs info == typeArgs
 
 -- | A non-C++ function that can be invoked via a C++ functor.
 data Callback = Callback

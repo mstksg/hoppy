@@ -20,9 +20,12 @@ library
     , Foreign.Cppop.Generator.Main
     , Foreign.Cppop.Generator.Spec
     , Foreign.Cppop.Generator.Std
+    , Foreign.Cppop.Generator.Std.List
+    , Foreign.Cppop.Generator.Std.String
     , Foreign.Cppop.Runtime.Support
   other-modules:
-      Foreign.Cppop.Generator.Language.Cpp
+      Foreign.Cppop.Common.Consume
+    , Foreign.Cppop.Generator.Language.Cpp
     , Foreign.Cppop.Generator.Language.Haskell
   default-extensions:
       ExistentialQuantification
