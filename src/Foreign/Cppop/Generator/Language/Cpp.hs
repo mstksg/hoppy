@@ -123,7 +123,7 @@ sayFunction :: String -> [String] -> Type -> Maybe (Generator ()) -> Generator (
 sayFunction name paramNames t maybeBody = do
   case t of
     TFn {} -> return ()
-    _ -> abort $ "sayFunction requires a function type, given: " ++ show t
+    _ -> abort $ concat ["sayFunction: A function type is required, given ", show t, "."]
   say "\n"  -- New top-level structure, leave a blank line.
   sayVar name (Just paramNames) t
   case maybeBody of
@@ -251,7 +251,7 @@ sayExportFn extName sayCppName maybeThisType paramTypes retType sayBody = do
         (TVoid, Nothing) -> sayCall >> say ";\n"
         (_, Nothing) -> say "return " >> sayCall >> say ";\n"
         (TObj cls, Just _) -> do
-          encoder <- fromMaybeM (abort $ "sayExportFn: Class lacks an encoder: " ++ show cls) $
+          encoder <- fromMaybeM (abort $ concat ["sayExportFn: ", show cls, " lacks an encoder."]) $
                      classCppEncoder $ classEncoding cls
           case encoder of
             CppCoderFn fn reqs -> do
@@ -262,27 +262,28 @@ sayExportFn extName sayCppName maybeThisType paramTypes retType sayBody = do
               sayVar "result" Nothing (TRef $ TConst retType) >>
                 say " = " >> sayCall >> say ";\n"
               say "return " >> sayExpr "result" terms >> say ";\n"
-        ts -> abort $ "sayExportFn: Unexpected return types: " ++ show ts
+        ts -> abort $ concat ["sayExportFn: Unexpected return types ", show ts, "."]
 
 sayArgRead :: CoderDirection -> (Int, Type, Maybe Type) -> Generator ()
 sayArgRead dir (n, cppType, maybeCType) = case cppType of
   TCallback cb -> do
     case dir of
       DoDecode -> return ()
-      DoEncode -> abort $ "sayArgRead: Encoding of callbacks is not supported.  Given " ++
-                  show cb ++ "."
+      DoEncode -> abort $ concat
+                  ["sayArgRead: Encoding of callbacks is not supported.  Given ",
+                   show cb, "."]
     says [callbackClassName cb, " ", toArgName n, "(", toArgNameAlt n, ");\n"]
 
   TObj cls -> do
     let encoding = classEncoding cls
-    coder <- fromMaybeM (abort $ "sayArgRead: Class lacks a coder for " ++ show dir ++ ": " ++
-                         show (classExtName cls)) $
+    coder <- fromMaybeM (abort $ concat
+                         ["sayArgRead: ", show cls, " lacks a coder for ", show dir, "."]) $
              getCoder dir encoding
     sayVar (toArgName n) Nothing =<< case dir of
       DoDecode -> return cppType
-      DoEncode -> fromMaybeM (abort $
-                              "sayArgRead: Internal error, don't have a C type for class: " ++
-                              show (classExtName cls))
+      DoEncode -> fromMaybeM (abort $ concat
+                              ["sayArgRead: Internal error, don't have a C type for ", show cls,
+                               "."])
                   maybeCType
     say " = "
     let inputVar = toArgNameAlt n
@@ -303,8 +304,9 @@ sayArgRead dir (n, cppType, maybeCType) = case cppType of
   --
   -- TODO Do we need to handle TConst?
   _ -> forM_ maybeCType $ \cType ->
-    abort $ "sayArgRead: Don't know how to " ++ show dir ++ " to type " ++ show cType ++
-    " from type " ++ show cppType ++ "."
+    abort $ concat
+    ["sayArgRead: Don't know how to ", show dir, " to type ", show cType,
+     " from type ", show cppType, "."]
 
 sayExpr :: String -> [Maybe String] -> Generator ()
 sayExpr arg terms = do
@@ -322,8 +324,8 @@ sayClassEncodeFn :: Bool -> Class -> Generator ()
 sayClassEncodeFn sayBody cls =
   when (isJust $ classCppDecoder $ classEncoding cls) $ do
     cType <-
-      fromMaybeM (abort $ "sayClassEncodeFn: Should have a C type for an object of class " ++
-                  show (fromExtName $ classExtName cls) ++ ".") =<<
+      fromMaybeM (abort $ concat
+                  ["sayClassEncodeFn: Should have a C type for ", show cls, "."]) =<<
       typeToCType (TObj cls)
     sayFunction (classEncodeFnCppName cls)
                 [toArgNameAlt 1]
@@ -342,8 +344,8 @@ sayClassDecodeFn :: Bool -> Class -> Generator ()
 sayClassDecodeFn sayBody cls =
   forM_ (classCppEncoder $ classEncoding cls) $ \encoder -> do
     cType <-
-      fromMaybeM (abort $ "sayClassDecodeFn: Should have a C type for an object of class " ++
-                  show (fromExtName $ classExtName cls) ++ ".") =<<
+      fromMaybeM (abort $ concat
+                  ["sayClassDecodeFn: Should have a C type for ", show cls, "."]) =<<
       typeToCType (TObj cls)
     sayFunction (classDecodeFnCppName cls)
                 ["ptr"]
@@ -444,8 +446,8 @@ sayExportCallback sayBody cb = do
           (TVoid, Nothing) -> sayCall >> say ";\n"
           (_, Nothing) -> say "return " >> sayCall >> say ";\n"
           (TObj cls, Just _) -> do
-            decoder <- fromMaybeM (abort $ "sayExportCallback: Class lacks a decoder: " ++
-                                   show cls) $
+            decoder <- fromMaybeM (abort $ concat
+                                   ["sayExportCallback: ", show cls, " lacks a decoder."]) $
                        classCppDecoder $ classEncoding cls
             case decoder of
               CppCoderFn fn reqs -> do
@@ -456,7 +458,8 @@ sayExportCallback sayBody cb = do
                 sayVar "result" Nothing (TRef $ TConst retType) >>
                   say " = " >> sayCall >> say ";\n"
                 say "return " >> sayExpr "result" terms >> say ";\n"
-          ts -> abort $ "sayExportCallback: Unexpected return types: " ++ show ts
+          ts -> abort $ concat
+                ["sayExportCallback: Unexpected return types ", show ts, "."]
 
       -- Render the non-impl operator() method, which simply passes C++ values
       -- along to the impl object.
@@ -479,14 +482,16 @@ sayExportCallback sayBody cb = do
 typeToCType :: Type -> Generator (Maybe Type)
 typeToCType t = case t of
   TObj cls -> do
-    t' <- fromMaybeM (abort $ "typeToCType: Don't have a C type for class: " ++ show cls) $
+    t' <- fromMaybeM (abort $ concat
+                      ["typeToCType: Don't have a C type for ", show cls, "."]) $
           classCppCType $ classEncoding cls
-    Just <$> ensureNonObj t'
+    Just <$> ensureNonObj cls t'
   TConst t' -> typeToCType t'
   _ -> return Nothing
-  where ensureNonObj t' = case t' of
-          TObj cls' -> abort $ "typeToCType: Class's C type cannot be an object: " ++ show cls'
-          TConst t'' -> ensureNonObj t''
+  where ensureNonObj cls t' = case t' of
+          TObj _ -> abort $ concat
+                    ["typeToCType: ", show cls, "'s C type cannot be an object, ", show t', "."]
+          TConst t'' -> ensureNonObj cls t''
           _ -> return t'
 
 data ReqsType = ReqsType

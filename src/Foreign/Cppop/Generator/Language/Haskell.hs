@@ -268,14 +268,14 @@ sayExportCallback mode cb = do
 
   hsFnCType <-
     fromMaybeM
-    (abort $ "sayExportCallback: Couldn't create a function C-side type for callback: " ++
-     show cb) =<<
+    (abort $ concat
+     ["sayExportCallback: Couldn't create a function C-side type for ", show cb, "."]) =<<
     cppTypeToHsTypeAndUse HsCSide fnType
 
   hsFnHsType <-
     fromMaybeM
-    (abort $ "sayExportCallback: Couldn't create a function Haskell-side type for callback: " ++
-     show cb) =<<
+    (abort $ concat
+     ["sayExportCallback: Couldn't create a function Haskell-side type for ", show cb, "."]) =<<
     cppTypeToHsTypeAndUse HsHsSide fnType
 
   let getWholeFnType = do
@@ -376,7 +376,7 @@ sayEncode t suffix = case t of
       addImports $ haskellEncodingFnImports encoding
       -- TODO Use the Encode class here?
       saysLn $ "(" : haskellEncodingEncoder encoding : ")" : suffix
-    Nothing -> abort $ "sayEncode: Can't encode class: " ++ show cls
+    Nothing -> abort $ concat ["sayEncode: Can't encode ", show cls, "."]
   TConst t' -> sayEncode t' suffix
 
 sayDecode :: Type -> [String] -> Generator ()
@@ -411,7 +411,7 @@ sayDecode t suffix = case t of
     Just encoding -> do
       addImports $ haskellEncodingFnImports encoding
       saysLn $ "(" : haskellEncodingDecoder encoding : ")" : suffix
-    Nothing -> abort $ "sayDecode: Can't decode class: " ++ show cls
+    Nothing -> abort $ concat ["sayDecode: Can't decode ", show cls, "."]
   TConst t' -> sayDecode t' suffix
 
 sayExportClass :: SayExportMode -> Class -> Generator ()

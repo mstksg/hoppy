@@ -93,7 +93,7 @@ import Control.Applicative ((<$>), (<*>))
 import Control.Arrow ((&&&))
 import Control.Monad (liftM2, unless)
 import Control.Monad.Except (MonadError, Except, runExcept, throwError)
-import Control.Monad.State (MonadState, StateT, execStateT, gets, modify)
+import Control.Monad.State (MonadState, StateT, execStateT, get, modify)
 import Data.Char (isAlpha, isAlphaNum)
 import Data.Function (on)
 import Data.List (intercalate)
@@ -118,7 +118,10 @@ data Interface = Interface
     -- ^ Maps each 'ExtName' exported by some module to the module that exports
     -- the name.
   , interfaceHaskellModuleBase :: Maybe [String]
-  } deriving (Show)
+  }
+
+instance Show Interface where
+  show iface = concat ["<Interface ", show (interfaceName iface), ">"]
 
 -- | An @#include@ directive in a C++ file.
 data Include = Include { includeToString :: String }
@@ -158,9 +161,9 @@ interface ifName modules = do
 
   unless (null extNamesInMultipleModules) $
     Left $ unlines $
-    "Some external name(s) were are exported by multiple modules:" :
+    "Some external name(s) are exported by multiple modules:" :
     map (\(extName, modules) ->
-          concat ["- ", fromExtName extName, ": ", show (map moduleName modules)])
+          concat $ "- " : show extName : ": " : map show modules)
         extNamesInMultipleModules
 
   return Interface
@@ -176,7 +179,7 @@ addInterfaceHaskellModuleBase modulePath iface = case interfaceHaskellModuleBase
   Just existingPath ->
     Left $ concat
     [ "addInterfaceHaskellModuleBase: Trying to add Haskell module base "
-    , intercalate "." modulePath, " to interface ", show (interfaceName iface)
+    , intercalate "." modulePath, " to ", show iface
     , " which already has a module base ", intercalate "." existingPath
     ]
 
@@ -224,7 +227,7 @@ modifyModule' :: Module -> StateT Module (Except String) () -> Module
 modifyModule' m action = case modifyModule m action of
   Left errorMsg ->
     error $ concat
-    ["modifyModule' failed to modify module ", show (moduleName m), ": ", errorMsg]
+    ["modifyModule' failed to modify ", show m, ": ", errorMsg]
   Right m' -> m'
 
 setModuleHppPath :: MonadState Module m => String -> m ()
@@ -235,23 +238,25 @@ setModuleCppPath path = modify $ \m -> m { moduleCppPath = path }
 
 addModuleExports :: (MonadError String m, MonadState Module m) => [Export] -> m ()
 addModuleExports exports = do
-  existingExports <- gets moduleExports
-  let newExports = M.fromList $ map (exportExtName &&& id) exports
+  m <- get
+  let existingExports = moduleExports m
+      newExports = M.fromList $ map (exportExtName &&& id) exports
       duplicateNames = (S.intersection `on` M.keysSet) existingExports newExports
   if S.null duplicateNames
     then modify $ \m -> m { moduleExports = existingExports `mappend` newExports }
-    else throwError $
-         "addModuleExports: The following ExtNames are being defined multiple times: " ++
-         show duplicateNames
+    else throwError $ concat
+         ["addModuleExports: ", show m, " defines external names multiple times: ",
+          show duplicateNames]
 
 addModuleHaskellName :: (MonadError String m, MonadState Module m) => [String] -> m ()
 addModuleHaskellName name = do
-  existingName <- gets moduleHaskellName
-  case existingName of
+  m <- get
+  case moduleHaskellName m of
     Nothing -> modify $ \m -> m { moduleHaskellName = Just name }
     Just name' ->
-      throwError $ "addModuleHaskellName: Module already has Haskell name " ++
-      show name' ++ "; trying to add name " ++ show name ++ "."
+      throwError $ concat
+      ["addModuleHaskellName: ", show m, " already has Haskell name ",
+       show name', "; trying to add name ", show name, "."]
 
 data Reqs = Reqs
   { reqsIncludes :: S.Set Include
@@ -286,7 +291,10 @@ addReqIncludes includes =
 newtype ExtName = ExtName
   { fromExtName :: String
     -- ^ Returns the string an an 'ExtName' contains.
-  } deriving (Eq, Ord, Show)
+  } deriving (Eq, Ord)
+
+instance Show ExtName where
+  show extName = concat ["$\"", fromExtName extName, "\"$"]
 
 -- | Creates an 'ExtName' that contains the given string, erroring if the string
 -- is an invalid 'ExtName'.
@@ -328,7 +336,10 @@ data Identifier = Identifier
   , idName :: String
     -- ^ Returns the last component of the identifier.
   }
-  deriving (Eq, Show)
+  deriving (Eq)
+
+instance Show Identifier where
+  show identifier = concat ["<Identifier ", idToString identifier, ">"]
 
 -- | Converts an identifier to its C++ form.
 idToString :: Identifier -> String
@@ -405,10 +416,13 @@ data CppEnum = CppEnum
     -- is broken up into words.  How the words and ext name get combined to make
     -- a name in a particular foreign language depends on the language.
   , enumUseReqs :: Reqs
-  } deriving (Show)
+  }
 
 instance Eq CppEnum where
   (==) = (==) `on` enumIdentifier
+
+instance Show CppEnum where
+  show e = concat ["<Enum ", show (enumExtName e), " ", show (enumIdentifier e), ">"]
 
 instance HasUseReqs CppEnum where
   getUseReqs = enumUseReqs
@@ -441,7 +455,11 @@ data Function = Function
   , fnUseReqs :: Reqs
     -- ^ Requirements for a binding to call the function.
   }
-  deriving (Show)
+
+instance Show Function where
+  show fn =
+    concat ["<Function ", show (fnExtName fn), " ", show (fnIdentifier fn),
+            show (fnParams fn), " ", show (fnReturn fn), ">"]
 
 instance HasUseReqs Function where
   getUseReqs = fnUseReqs
@@ -471,10 +489,13 @@ data Class = Class
   , classUseReqs :: Reqs
     -- ^ Requirements for a 'Type' to reference this class.
   }
-  deriving (Show)
 
 instance Eq Class where
   (==) = (==) `on` classIdentifier
+
+instance Show Class where
+  show cls =
+    concat ["<Class ", show (classExtName cls), " ", show (classIdentifier cls), ">"]
 
 instance HasUseReqs Class where
   getUseReqs = classUseReqs
@@ -594,7 +615,9 @@ data Ctor = Ctor
   { ctorExtName :: ExtName
   , ctorParams :: [Type]
   }
-  deriving (Show)
+
+instance Show Ctor where
+  show ctor = concat ["<Ctor ", show (ctorExtName ctor), " ", show (ctorParams ctor), ">"]
 
 makeCtor :: ExtName
          -> [Type]  -- ^ Parameter types.
@@ -610,7 +633,12 @@ data Method = Method
   , methodParams :: [Type]
   , methodReturn :: Type
   }
-  deriving (Show)
+
+instance Show Method where
+  show method =
+    concat ["<Method ", show (methodExtName method), " ", show (methodCName method), " ",
+            show (methodApplicability method), " ", show (methodPurity method), " ",
+            show (methodParams method), " ", show (methodReturn method), ">"]
 
 data MethodApplicability = MNormal | MStatic | MConst
                          deriving (Eq, Show)
@@ -645,10 +673,15 @@ data Callback = Callback
   { callbackExtName :: ExtName
   , callbackParams :: [Type]
   , callbackReturn :: Type
-  } deriving (Show)
+  }
 
 instance Eq Callback where
   (==) = (==) `on` callbackExtName
+
+instance Show Callback where
+  show cb =
+    concat ["<Callback ", show (callbackExtName cb), " ", show (callbackParams cb), " ",
+            show (callbackReturn cb)]
 
 makeCallback :: ExtName
              -> [Type]  -- ^ Parameter types.

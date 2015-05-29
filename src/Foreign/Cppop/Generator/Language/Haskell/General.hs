@@ -264,8 +264,9 @@ importHsModuleForExtName extName = do
       when (currentModuleName /= ownerModuleName) $
         addImports $ hsWholeModuleImport ownerModuleName
     Nothing ->
-      abort $ "importHsModuleForExtName: Couldn't find module for ExtName " ++
-      show (fromExtName extName) ++ ", maybe you forgot to include it in an exports list?"
+      abort $ concat
+      ["importHsModuleForExtName: Couldn't find module for ", show extName,
+       ", maybe you forgot to include it in an exports list?"]
 
 sayLn :: String -> Generator ()
 sayLn x = tell $ mempty { outputBody = [x] }
