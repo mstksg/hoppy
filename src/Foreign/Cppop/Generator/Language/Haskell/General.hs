@@ -421,9 +421,9 @@ cppTypeToHsTypeAndUse side t = case t of
           addImports hsImportForSupport
           return $ Just $ HsTyApp (HsTyCon $ UnQual $ HsIdent "CppopFCRS.CCallback") hsType
   TObj cls -> do
-    forM_ (encodingTypeImportsForSide side <$> classHaskellType (classEncoding cls))
+    forM_ (encodingTypeImportsForSide side <$> classHaskellEncoding (classEncoding cls))
       addImports
-    return $ fmap (encodingTypeForSide side) $ classHaskellType $ classEncoding cls
+    return $ fmap (encodingTypeForSide side) $ classHaskellEncoding $ classEncoding cls
   TConst t' -> cppTypeToHsTypeAndUse side t'
 
 -- | Prints a value like 'P.prettyPrint', but removes newlines so that they

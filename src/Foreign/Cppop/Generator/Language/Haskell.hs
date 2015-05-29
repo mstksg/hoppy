@@ -371,7 +371,7 @@ sayEncode t suffix = case t of
   TCallback cb -> do
     importHsModuleForExtName $ callbackExtName cb
     saysLn $ toHsCallbackCtorName cb : suffix
-  TObj cls -> case classHaskellType $ classEncoding cls of
+  TObj cls -> case classHaskellEncoding $ classEncoding cls of
     Just encoding -> do
       addImports $ haskellEncodingFnImports encoding
       -- TODO Use the Encode class here?
@@ -407,7 +407,7 @@ sayDecode t suffix = case t of
   TRef {} -> abort "sayDecode: TRef unimplemented."
   TFn {} -> abort "sayDecode: TFn unimplemented."
   TCallback {} -> abort "sayDecode: TCallback unimplemented."
-  TObj cls -> case classHaskellType $ classEncoding cls of
+  TObj cls -> case classHaskellEncoding $ classEncoding cls of
     Just encoding -> do
       addImports $ haskellEncodingFnImports encoding
       saysLn $ "(" : haskellEncodingDecoder encoding : ")" : suffix
@@ -420,7 +420,7 @@ sayExportClass mode cls = do
     SayExportForeignImports -> do
       -- It doesn't matter when we emit the imports the class requires, but we
       -- only need to do it once.
-      forM_ (classHaskellType $ classEncoding cls) $ \encoding -> do
+      forM_ (classHaskellEncoding $ classEncoding cls) $ \encoding -> do
         addImports $ haskellEncodingTypeImports encoding
         addImports $ haskellEncodingCTypeImports encoding
         addImports $ haskellEncodingFnImports encoding
@@ -563,7 +563,7 @@ sayExportClassHsSpecialFns mode cls = do
 
   -- Say Encodable and Decodable instances, if the class is encodable and
   -- decodable.
-  forM_ (classHaskellType $ classEncoding cls) $ \encoding -> do
+  forM_ (classHaskellEncoding $ classEncoding cls) $ \encoding -> do
     let hsType = haskellEncodingType encoding
         hsTypeStr = concat ["(", prettyPrint hsType, ")"]
         cType = haskellEncodingCType encoding

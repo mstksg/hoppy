@@ -27,7 +27,7 @@ c_std__string =
            , classCppDecodeThenFree = True
            , classCppEncoder = Just $ CppCoderExpr [Just "strdup(", Nothing, Just ".c_str())"] $
                                reqInclude $ includeStd "cstring"
-           , classHaskellType =
+           , classHaskellEncoding =
              Just HaskellEncoding
              { haskellEncodingType = HsTyCon $ UnQual $ HsIdent "CppopP.String"
              , haskellEncodingCType = HsTyCon $ UnQual $ HsIdent "CppopFC.CString"

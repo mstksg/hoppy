@@ -58,7 +58,7 @@ module Foreign.Cppop.Generator.Spec (
   Purity (..),
   Function, makeFn, fnIdentifier, fnExtName, fnPurity, fnParams, fnReturn, fnUseReqs,
   Class, makeClass, classIdentifier, classExtName, classSuperclasses, classCtors, classMethods,
-  classEncoding, classUseReqs,
+  classConversions, classUseReqs,
   Ctor, makeCtor, ctorExtName, ctorParams,
   Method,
   MethodApplicability (..),
@@ -66,14 +66,11 @@ module Foreign.Cppop.Generator.Spec (
   Staticness (..),
   makeMethod, methodCName, methodExtName, methodApplicability, methodPurity, methodParams,
   methodReturn, methodConst, methodStatic,
-  -- ** Encoding and decoding
-  ClassEncoding (..),
-  classEncodingNone,
-  classModifyEncoding,
-  classCopyEncodingFrom,
-  CppCoder (..),
-  cppCoderReqs,
-  HaskellEncoding (..),
+  -- ** Conversions to and from foreign values
+  ClassConversions (..),
+  classConversionsNone,
+  classModifyConversions,
+  ClassHaskellConversion (..),
   -- * Callbacks
   Callback, makeCallback, callbackExtName, callbackParams, callbackReturn, callbackToTFn,
   -- * Haskell imports
@@ -485,7 +482,7 @@ data Class = Class
   , classSuperclasses :: [Class]
   , classCtors :: [Ctor]
   , classMethods :: [Method]
-  , classEncoding :: ClassEncoding
+  , classConversions :: ClassConversions
   , classUseReqs :: Reqs
     -- ^ Requirements for a 'Type' to reference this class.
   }
@@ -515,7 +512,7 @@ makeClass identifier maybeExtName supers ctors methods = Class
   , classSuperclasses = supers
   , classCtors = ctors
   , classMethods = methods
-  , classEncoding = classEncodingNone
+  , classConversions = classConversionsNone
   , classUseReqs = mempty
   }
 
@@ -541,73 +538,25 @@ makeClass identifier maybeExtName supers ctors methods = Class
 -- code (e.g. 'classCppDecoder', 'classCppEncoder', 'haskellEncodingDecoder',
 -- 'haskellEncodingEncoder'), where encoding refers to converting a native value
 -- to its C type, and decoding vice versa.
-data ClassEncoding = ClassEncoding
-  { classCppCType :: Maybe Type
-    -- ^ The intermediate C type that will be used for conversions.  @Nothing@
-    -- means that the class will not supported decoding from or encoding to a
-    -- foreign type.
-  , classCppCTypeReqs :: Reqs
-    -- ^ Requirements for a binding to use the class's C type.
-  , classCppDecoder :: Maybe CppCoder
-    -- ^ The conversion process from a C type to a C++ object.  @Nothing@ means
-    -- that the class will not support decoding from a foreign type.
-  , classCppDecodeThenFree :: Bool
-    -- ^ A convenience for writing interfaces; enables decoding with an existing
-    -- function then automatically freeing the encoded value after the decoding
-    -- is finished.
-  , classCppEncoder :: Maybe CppCoder
-    -- ^ The conversion process from a C++ object to a C type.  @Nothing@ means
-    -- that the class will not support encoding to a foreign type.
-  , classHaskellType :: Maybe HaskellEncoding
+data ClassConversions = ClassConversions
+  { classHaskellConversion :: Maybe ClassHaskellConversion
     -- ^ Controls how conversions happen in Haskell bindings.
   } deriving (Show)
 
 -- | Encoding parameters for a class that is not encodable or decodable.
-classEncodingNone :: ClassEncoding
-classEncodingNone = ClassEncoding Nothing mempty Nothing False Nothing Nothing
+classConversionsNone :: ClassConversions
+classConversionsNone = ClassConversions Nothing
 
 -- | Modifies classes' 'ClassEncoding' structures with a given function.
-classModifyEncoding :: (ClassEncoding -> ClassEncoding) -> Class -> Class
-classModifyEncoding f cls = cls { classEncoding = f $ classEncoding cls }
+classModifyConversions :: (ClassConversions -> ClassConversions) -> Class -> Class
+classModifyConversions f cls = cls { classConversions = f $ classConversions cls }
 
--- | @classCopyEncodingFrom souce target@ copies the 'ClassEncoding' structure
--- from @source@ to @target@.
-classCopyEncodingFrom :: Class -> Class -> Class
-classCopyEncodingFrom source target = target { classEncoding = classEncoding source }
-
--- | The means of decoding and encoding a class in C++.
-data CppCoder =
-  CppCoderFn Identifier Reqs
-  -- ^ The named function will be called to decode the C type (when decoding) or
-  -- to encode the C++ type (when encoding).
-  | CppCoderExpr [Maybe String] Reqs
-    -- ^ A C++ expression made from the concatenation of all of the strings will
-    -- be used.  For each @Nothing@, the name of an input variable will be
-    -- substituted.
-  deriving (Show)
-
-cppCoderReqs :: CppCoder -> Reqs
-cppCoderReqs (CppCoderFn _ reqs) = reqs
-cppCoderReqs (CppCoderExpr _ reqs) = reqs
-
--- | Conversions of C++ class objects in Haskell.
-data HaskellEncoding = HaskellEncoding
-  { haskellEncodingType :: HsType
-    -- ^ @ht@; the Haskell type to start with or end at, e.g. @String@.
-  , haskellEncodingCType :: HsType
-    -- ^ @ct@; the Haskell representation of the intermediate C type, e.g. @TPtr
-    -- TChar@.
-  , haskellEncodingDecoder :: String
-    -- ^ Decoding function, of type @ct -> IO ht@.
-  , haskellEncodingEncoder :: String
-    -- ^ Encoding function, of type @ht -> IO ct@.
-  , haskellEncodingTypeImports :: HsImportSet
-    -- ^ Imports necessary to make use of @ht@.
-  , haskellEncodingCTypeImports :: HsImportSet
-    -- ^ Imports necessary to make use of @ct@.
-  , haskellEncodingFnImports :: HsImportSet
-    -- ^ Imports necessary to make use of @haskellEncodingDecoder@ and
-    -- @haskellEncodingDecoder@.
+data ClassHaskellConversion = ClassHaskellConversion
+  { classHaskellConversionType :: HsType
+  , classHaskellConversionToCppFn :: String
+  , classHaskellConversionToCppReqs :: HsImportSet
+  , classHaskellConversionFromCppFn :: String
+  , classHaskellConversionFromCppReqs :: HsImportSet
   } deriving (Show)
 
 -- | A C++ class constructor declaration.
