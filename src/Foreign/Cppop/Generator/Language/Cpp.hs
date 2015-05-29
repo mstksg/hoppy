@@ -201,9 +201,6 @@ sayExport sayBody export = case export of
                 ["self"]
                 (TFn [TPtr $ TConst $ TObj cls] TVoid) $
       Just $ say "delete self;\n"
-    -- Export encode and decode functions for the class.
-    sayClassEncodeFn sayBody cls
-    sayClassDecodeFn sayBody cls
     -- Export each of the class's methods.
     forM_ (classMethods cls) $ \method -> do
       let static = methodStatic method == Static
@@ -317,48 +314,6 @@ sayExpr arg terms = do
 sayArgNames :: Int -> Generator ()
 sayArgNames count =
   says $ intersperse ", " $ map toArgName [1..count]
-
--- | When a class is encodable from a foreign value (as described in
--- 'ClassEncoding'), then generate an encode function.
-sayClassEncodeFn :: Bool -> Class -> Generator ()
-sayClassEncodeFn sayBody cls =
-  when (isJust $ classCppDecoder $ classEncoding cls) $ do
-    cType <-
-      fromMaybeM (abort $ concat
-                  ["sayClassEncodeFn: Should have a C type for ", show cls, "."]) =<<
-      typeToCType (TObj cls)
-    sayFunction (classEncodeFnCppName cls)
-                [toArgNameAlt 1]
-                (TFn [cType] $ TPtr $ TObj cls) $
-      if sayBody
-      then Just $ do
-        -- TODO This may result in an redundant temporary on the stack for some
-        -- classes; optimize.
-        sayArgRead DoDecode (1, TObj cls, Just cType)
-        say "return new" >> sayIdentifier (classIdentifier cls) >> says ["(", toArgName 1, ");\n"]
-      else Nothing
-
--- | When a class is decodable to a foreign value (as described in
--- 'ClassEncoding'), then generate an decode function.
-sayClassDecodeFn :: Bool -> Class -> Generator ()
-sayClassDecodeFn sayBody cls =
-  forM_ (classCppEncoder $ classEncoding cls) $ \encoder -> do
-    cType <-
-      fromMaybeM (abort $ concat
-                  ["sayClassDecodeFn: Should have a C type for ", show cls, "."]) =<<
-      typeToCType (TObj cls)
-    sayFunction (classDecodeFnCppName cls)
-                ["ptr"]
-                (TFn [TPtr $ TObj cls] cType) $
-      if sayBody
-      then Just $ case encoder of
-        CppCoderFn fn reqs -> do
-          addReqs reqs
-          say "return " >> sayIdentifier fn >> say "(*ptr);\n"
-        CppCoderExpr terms reqs -> do
-          addReqs reqs
-          say "return " >> sayExpr "(*ptr)" terms >> say ";\n"
-      else Nothing
 
 sayExportCallback :: Bool -> Callback -> Generator ()
 sayExportCallback sayBody cb = do
