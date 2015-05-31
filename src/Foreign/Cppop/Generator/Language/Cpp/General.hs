@@ -2,8 +2,6 @@ module Foreign.Cppop.Generator.Language.Cpp.General (
   makeCppName,
   externalNameToCpp,
   classDeleteFnCppName,
-  classEncodeFnCppName,
-  classDecodeFnCppName,
   callbackClassName,
   callbackImplClassName,
   callbackFnName,
@@ -52,18 +50,6 @@ classDeleteFnPrefix = "gendel"
 
 classDeleteFnCppName :: Class -> String
 classDeleteFnCppName = makeClassCppName classDeleteFnPrefix
-
-classEncodeFnPrefix :: String
-classEncodeFnPrefix = "genenc"
-
-classEncodeFnCppName :: Class -> String
-classEncodeFnCppName = makeClassCppName classEncodeFnPrefix
-
-classDecodeFnPrefix :: String
-classDecodeFnPrefix = "gendec"
-
-classDecodeFnCppName :: Class -> String
-classDecodeFnCppName = makeClassCppName classDecodeFnPrefix
 
 callbackClassName :: Callback -> String
 callbackClassName = fromExtName . callbackExtName

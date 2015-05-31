@@ -20,9 +20,7 @@ import qualified Data.Set as S
 import Foreign.Cppop.Common
 import Foreign.Cppop.Generator.Spec
 import Foreign.Cppop.Generator.Language.Cpp.General (
-  classDecodeFnCppName,
   classDeleteFnCppName,
-  classEncodeFnCppName,
   externalNameToCpp,
   )
 import Foreign.Cppop.Generator.Language.Haskell.General
@@ -574,10 +572,6 @@ sayExportClassHsSpecialFns mode cls = do
         let hsPtrType = HsTyCon $ UnQual $ HsIdent typeName
             hsConstPtrType = HsTyCon $ UnQual $ HsIdent typeNameConst
         addImports hsImportForPrelude
-        saysLn ["foreign import ccall \"", classEncodeFnCppName cls, "\" ",
-                toHsClassEncodeFnName cls, " :: ", prettyPrint (fnInIO cType hsPtrType)]
-        saysLn ["foreign import ccall \"", classDecodeFnCppName cls, "\" ",
-                toHsClassDecodeFnName cls, " :: ", prettyPrint (fnInIO hsConstPtrType cType)]
 
       SayExportDecls -> do
         addImports $ mconcat [hsImport1 "Control.Monad" "(>=>)",
@@ -589,7 +583,7 @@ sayExportClassHsSpecialFns mode cls = do
         saysLn ["instance CppopFCRS.Encodable ", typeName, " (", hsTypeStr, ") where"]
         indent $ do
           sayLn "encode ="
-          indent $ sayEncode (TObj cls) [" >=> ", toHsClassEncodeFnName cls]
+          indent $ sayEncode (TObj cls) []
         ln
         saysLn ["instance CppopFCRS.Encodable ", typeNameConst, " (", hsTypeStr, ") where"]
         indent $
@@ -604,7 +598,7 @@ sayExportClassHsSpecialFns mode cls = do
         ln
         saysLn ["instance CppopFCRS.Decodable ", typeNameConst, " (", hsTypeStr, ") where"]
         indent $ do
-          saysLn ["decode = ", toHsClassDecodeFnName cls, " >=>"]
+          saysLn ["decode = "]
           indent $ sayDecode (TObj cls) []
 
       SayExportBoot -> do
@@ -614,10 +608,6 @@ sayExportClassHsSpecialFns mode cls = do
         saysLn ["instance CppopFCRS.Encodable ", typeNameConst, " (", hsTypeStr, ")"]
         saysLn ["instance CppopFCRS.Decodable ", typeName, " (", hsTypeStr, ")"]
         saysLn ["instance CppopFCRS.Decodable ", typeNameConst, " (", hsTypeStr, ")"]
-
-  where fnInIO :: HsType -> HsType -> HsType
-        fnInIO arg result =
-          HsTyFun arg $ HsTyApp (HsTyCon $ UnQual $ HsIdent "CppopP.IO") result
 
 fnToHsTypeAndUse :: HsTypeSide
                  -> Maybe (Constness, Class)

@@ -555,8 +555,14 @@ data ClassHaskellConversion = ClassHaskellConversion
   { classHaskellConversionType :: HsType
   , classHaskellConversionTypeImports :: HsImportSet
   , classHaskellConversionToCppFn :: String
+    -- ^ A Haskell expression that evaluates to a function that takes an object
+    -- of type 'classHaskellConversionType', and returns a pointer to a new
+    -- non-const C++ class object in IO.
   , classHaskellConversionToCppImports :: HsImportSet
   , classHaskellConversionFromCppFn :: String
+    -- ^ A Haskell expression that evaluates to a function that takes a pointer
+    -- to a const C++ class object, and returns an object of type
+    -- 'classHaskellConversionType' in IO.
   , classHaskellConversionFromCppImports :: HsImportSet
   } deriving (Show)
 
