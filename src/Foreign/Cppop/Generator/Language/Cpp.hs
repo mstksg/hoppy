@@ -57,7 +57,7 @@ import Data.Foldable (forM_)
 import Data.List (intersperse)
 import qualified Data.Map as M
 import Data.Maybe (fromMaybe, isJust)
-import Data.Monoid (Monoid, mappend, mconcat, mempty)
+import Data.Monoid (mappend, mconcat, mempty)
 import qualified Data.Set as S
 import Foreign.Cppop.Common
 import Foreign.Cppop.Generator.Language.Cpp.General
@@ -65,10 +65,6 @@ import Foreign.Cppop.Generator.Spec
 
 data CoderDirection = DoDecode | DoEncode
                     deriving (Eq, Show)
-
-getCoder :: CoderDirection -> ClassEncoding -> Maybe CppCoder
-getCoder DoDecode = classCppDecoder
-getCoder DoEncode = classCppEncoder
 
 type Generator = ReaderT Env (WriterT [Chunk] (WriterT (S.Set Include) (Either String)))
 
@@ -224,7 +220,7 @@ sayExportFn extName sayCppName maybeThisType paramTypes retType sayBody = do
   retCTypeMaybe <- typeToCType retType
   let retCType = fromMaybe retType retCTypeMaybe
 
-  addReqs . mconcat =<< mapM (typeUseReqs $ reqsForUse `mappend` reqsForCUse) (retType:paramTypes)
+  addReqs . mconcat =<< mapM typeUseReqs (retType:paramTypes)
 
   sayFunction (externalNameToCpp extName)
               (maybe id (const ("self":)) maybeThisType $
@@ -247,20 +243,16 @@ sayExportFn extName sayCppName maybeThisType paramTypes retType sayBody = do
       case (retType, retCTypeMaybe) of
         (TVoid, Nothing) -> sayCall >> say ";\n"
         (_, Nothing) -> say "return " >> sayCall >> say ";\n"
-        (TObj cls, Just _) -> do
-          encoder <- fromMaybeM (abort $ concat ["sayExportFn: ", show cls, " lacks an encoder."]) $
-                     classCppEncoder $ classEncoding cls
-          case encoder of
-            CppCoderFn fn reqs -> do
-              addReqs reqs
-              say "return " >> sayIdentifier fn >> say "(" >> sayCall >> say ");\n"
-            CppCoderExpr terms reqs -> do
-              addReqs reqs
-              sayVar "result" Nothing (TRef $ TConst retType) >>
-                say " = " >> sayCall >> say ";\n"
-              say "return " >> sayExpr "result" terms >> say ";\n"
-        ts -> abort $ concat ["sayExportFn: Unexpected return types ", show ts, "."]
+        (TRef _, Just (TPtr _)) -> say "return &(" >> sayCall >> say ");\n"
+        (TObj cls, Just (TPtr (TObj _))) ->
+          say "return new" >> sayIdentifier (classIdentifier cls) >> say "(" >>
+          sayCall >> say ");\n"
+        ts -> abort $ concat ["sayExportFn: Unexpected return types ", show ts,
+                              "while generating binding for ", show extName, "."]
 
+-- | If @dir@ is 'DoDecode', then we are a C++ function reading an argument from
+-- foreign code.  If @dir@ is 'DoEncode', then we are invoking a foreign
+-- callback.
 sayArgRead :: CoderDirection -> (Int, Type, Maybe Type) -> Generator ()
 sayArgRead dir (n, cppType, maybeCType) = case cppType of
   TCallback cb -> do
@@ -271,32 +263,12 @@ sayArgRead dir (n, cppType, maybeCType) = case cppType of
                    show cb, "."]
     says [callbackClassName cb, " ", toArgName n, "(", toArgNameAlt n, ");\n"]
 
-  TObj cls -> do
-    let encoding = classEncoding cls
-    coder <- fromMaybeM (abort $ concat
-                         ["sayArgRead: ", show cls, " lacks a coder for ", show dir, "."]) $
-             getCoder dir encoding
-    sayVar (toArgName n) Nothing =<< case dir of
-      DoDecode -> return cppType
-      DoEncode -> fromMaybeM (abort $ concat
-                              ["sayArgRead: Internal error, don't have a C type for ", show cls,
-                               "."])
-                  maybeCType
-    say " = "
-    let inputVar = toArgNameAlt n
-    case coder of
-      CppCoderFn fn reqs -> do
-        addReqs reqs
-        sayIdentifier fn >> says ["(", inputVar, ");\n"]
-      CppCoderExpr terms reqs -> do
-        addReqs reqs
-        sayExpr inputVar terms >> say ";\n"
-    when (dir == DoDecode && classCppDecodeThenFree encoding) $ do
-      addReqs $ reqInclude $ includeStd "cstdlib"
-      says ["free(", inputVar, ");\n"]
+  TRef (TObj _) -> convertObj
+  TRef (TConst (TObj _)) -> convertObj
+  TObj _ -> convertObj
 
-  -- Primitive types don't need to be encoded/decoded.  But it we maybeCType is
-  -- a Just, then we're expected to do some encoding/decoding, so something is
+  -- Primitive types don't need to be encoded/decoded.  But if maybeCType is a
+  -- Just, then we're expected to do some encoding/decoding, so something is
   -- wrong.
   --
   -- TODO Do we need to handle TConst?
@@ -305,11 +277,13 @@ sayArgRead dir (n, cppType, maybeCType) = case cppType of
     ["sayArgRead: Don't know how to ", show dir, " to type ", show cType,
      " from type ", show cppType, "."]
 
-sayExpr :: String -> [Maybe String] -> Generator ()
-sayExpr arg terms = do
-  say "("
-  forM_ terms $ maybe (says ["(", arg, ")"]) say
-  say ")"
+  where convertObj = case dir of
+          DoDecode -> do
+            sayVar (toArgName n) Nothing $ TRef cppType
+            says [" = *", toArgNameAlt n, ";\n"]
+          DoEncode -> do
+            sayVar (toArgName n) Nothing $ TPtr cppType
+            says [" = &", toArgNameAlt n, ";\n"]
 
 sayArgNames :: Int -> Generator ()
 sayArgNames count =
@@ -331,7 +305,7 @@ sayExportCallback sayBody cb = do
   paramCTypes <- zipWith fromMaybe paramTypes <$> mapM typeToCType paramTypes
   retCType <- fromMaybe retType <$> typeToCType retType
 
-  addReqs . mconcat =<< mapM (typeUseReqs $ reqsForUse `mappend` reqsForCUse) (retType:paramTypes)
+  addReqs . mconcat =<< mapM typeUseReqs (retType:paramTypes)
 
   let fnCType = TFn paramCTypes retCType
       fnPtrCType = TPtr fnCType
@@ -400,19 +374,13 @@ sayExportCallback sayBody cb = do
         case (retType, retCTypeMaybe) of
           (TVoid, Nothing) -> sayCall >> say ";\n"
           (_, Nothing) -> say "return " >> sayCall >> say ";\n"
-          (TObj cls, Just _) -> do
-            decoder <- fromMaybeM (abort $ concat
-                                   ["sayExportCallback: ", show cls, " lacks a decoder."]) $
-                       classCppDecoder $ classEncoding cls
-            case decoder of
-              CppCoderFn fn reqs -> do
-                addReqs reqs
-                say "return " >> sayIdentifier fn >> say "(" >> sayCall >> say ");\n"
-              CppCoderExpr terms reqs -> do
-                addReqs reqs
-                sayVar "result" Nothing (TRef $ TConst retType) >>
-                  say " = " >> sayCall >> say ";\n"
-                say "return " >> sayExpr "result" terms >> say ";\n"
+          (TObj _, Just retCType@(TPtr (TObj _))) -> do
+            sayVar "resultPtr" Nothing retCType >> say " = " >> sayCall >> say ";\n"
+            sayVar "result" Nothing retType >> say " = *resultPtr;\n"
+            say "delete resultPtr;\n"
+            say "return result;\n"
+          (TRef _, Just (TPtr (TObj _))) ->
+            say "return *(" >> sayCall >> say ");\n"
           ts -> abort $ concat
                 ["sayExportCallback: Unexpected return types ", show ts, "."]
 
@@ -436,37 +404,13 @@ sayExportCallback sayBody cb = do
 -- that should be used for conversion.
 typeToCType :: Type -> Generator (Maybe Type)
 typeToCType t = case t of
-  TObj cls -> do
-    t' <- fromMaybeM (abort $ concat
-                      ["typeToCType: Don't have a C type for ", show cls, "."]) $
-          classCppCType $ classEncoding cls
-    Just <$> ensureNonObj cls t'
+  TRef t' -> return $ Just $ TPtr t'
+  TObj _ -> return $ Just $ TPtr t
   TConst t' -> typeToCType t'
   _ -> return Nothing
-  where ensureNonObj cls t' = case t' of
-          TObj _ -> abort $ concat
-                    ["typeToCType: ", show cls, "'s C type cannot be an object, ", show t', "."]
-          TConst t'' -> ensureNonObj cls t''
-          _ -> return t'
 
-data ReqsType = ReqsType
-  { reqsTypeUse :: Bool
-  , reqsTypeCUse :: Bool
-  }
-
-instance Monoid ReqsType where
-  mempty = ReqsType False False
-
-  mappend (ReqsType a b) (ReqsType a' b') = ReqsType (a || a') (b || b')
-
-reqsForUse :: ReqsType
-reqsForUse = mempty { reqsTypeUse = True }
-
-reqsForCUse :: ReqsType
-reqsForCUse = mempty { reqsTypeCUse = True }
-
-typeUseReqs :: ReqsType -> Type -> Generator Reqs
-typeUseReqs rt t = case t of
+typeUseReqs :: Type -> Generator Reqs
+typeUseReqs t = case t of
   TVoid -> return mempty
   TBool -> return mempty
   TChar -> return mempty
@@ -484,25 +428,19 @@ typeUseReqs rt t = case t of
   TSize -> return sizeTReqs
   TSSize -> return sizeTReqs
   TEnum e -> return $ enumUseReqs e
-  TPtr t' -> typeUseReqs rt t'
-  TRef t' -> typeUseReqs rt t'
+  TPtr t' -> typeUseReqs t'
+  TRef t' -> typeUseReqs t'
   TFn paramTypes retType ->
     -- TODO Is the right 'ReqsType' being used recursively here?
-    mconcat <$> mapM (typeUseReqs rt) (retType:paramTypes)
+    mconcat <$> mapM typeUseReqs (retType:paramTypes)
   TCallback cb -> do
     cbClassReqs <- reqInclude . includeLocal . moduleHppPath <$>
                    findExportModule (callbackExtName cb)
     -- TODO Is the right 'ReqsType' being used recursively here?
-    fnTypeReqs <- typeUseReqs rt $ callbackToTFn cb
+    fnTypeReqs <- typeUseReqs $ callbackToTFn cb
     return $ cbClassReqs `mappend` fnTypeReqs
-  TObj cls -> do
-    let encoding = classEncoding cls
-        reqsSum =
-          -- These are roughly in order of decreasing use, for performance.
-          (if reqsTypeCUse rt then mappend $ classCppCTypeReqs encoding else id) $
-          if reqsTypeUse rt then classUseReqs cls else mempty
-    return reqsSum
-  TConst t' -> typeUseReqs rt t'
+  TObj cls -> return $ classUseReqs cls
+  TConst t' -> typeUseReqs t'
 
 sizeTReqs :: Reqs
 sizeTReqs = reqInclude $ includeStd "cstddef"

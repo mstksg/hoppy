@@ -607,6 +607,3 @@ fnToHsTypeAndUse side methodInfo purity paramTypes returnType = do
               HsCSide -> (Nothing, Just $ HsTyVar $ HsIdent $ toHsDataTypeName Const cls)
           TConst t' -> contextForParam (s, t')
           _ -> (,) Nothing <$> cppTypeToHsTypeAndUse side t
-
-addImportForClass :: Class -> Generator ()
-addImportForClass = importHsModuleForExtName . classExtName

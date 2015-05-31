@@ -553,10 +553,11 @@ classModifyConversions f cls = cls { classConversions = f $ classConversions cls
 
 data ClassHaskellConversion = ClassHaskellConversion
   { classHaskellConversionType :: HsType
+  , classHaskellConversionTypeImports :: HsImportSet
   , classHaskellConversionToCppFn :: String
-  , classHaskellConversionToCppReqs :: HsImportSet
+  , classHaskellConversionToCppImports :: HsImportSet
   , classHaskellConversionFromCppFn :: String
-  , classHaskellConversionFromCppReqs :: HsImportSet
+  , classHaskellConversionFromCppImports :: HsImportSet
   } deriving (Show)
 
 -- | A C++ class constructor declaration.

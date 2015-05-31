@@ -3,7 +3,6 @@ module Foreign.Cppop.Generator.Std (
   c_std__string,
   ) where
 
-import Data.Monoid (mappend)
 import Foreign.Cppop.Generator.Spec
 import Language.Haskell.Syntax (
   HsName (HsIdent),
@@ -20,22 +19,15 @@ mod_std = modifyModule' (makeModule "std" "std.hpp" "std.cpp") $
 c_std__string :: Class
 c_std__string =
   addReqIncludes [includeStd "string"] $
-  classModifyEncoding
-  (\c -> c { classCppCType = Just $ TPtr TChar
-           , classCppDecoder = Just $ CppCoderFn (ident1 "std" "string") $
-                               reqInclude $ includeStd "string"
-           , classCppDecodeThenFree = True
-           , classCppEncoder = Just $ CppCoderExpr [Just "strdup(", Nothing, Just ".c_str())"] $
-                               reqInclude $ includeStd "cstring"
-           , classHaskellEncoding =
-             Just HaskellEncoding
-             { haskellEncodingType = HsTyCon $ UnQual $ HsIdent "CppopP.String"
-             , haskellEncodingCType = HsTyCon $ UnQual $ HsIdent "CppopFC.CString"
-             , haskellEncodingDecoder = "CppopFCRS.decodeAndFreeCString"
-             , haskellEncodingEncoder = "CppopFC.newCString"
-             , haskellEncodingTypeImports = hsImportForPrelude
-             , haskellEncodingCTypeImports = hsImportForForeignC
-             , haskellEncodingFnImports = hsImportForForeignC `mappend` hsImportForSupport
+  classModifyConversions
+  (\c -> c { classHaskellConversion =
+             Just ClassHaskellConversion
+             { classHaskellConversionType = HsTyCon $ UnQual $ HsIdent "CppopP.String"
+             , classHaskellConversionTypeImports = hsImportForPrelude
+             , classHaskellConversionFromCppFn = "CppopFCRS.decodeAndFreeStdString"
+             , classHaskellConversionFromCppImports = hsImportForForeignC
+             , classHaskellConversionToCppFn = "CppopFCRS.newStdString"
+             , classHaskellConversionToCppImports = hsImportForForeignC
              }
            }) $
   makeClass (ident1 "std" "string") (Just $ toExtName "StdString")
