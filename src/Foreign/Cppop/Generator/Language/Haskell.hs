@@ -20,7 +20,9 @@ import qualified Data.Set as S
 import Foreign.Cppop.Common
 import Foreign.Cppop.Generator.Spec
 import Foreign.Cppop.Generator.Language.Cpp.General (
+  classDecodeFnCppName,
   classDeleteFnCppName,
+  classEncodeFnCppName,
   externalNameToCpp,
   )
 import Foreign.Cppop.Generator.Language.Haskell.General
@@ -558,6 +560,64 @@ sayExportClassHsSpecialFns mode cls = do
     -- elsewhere.
     SayExportDecls -> return ()
     SayExportBoot -> return ()
+
+  -- Say Encodable and Decodable instances, if the class is encodable and
+  -- decodable.
+  forM_ (classHaskellEncoding $ classEncoding cls) $ \encoding -> do
+    let hsType = haskellEncodingType encoding
+        hsTypeStr = concat ["(", prettyPrint hsType, ")"]
+        cType = haskellEncodingCType encoding
+        typeName = toHsDataTypeName Nonconst cls
+        typeNameConst = toHsDataTypeName Const cls
+    case mode of
+      SayExportForeignImports -> do
+        let hsPtrType = HsTyCon $ UnQual $ HsIdent typeName
+            hsConstPtrType = HsTyCon $ UnQual $ HsIdent typeNameConst
+        addImports hsImportForPrelude
+        saysLn ["foreign import ccall \"", classEncodeFnCppName cls, "\" ",
+                toHsClassEncodeFnName cls, " :: ", prettyPrint (fnInIO cType hsPtrType)]
+        saysLn ["foreign import ccall \"", classDecodeFnCppName cls, "\" ",
+                toHsClassDecodeFnName cls, " :: ", prettyPrint (fnInIO hsConstPtrType cType)]
+
+      SayExportDecls -> do
+        addImports $ mconcat [hsImport1 "Control.Monad" "(>=>)",
+                              hsImportForPrelude,
+                              hsImportForSupport]
+
+        -- Say the Encodable instances.
+        ln
+        saysLn ["instance CppopFCRS.Encodable ", typeName, " (", hsTypeStr, ") where"]
+        indent $ do
+          sayLn "encode ="
+          indent $ sayEncode (TObj cls) [" >=> ", toHsClassEncodeFnName cls]
+        ln
+        saysLn ["instance CppopFCRS.Encodable ", typeNameConst, " (", hsTypeStr, ") where"]
+        indent $
+          saysLn ["encode = CppopP.fmap (", toHsCastMethodName Const cls,
+                  ") . CppopFCRS.encodeAs (CppopP.undefined :: ", typeName, ")"]
+
+        -- Say the Decodable instances.
+        ln
+        saysLn ["instance CppopFCRS.Decodable ", typeName, " (", hsTypeStr, ") where"]
+        indent $
+          saysLn ["decode = CppopFCRS.decode . ", toHsCastMethodName Const cls]
+        ln
+        saysLn ["instance CppopFCRS.Decodable ", typeNameConst, " (", hsTypeStr, ") where"]
+        indent $ do
+          saysLn ["decode = ", toHsClassDecodeFnName cls, " >=>"]
+          indent $ sayDecode (TObj cls) []
+
+      SayExportBoot -> do
+        addImports hsImportForSupport
+        ln
+        saysLn ["instance CppopFCRS.Encodable ", typeName, " (", hsTypeStr, ")"]
+        saysLn ["instance CppopFCRS.Encodable ", typeNameConst, " (", hsTypeStr, ")"]
+        saysLn ["instance CppopFCRS.Decodable ", typeName, " (", hsTypeStr, ")"]
+        saysLn ["instance CppopFCRS.Decodable ", typeNameConst, " (", hsTypeStr, ")"]
+
+  where fnInIO :: HsType -> HsType -> HsType
+        fnInIO arg result =
+          HsTyFun arg $ HsTyApp (HsTyCon $ UnQual $ HsIdent "CppopP.IO") result
 
 fnToHsTypeAndUse :: HsTypeSide
                  -> Maybe (Constness, Class)
