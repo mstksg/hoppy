@@ -58,22 +58,21 @@ module Foreign.Cppop.Generator.Spec (
   Purity (..),
   Function, makeFn, fnIdentifier, fnExtName, fnPurity, fnParams, fnReturn, fnUseReqs,
   Class, makeClass, classIdentifier, classExtName, classSuperclasses, classCtors, classMethods,
-  classEncoding, classUseReqs,
-  Ctor, makeCtor, ctorExtName, ctorParams,
+  classConversions, classUseReqs,
+  Ctor, makeCtor, mkCtor, ctorExtName, ctorParams,
   Method,
   MethodApplicability (..),
   Constness (..),
   Staticness (..),
-  makeMethod, methodCName, methodExtName, methodApplicability, methodPurity, methodParams,
+  makeMethod, mkMethod, mkMethod', mkConstMethod, mkConstMethod', mkStaticMethod, mkStaticMethod',
+  mkProps, mkProp, mkStaticProp, mkBoolIsProp, mkBoolHasProp,
+  methodCName, methodExtName, methodApplicability, methodPurity, methodParams,
   methodReturn, methodConst, methodStatic,
-  -- ** Encoding and decoding
-  ClassEncoding (..),
-  classEncodingNone,
-  classModifyEncoding,
-  classCopyEncodingFrom,
-  CppCoder (..),
-  cppCoderReqs,
-  HaskellEncoding (..),
+  -- ** Conversions to and from foreign values
+  ClassConversions (..),
+  classConversionsNone,
+  classModifyConversions,
+  ClassHaskellConversion (..),
   -- * Callbacks
   Callback, makeCallback, callbackExtName, callbackParams, callbackReturn, callbackToTFn,
   -- * Haskell imports
@@ -94,7 +93,7 @@ import Control.Arrow ((&&&))
 import Control.Monad (liftM2, unless)
 import Control.Monad.Except (MonadError, Except, runExcept, throwError)
 import Control.Monad.State (MonadState, StateT, execStateT, get, modify)
-import Data.Char (isAlpha, isAlphaNum)
+import Data.Char (isAlpha, isAlphaNum, toUpper)
 import Data.Function (on)
 import Data.List (intercalate)
 import qualified Data.Map as M
@@ -258,8 +257,12 @@ addModuleHaskellName name = do
       ["addModuleHaskellName: ", show m, " already has Haskell name ",
        show name', "; trying to add name ", show name, "."]
 
+-- | A set of requirements of needed to use an identifier in C++ (function,
+-- type, etc.), via a set of 'Include's.  The monoid instance has 'mempty' as an
+-- empty set of includes, and 'mappend' unions two include sets.
 data Reqs = Reqs
   { reqsIncludes :: S.Set Include
+    -- ^ The includes specified by a 'Reqs'.
   } deriving (Show)
 
 instance Monoid Reqs where
@@ -269,9 +272,11 @@ instance Monoid Reqs where
 
   mconcat reqs = Reqs $ mconcat $ map reqsIncludes reqs
 
+-- | Creates a 'Reqs' that contains the given include.
 reqInclude :: Include -> Reqs
 reqInclude include = mempty { reqsIncludes = S.singleton include }
 
+-- | C++ types that have requirements in order to use them.
 class HasUseReqs a where
   getUseReqs :: a -> Reqs
 
@@ -281,6 +286,7 @@ class HasUseReqs a where
   modifyUseReqs :: (Reqs -> Reqs) -> a -> a
   modifyUseReqs f x = setUseReqs (f $ getUseReqs x) x
 
+-- | Adds a list of includes to the requirements of a type.
 addReqIncludes :: HasUseReqs a => [Include] -> a -> a
 addReqIncludes includes =
   modifyUseReqs $ mappend mempty { reqsIncludes = S.fromList includes }
@@ -400,11 +406,10 @@ data Type =
   | TRef Type  -- ^ A reference to another type.
   | TFn [Type] Type
     -- ^ A function taking parameters and returning a value (or 'TVoid').
-    -- Function declarations can use 'TFn' directly; but function pointers must
-    -- wrap a 'TFn' in a 'TPtr'.
-  | TCallback Callback
-  | TObj Class
-  | TConst Type
+    -- Function pointers must wrap a 'TFn' in a 'TPtr'.
+  | TCallback Callback  -- ^ A handle for calling foreign code from C++.
+  | TObj Class  -- ^ An instance of a class.
+  | TConst Type  -- ^ A @const@ version of another type.
   deriving (Eq, Show)
 
 -- | A C++ enum declaration.
@@ -437,12 +442,16 @@ makeEnum :: Identifier  -- ^ 'enumIdentifier'
 makeEnum identifier maybeExtName valueNames =
   CppEnum identifier (extNameOrIdentifier identifier maybeExtName) valueNames mempty
 
--- | Calls to pure functions will be executed non-strictly by Haskell.  Calls to
--- impure functions must execute in the IO monad.
+-- | Whether or not a function may cause side-effects.
+--
+-- Haskell bindings for pure functions will not be in 'IO', calls to pure
+-- functions will be executed non-strictly.  Calls to impure functions will
+-- execute in the IO monad.
 --
 -- Member functions for mutable classes should not be made pure, because it is
 -- difficult in general to control when the call will be made.
-data Purity = Nonpure | Pure
+data Purity = Nonpure  -- ^ Side-affects are possible.
+            | Pure  -- ^ Side-affects will not happen.
             deriving (Eq, Show)
 
 -- | A C++ function declaration.
@@ -485,7 +494,7 @@ data Class = Class
   , classSuperclasses :: [Class]
   , classCtors :: [Ctor]
   , classMethods :: [Method]
-  , classEncoding :: ClassEncoding
+  , classConversions :: ClassConversions
   , classUseReqs :: Reqs
     -- ^ Requirements for a 'Type' to reference this class.
   }
@@ -515,99 +524,63 @@ makeClass identifier maybeExtName supers ctors methods = Class
   , classSuperclasses = supers
   , classCtors = ctors
   , classMethods = methods
-  , classEncoding = classEncodingNone
+  , classConversions = classConversionsNone
   , classUseReqs = mempty
   }
 
 -- | When a class object is returned from a function or taken as a parameter by
--- value, it needs to be converted into a foreign (non-C++) object.  Conversion
--- may also be performed explicitly.  This data type describes how to perform
--- those conversions.  A class may or may not support conversion; what is said
--- below only applies to classes that are convertable.
+-- value (i.e. with 'TObj'), it will be converted to or from a foreign (non-C++)
+-- object.  Conversion may also be performed explicitly.  This data type
+-- describes how to perform those conversions.  A class may or may not support
+-- conversion, for any particular foreign language; what is said below only
+-- applies to classes that are convertible for a language.
 --
--- When converting between a C++ value and a foreign value, an intermediate C
--- type is used.  For example, for a @std::string@, a regular C string (@char*@,
--- @'TPtr' 'TChar'@) allocated on the heap is used.  Since callbacks allow
--- calling back into foreign code, either language may call the other, so the
--- side that allocates memory on the heap transfers ownership of that memory to
--- the other language.
+-- When converting between a C++ value and a foreign value, a pointer to the
+-- object is passed between C++ and the foreign language.  Then, for each
+-- foreign language, a binding author can provide pieces of code in that
+-- language to translate between the pointer and a foreign value (usually by
+-- invoking the FFI functions generated by Cppop), and generated bindings will
+-- perform these conversions automatically.  The code supplied to convert in
+-- each direction should leave the original object unchanged (and alive, in case
+-- of manual memory management).  (Internally, during a function call in either
+-- direction, the side that creates a value is in charge of its lifetime, but
+-- this is managed by Cppop.)
 --
 -- In foreign code, foreign values can be explicitly converted to new C++ (heap)
 -- objects, and C++ object pointers can be explicitly converted to foreign
--- values, via special \"encode\" and \"decode\" functions generated for the
--- class.  In the context of these two functions, \"encode\" always converts
--- /to/ a C++ value and \"decode\" always converts /from/ one; this is separate
--- from the use of \"encode\" and \"decode\" in language-specific conversion
--- code (e.g. 'classCppDecoder', 'classCppEncoder', 'haskellEncodingDecoder',
--- 'haskellEncodingEncoder'), where encoding refers to converting a native value
--- to its C type, and decoding vice versa.
-data ClassEncoding = ClassEncoding
-  { classCppCType :: Maybe Type
-    -- ^ The intermediate C type that will be used for conversions.  @Nothing@
-    -- means that the class will not supported decoding from or encoding to a
-    -- foreign type.
-  , classCppCTypeReqs :: Reqs
-    -- ^ Requirements for a binding to use the class's C type.
-  , classCppDecoder :: Maybe CppCoder
-    -- ^ The conversion process from a C type to a C++ object.  @Nothing@ means
-    -- that the class will not support decoding from a foreign type.
-  , classCppDecodeThenFree :: Bool
-    -- ^ A convenience for writing interfaces; enables decoding with an existing
-    -- function then automatically freeing the encoded value after the decoding
-    -- is finished.
-  , classCppEncoder :: Maybe CppCoder
-    -- ^ The conversion process from a C++ object to a C type.  @Nothing@ means
-    -- that the class will not support encoding to a foreign type.
-  , classHaskellType :: Maybe HaskellEncoding
-    -- ^ Controls how conversions happen in Haskell bindings.
+-- values, via special functions generated for the class.
+data ClassConversions = ClassConversions
+  { classHaskellConversion :: Maybe ClassHaskellConversion
   } deriving (Show)
 
 -- | Encoding parameters for a class that is not encodable or decodable.
-classEncodingNone :: ClassEncoding
-classEncodingNone = ClassEncoding Nothing mempty Nothing False Nothing Nothing
+classConversionsNone :: ClassConversions
+classConversionsNone = ClassConversions Nothing
 
 -- | Modifies classes' 'ClassEncoding' structures with a given function.
-classModifyEncoding :: (ClassEncoding -> ClassEncoding) -> Class -> Class
-classModifyEncoding f cls = cls { classEncoding = f $ classEncoding cls }
+classModifyConversions :: (ClassConversions -> ClassConversions) -> Class -> Class
+classModifyConversions f cls = cls { classConversions = f $ classConversions cls }
 
--- | @classCopyEncodingFrom souce target@ copies the 'ClassEncoding' structure
--- from @source@ to @target@.
-classCopyEncodingFrom :: Class -> Class -> Class
-classCopyEncodingFrom source target = target { classEncoding = classEncoding source }
-
--- | The means of decoding and encoding a class in C++.
-data CppCoder =
-  CppCoderFn Identifier Reqs
-  -- ^ The named function will be called to decode the C type (when decoding) or
-  -- to encode the C++ type (when encoding).
-  | CppCoderExpr [Maybe String] Reqs
-    -- ^ A C++ expression made from the concatenation of all of the strings will
-    -- be used.  For each @Nothing@, the name of an input variable will be
-    -- substituted.
-  deriving (Show)
-
-cppCoderReqs :: CppCoder -> Reqs
-cppCoderReqs (CppCoderFn _ reqs) = reqs
-cppCoderReqs (CppCoderExpr _ reqs) = reqs
-
--- | Conversions of C++ class objects in Haskell.
-data HaskellEncoding = HaskellEncoding
-  { haskellEncodingType :: HsType
-    -- ^ @ht@; the Haskell type to start with or end at, e.g. @String@.
-  , haskellEncodingCType :: HsType
-    -- ^ @ct@; the Haskell representation of the intermediate C type, e.g. @TPtr
-    -- TChar@.
-  , haskellEncodingDecoder :: String
-    -- ^ Decoding function, of type @ct -> IO ht@.
-  , haskellEncodingEncoder :: String
-    -- ^ Encoding function, of type @ht -> IO ct@.
-  , haskellEncodingTypeImports :: HsImportSet
-    -- ^ Imports necessary to make use of @ht@.
-  , haskellEncodingCTypeImports :: HsImportSet
-    -- ^ Imports necessary to make use of @ct@.
-  , haskellEncodingFnImports :: HsImportSet
-    -- ^ Imports necessary to make use of @haskellEncodingDecoder@ and
-    -- @haskellEncodingDecoder@.
+-- | Controls how conversions between C++ objects and Haskell values happen in
+-- Haskell bindings.
+data ClassHaskellConversion = ClassHaskellConversion
+  { classHaskellConversionType :: HsType
+    -- ^ The Haskell type to use to represent a value of the corresponding C++
+    -- class.
+  , classHaskellConversionTypeImports :: HsImportSet
+    -- ^ Imports required to reference 'classHaskellConversionType'.
+  , classHaskellConversionToCppFn :: String
+    -- ^ A Haskell expression that evaluates to a function that takes an object
+    -- of type 'classHaskellConversionType', and returns a pointer to a new
+    -- non-const C++ class object in IO.
+  , classHaskellConversionToCppImports :: HsImportSet
+    -- ^ Imports required by 'classHaskellConversionToCppFn'.
+  , classHaskellConversionFromCppFn :: String
+    -- ^ A Haskell expression that evaluates to a function that takes a pointer
+    -- to a const C++ class object, and returns an object of type
+    -- 'classHaskellConversionType' in IO.
+  , classHaskellConversionFromCppImports :: HsImportSet
+    -- ^ Imports required by 'classHaskellConversionFromCppFn'.
   } deriving (Show)
 
 -- | A C++ class constructor declaration.
@@ -619,10 +592,19 @@ data Ctor = Ctor
 instance Show Ctor where
   show ctor = concat ["<Ctor ", show (ctorExtName ctor), " ", show (ctorParams ctor), ">"]
 
+-- | Creates a 'Ctor' with full generality.
 makeCtor :: ExtName
          -> [Type]  -- ^ Parameter types.
          -> Ctor
 makeCtor = Ctor
+
+-- | @mkCtor cls name@ creates a 'Ctor' whose external name is @className_name@.
+mkCtor :: Class
+       -> String
+       -> [Type]  -- ^ Parameter types.
+       -> Ctor
+mkCtor this name =
+  makeCtor (toExtName $ fromExtName (classExtName this) ++ "_" ++ name)
 
 -- | A C++ class method declaration.
 data Method = Method
@@ -649,15 +631,6 @@ data Constness = Nonconst | Const
 data Staticness = Nonstatic | Static
                deriving (Eq, Show)
 
-makeMethod :: String  -- ^ The C name of the method.
-           -> ExtName
-           -> MethodApplicability
-           -> Purity
-           -> [Type]  -- ^ Parameter types.
-           -> Type  -- ^ Return type.
-           -> Method
-makeMethod = Method
-
 methodConst :: Method -> Constness
 methodConst method = case methodApplicability method of
   MConst -> Const
@@ -667,6 +640,139 @@ methodStatic :: Method -> Staticness
 methodStatic method = case methodApplicability method of
   MStatic -> Static
   _ -> Nonstatic
+
+-- | Creates a 'Method' with full generality.
+makeMethod :: String  -- ^ The C name of the method.
+           -> ExtName
+           -> MethodApplicability
+           -> Purity
+           -> [Type]  -- ^ Parameter types.
+           -> Type  -- ^ Return type.
+           -> Method
+makeMethod = Method
+
+-- | Creates a nonconst, nonstatic 'Method' for @class::foreignName@ and whose
+-- external name is @className_foreignName@.  For creating multiple bindings to
+-- a method, see 'mkMethod''.
+mkMethod :: Class  -- ^ The class to which the method belongs.
+         -> String  -- ^ A foreign name for the method.
+         -> [Type]  -- ^ Parameter types.
+         -> Type  -- ^ Return type.
+         -> Method
+mkMethod this name =
+  makeMethod name (toExtName $ fromExtName (classExtName this) ++ "_" ++ name)
+  MNormal Nonpure
+
+-- | Creates a nonconst, nonstatic 'Method' for method @class::cppName@ and
+-- whose external name is @className_foreignName@.  This enables multiple
+-- 'Method's with different foreign names (and hence different external names)
+-- to bind to the same method, e.g. to make use of optional arguments or
+-- overloading.  See 'mkMethod' for a simpler form.
+mkMethod' :: Class  -- ^ The class to which the method belongs.
+          -> String  -- ^ The C++ name of the method.
+          -> String  -- ^ A foreign name for the method.
+          -> [Type]  -- ^ Parameter types.
+          -> Type  -- ^ Return type.
+          -> Method
+mkMethod' this cName foreignName =
+  makeMethod cName (toExtName $ fromExtName (classExtName this) ++ "_" ++ foreignName)
+  MNormal Nonpure
+
+-- | Same as 'mkMethod', but returns an 'MConst' method.
+mkConstMethod :: Class  -- ^ The class to which the method belongs.
+              -> String  -- ^ A foreign name for the method.
+              -> [Type]  -- ^ Parameter types.
+              -> Type  -- ^ Return type.
+              -> Method
+mkConstMethod this name =
+  makeMethod name (toExtName $ fromExtName (classExtName this) ++ "_" ++ name)
+  MConst Nonpure
+
+-- | Same as 'mkMethod'', but returns an 'MConst' method.
+mkConstMethod' :: Class -> String -> String -> [Type] -> Type -> Method
+mkConstMethod' this cName foreignName =
+  makeMethod cName (toExtName $ fromExtName (classExtName this) ++ "_" ++ foreignName)
+  MConst Nonpure
+
+-- | Same as 'mkMethod', but returns an 'MStatic' method.
+mkStaticMethod :: Class -> String -> [Type] -> Type -> Method
+mkStaticMethod this name =
+  makeMethod name (toExtName $ fromExtName (classExtName this) ++ "_" ++ name)
+  MStatic Nonpure
+
+-- | Same as 'mkMethod'', but returns an 'MStatic' method.
+mkStaticMethod' :: Class -> String -> String -> [Type] -> Type -> Method
+mkStaticMethod' this cName foreignName =
+  makeMethod cName (toExtName $ fromExtName (classExtName this) ++ "_" ++ foreignName)
+  MStatic Nonpure
+
+-- | Used in conjunction with 'mkProp' and friends, this creates a list of
+-- 'Method's for binding to getter/setter method pairs.  This can be used as
+-- follows:
+--
+-- > myClass =
+-- >   makeClass ... $
+-- >   [ methods... ] ++
+-- >   mkProps
+-- >   [ mkBoolIsProp myClass "adjustable"
+-- >   , mkProp myClass "maxWidth" TInt
+-- >   ]
+mkProps :: [[Method]] -> [Method]
+mkProps = concat
+
+-- | Creates a getter/setter binding pair for methods:
+--
+-- > T getFoo() const
+-- > void setFoo(T)
+mkProp :: Class -> String -> Type -> [Method]
+mkProp this name t =
+  let c:cs = name
+      setName = 's' : 'e' : 't' : toUpper c : cs
+  in [ mkConstMethod this name [] t
+     , mkMethod this setName [t] TVoid
+     ]
+
+-- | Creates a getter/setter binding pair for static methods:
+--
+-- > static T getFoo() const
+-- > static void setFoo(T)
+mkStaticProp :: Class -> String -> Type -> [Method]
+mkStaticProp this name t =
+  let c:cs = name
+      setName = 's' : 'e' : 't' : toUpper c : cs
+  in [ mkStaticMethod this name [] t
+     , mkStaticMethod this setName [t] TVoid
+     ]
+
+-- | Creates a getter/setter binding pair for boolean methods, where the getter
+-- is prefixed with @is@:
+--
+-- > bool isFoo() const
+-- > void setFoo(bool)
+mkBoolIsProp :: Class -> String -> [Method]
+mkBoolIsProp this name =
+  let c:cs = name
+      name' = toUpper c : cs
+      isName = 'i':'s':name'
+      setName = 's':'e':'t':name'
+  in [ mkConstMethod this isName [] TBool
+     , mkMethod this setName [TBool] TVoid
+     ]
+
+-- | Creates a getter/setter binding pair for boolean methods, where the getter
+-- is prefixed with @has@:
+--
+-- > bool hasFoo() const
+-- > void setFoo(bool)
+mkBoolHasProp :: Class -> String -> [Method]
+mkBoolHasProp this name =
+  let c:cs = name
+      name' = toUpper c : cs
+      hasName = 'h':'a':'s':name'
+      setName = 's':'e':'t':name'
+  in [ mkConstMethod this hasName [] TBool
+     , mkMethod this setName [TBool] TVoid
+     ]
 
 -- | A non-C++ function that can be invoked via a C++ functor.
 data Callback = Callback

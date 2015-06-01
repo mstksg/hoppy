@@ -1,17 +1,20 @@
+-- | Runtime support for generated Haskell bindings.
 module Foreign.Cppop.Runtime.Support (
   CppPtr (..),
   Encodable (..),
   encodeAs,
   Decodable (..),
+  decodeAndDelete,
+  withCppObj,
+  -- * Internal
   CCallback (..),
   freeHaskellFunPtrFunPtr,
-  decodeAndFreeCString,
   coerceIntegral,
   ) where
 
+import Control.Exception (bracket)
 import Data.Typeable (Typeable, typeOf)
-import Foreign (FunPtr, Ptr, free, freeHaskellFunPtr)
-import Foreign.C (CString, peekCString)
+import Foreign (FunPtr, Ptr, freeHaskellFunPtr)
 import System.IO.Unsafe (unsafePerformIO)
 
 foreign import ccall "wrapper" newFreeHaskellFunPtrFunPtr
@@ -58,6 +61,21 @@ encodeAs to = fmap (`asTypeOf` to) . encode
 class Decodable cppPtrType hsType | cppPtrType -> hsType where
   decode :: cppPtrType -> IO hsType
 
+-- | Decodes a C++ object to a Haskell value with 'decode', releases the
+-- original object with 'delete', then returns the Haskell value.
+decodeAndDelete :: (CppPtr cppPtrType, Decodable cppPtrType hsType)
+                => cppPtrType -> IO hsType
+decodeAndDelete ptr = do
+  result <- decode ptr
+  delete ptr
+  return result
+
+-- | Temporarily encodes the Haskell value into a C++ object and passes it to
+-- the given function.  When the function finishes, the C++ object is deleted.
+withCppObj :: (CppPtr cppPtrType, Encodable cppPtrType hsType)
+           => hsType -> (cppPtrType -> IO a) -> IO a
+withCppObj x = bracket (encode x) delete
+
 -- | Internal type that represents a pointer to a C++ callback object (callback
 -- impl object, specifically).
 newtype CCallback fnHsCType = CCallback (Ptr ())
@@ -66,12 +84,6 @@ freeHaskellFunPtrFunPtr :: FunPtr (FunPtr (IO ()) -> IO ())
 {-# NOINLINE freeHaskellFunPtrFunPtr #-}
 freeHaskellFunPtrFunPtr =
   unsafePerformIO $ newFreeHaskellFunPtrFunPtr freeHaskellFunPtr
-
-decodeAndFreeCString :: CString -> IO String
-decodeAndFreeCString cstr = do
-  str <- peekCString cstr
-  free cstr
-  return str
 
 -- | Converts between integral types by going from @a@ to @b@, and also
 -- round-tripping the @b@ value back to an @a@ value.  If the two @a@ values

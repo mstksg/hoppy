@@ -30,14 +30,12 @@ module Foreign.Cppop.Generator.Language.Haskell.General (
   toHsDataTypeName,
   toHsClassNullName,
   toHsClassDeleteFnName,
-  toHsClassEncodeFnName,
-  toHsClassDecodeFnName,
   toHsCallbackCtorName,
   toHsFnName,
   toArgName,
   HsTypeSide (..),
-  encodingTypeForSide,
   cppTypeToHsTypeAndUse,
+  addImportForClass,
   prettyPrint,
   ) where
 
@@ -269,7 +267,12 @@ importHsModuleForExtName extName = do
        ", maybe you forgot to include it in an exports list?"]
 
 sayLn :: String -> Generator ()
-sayLn x = tell $ mempty { outputBody = [x] }
+sayLn x =
+  if '\n' `elem` x
+  then abort $ concat
+       ["sayLn: Refusing to speak '\n'.  Use (mapM_ sayLn . lines) instead.  Received ",
+        show x, "."]
+  else tell $ mempty { outputBody = [x] }
 
 saysLn :: [String] -> Generator ()
 saysLn = sayLn . concat
@@ -323,12 +326,6 @@ toHsClassNullName cls = toHsFnName (classExtName cls) ++ "_null"
 toHsClassDeleteFnName :: Class -> String
 toHsClassDeleteFnName cls = 'd':'e':'l':'e':'t':'e':'\'':toHsDataTypeName Nonconst cls
 
-toHsClassEncodeFnName :: Class -> String
-toHsClassEncodeFnName cls = 'e':'n':'c':'o':'d':'e':'\'':toHsDataTypeName Nonconst cls
-
-toHsClassDecodeFnName :: Class -> String
-toHsClassDecodeFnName cls = 'd':'e':'c':'o':'d':'e':'\'':toHsDataTypeName Nonconst cls
-
 toHsCallbackCtorName :: Callback -> String
 toHsCallbackCtorName = toHsFnName . callbackExtName
 
@@ -343,14 +340,6 @@ toArgName :: Int -> String
 toArgName = ("arg'" ++) . show
 
 data HsTypeSide = HsCSide | HsHsSide
-
-encodingTypeForSide :: HsTypeSide -> HaskellEncoding -> HsType
-encodingTypeForSide HsCSide = haskellEncodingCType
-encodingTypeForSide HsHsSide = haskellEncodingType
-
-encodingTypeImportsForSide :: HsTypeSide -> HaskellEncoding -> HsImportSet
-encodingTypeImportsForSide HsCSide = haskellEncodingCTypeImports
-encodingTypeImportsForSide HsHsSide = haskellEncodingTypeImports
 
 cppTypeToHsTypeAndUse :: HsTypeSide -> Type -> Generator (Maybe HsType)
 cppTypeToHsTypeAndUse side t = case t of
@@ -375,7 +364,7 @@ cppTypeToHsTypeAndUse side t = case t of
       HsCSide -> "CppopFC.CInt" <$ addImports hsImportForForeignC
       HsHsSide -> toHsEnumTypeName e <$ importHsModuleForExtName (enumExtName e)
   TPtr (TObj cls) -> do
-    importHsModuleForExtName $ classExtName cls
+    addImportForClass cls
     return $ Just $ HsTyCon $ UnQual $ HsIdent $ toHsTypeName Nonconst $ classExtName cls
   TPtr (TConst (TObj cls)) -> do
     importHsModuleForExtName $ classExtName cls
@@ -399,7 +388,7 @@ cppTypeToHsTypeAndUse side t = case t of
     addImports hsImportForForeign
     fmap (HsTyApp $ HsTyCon $ UnQual $ HsIdent "CppopF.Ptr") <$>
       cppTypeToHsTypeAndUse side t'
-  TRef {} -> return Nothing
+  TRef t' -> cppTypeToHsTypeAndUse side $ TPtr t'
   TFn paramTypes retType -> do
     paramHsTypesMaybe <- sequence <$> mapM (cppTypeToHsTypeAndUse side) paramTypes
     retHsTypeMaybe <- cppTypeToHsTypeAndUse side retType
@@ -420,11 +409,17 @@ cppTypeToHsTypeAndUse side t = case t of
         HsCSide -> do
           addImports hsImportForSupport
           return $ Just $ HsTyApp (HsTyCon $ UnQual $ HsIdent "CppopFCRS.CCallback") hsType
-  TObj cls -> do
-    forM_ (encodingTypeImportsForSide side <$> classHaskellType (classEncoding cls))
-      addImports
-    return $ fmap (encodingTypeForSide side) $ classHaskellType $ classEncoding cls
+  TObj cls -> case side of
+    HsCSide -> cppTypeToHsTypeAndUse side $ TPtr t
+    HsHsSide -> case classHaskellConversion (classConversions cls) of
+      Nothing -> return Nothing
+      Just hsConv -> do
+        addImports $ classHaskellConversionTypeImports hsConv
+        return $ Just $ classHaskellConversionType hsConv
   TConst t' -> cppTypeToHsTypeAndUse side t'
+
+addImportForClass :: Class -> Generator ()
+addImportForClass = importHsModuleForExtName . classExtName
 
 -- | Prints a value like 'P.prettyPrint', but removes newlines so that they
 -- don't cause problems with this module's textual generation.  Should be mainly
