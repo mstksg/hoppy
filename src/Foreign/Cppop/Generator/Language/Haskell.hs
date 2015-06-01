@@ -354,6 +354,9 @@ sayArgProcessing dir t fromVar toVar = case t of
   TEnum _ -> do
     addImports $ mconcat [hsImport1 "Prelude" "($)", hsImportForPrelude, hsImportForSupport]
     saysLn ["let ", toVar,
+            -- TODO The coersion here is unnecssary if we replace the C numeric
+            -- types with their Haskell ones across the board (e.g. CInt ->
+            -- Int).
             case dir of
               ToCpp -> " = CppopFCRS.coerceIntegral $ CppopP.fromEnum "
               FromCpp -> " = CppopP.toEnum $ CppopFCRS.coerceIntegral ",
@@ -409,6 +412,8 @@ sayCallAndProcessReturn dir t callWords = case t of
   TEnum _ -> do
     addImports $ mconcat [hsImport1 "Prelude" "(.)", hsImportForPrelude, hsImportForSupport]
     case dir of
+      -- TODO The coersion here is unnecssary if we replace the C numeric types
+      -- with their Haskell ones across the board (e.g. CInt -> Int).
       ToCpp -> saysLn ["CppopP.fmap (CppopP.toEnum . CppopFCRS.coerceIntegral)"]
       FromCpp -> saysLn ["CppopP.fmap (CppopFCRS.coerceIntegral . CppopP.fromEnum)"]
     sayCall
