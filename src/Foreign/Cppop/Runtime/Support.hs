@@ -1,3 +1,4 @@
+-- | Runtime support for generated Haskell bindings.
 module Foreign.Cppop.Runtime.Support (
   CppPtr (..),
   Encodable (..),
@@ -60,6 +61,8 @@ encodeAs to = fmap (`asTypeOf` to) . encode
 class Decodable cppPtrType hsType | cppPtrType -> hsType where
   decode :: cppPtrType -> IO hsType
 
+-- | Decodes a C++ object to a Haskell value with 'decode', releases the
+-- original object with 'delete', then returns the Haskell value.
 decodeAndDelete :: (CppPtr cppPtrType, Decodable cppPtrType hsType)
                 => cppPtrType -> IO hsType
 decodeAndDelete ptr = do
@@ -67,6 +70,8 @@ decodeAndDelete ptr = do
   delete ptr
   return result
 
+-- | Temporarily encodes the Haskell value into a C++ object and passes it to
+-- the given function.  When the function finishes, the C++ object is deleted.
 withCppObj :: (CppPtr cppPtrType, Encodable cppPtrType hsType)
            => hsType -> (cppPtrType -> IO a) -> IO a
 withCppObj x = bracket (encode x) delete
