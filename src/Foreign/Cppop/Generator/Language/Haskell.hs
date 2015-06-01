@@ -212,7 +212,6 @@ sayExportFn mode name methodInfo purity paramTypes retType =
           sayArgProcessing ToCpp t argName argName'
 
         sayCallAndProcessReturn ToCpp retType $
-          saysLn $
           hsFnImportedName :
           (case methodInfo of
              Just (cst, cls) -> " (" ++ toHsCastMethodName cst cls ++ " this)"
@@ -320,7 +319,7 @@ sayExportCallback mode cb = do
                 forM_ (zip3 paramTypes argNames argNames') $ \(t, argName, argName') ->
                   sayArgProcessing FromCpp t argName argName'
                 sayCallAndProcessReturn FromCpp retType $
-                  saysLn $ "f'hs" : map (' ':) argNames' ++ [" >>="]]
+                  "f'hs" : map (' ':) argNames']
           Nothing
         saysLn ["f'p <- ", hsFnName'newFunPtr, " f'c"]
         saysLn [hsFnName'newCallback, " f'p CppopFCRS.freeHaskellFunPtrFunPtr CppopP.False"]
@@ -374,6 +373,7 @@ sayArgProcessing dir t fromVar toVar = case t of
   TFn {} -> abort $ concat ["sayArgProcessing: TFn unimplemented, given ", show t, "."]
   TCallback cb -> case dir of
     ToCpp -> do
+      addImports $ hsImport1 "Prelude" "(>>=)"
       importHsModuleForExtName $ callbackExtName cb
       saysLn [toHsCallbackCtorName cb, " ", fromVar, " >>= \\", toVar, " ->"]
     FromCpp ->
@@ -388,8 +388,8 @@ sayArgProcessing dir t fromVar toVar = case t of
   TConst t' -> sayArgProcessing dir t' fromVar toVar
   where doPrimitive = saysLn ["let ", toVar, " = ", fromVar, " in"]
 
-sayCallAndProcessReturn :: CallDirection -> Type -> Generator () -> Generator ()
-sayCallAndProcessReturn dir t sayCall = case t of
+sayCallAndProcessReturn :: CallDirection -> Type -> [String] -> Generator ()
+sayCallAndProcessReturn dir t callWords = case t of
   TVoid -> sayCall
   TBool -> sayCall
   TChar -> sayCall
@@ -407,10 +407,10 @@ sayCallAndProcessReturn dir t sayCall = case t of
   TSize -> sayCall
   TSSize -> sayCall
   TEnum _ -> do
-    addImports $ mconcat [hsImport1 "Prelude" "($)", hsImportForPrelude, hsImportForSupport]
+    addImports $ mconcat [hsImport1 "Prelude" "(.)", hsImportForPrelude, hsImportForSupport]
     case dir of
-      ToCpp -> saysLn ["CppopP.toEnum $ CppopFCRS.coerceIntegral"]
-      FromCpp -> saysLn ["CppopFCRS.coerceIntegral $ CppopP.fromEnum"]
+      ToCpp -> saysLn ["CppopP.fmap (CppopP.toEnum . CppopFCRS.coerceIntegral)"]
+      FromCpp -> saysLn ["CppopP.fmap (CppopFCRS.coerceIntegral . CppopP.fromEnum)"]
     sayCall
   TPtr _ -> sayCall
   TRef _ -> sayCall
@@ -420,6 +420,7 @@ sayCallAndProcessReturn dir t sayCall = case t of
       abort $ concat ["sayCallAndProcessReturn: Can't receive a callback from C++, given ",
                       show cb, "."]
     FromCpp -> do
+      addImports $ hsImport1 "Prelude" "(=<<)"
       importHsModuleForExtName $ callbackExtName cb
       saysLn [toHsCallbackCtorName cb, "=<<"]
       sayCall
@@ -429,7 +430,8 @@ sayCallAndProcessReturn dir t sayCall = case t of
       ToCpp -> sayLn "CppopFCRS.decodeAndDelete =<<"
       FromCpp -> sayLn "CppopFCRS.encode =<<"
     sayCall
-  TConst t' -> sayCallAndProcessReturn dir t' sayCall
+  TConst t' -> sayCallAndProcessReturn dir t' callWords
+  where sayCall = saysLn $ "(" : callWords ++ [")"]
 
 sayExportClass :: SayExportMode -> Class -> Generator ()
 sayExportClass mode cls = do
@@ -582,8 +584,7 @@ sayExportClassHsSpecialFns mode cls = do
       SayExportForeignImports -> return ()
 
       SayExportDecls -> do
-        addImports $ mconcat [hsImport1 "Control.Monad" "(>=>)",
-                              hsImportForPrelude,
+        addImports $ mconcat [hsImportForPrelude,
                               hsImportForSupport,
                               classHaskellConversionTypeImports conv,
                               classHaskellConversionToCppImports conv,

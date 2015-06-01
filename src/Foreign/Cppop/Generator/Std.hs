@@ -30,7 +30,7 @@ c_std__string =
              , classHaskellConversionToCppImports = hsImportForPrelude `mappend` hsImportForForeignC
              , classHaskellConversionFromCppFn = "CppopFC.peekCString <=< string_c_str"
              , classHaskellConversionFromCppImports =
-               hsImport1 "Prelude" "(<=<)" `mappend` hsImportForForeignC
+               hsImport1 "Control.Monad" "(<=<)" `mappend` hsImportForForeignC
              }
            }) $
   makeClass (ident1 "std" "string") (Just $ toExtName "StdString")
