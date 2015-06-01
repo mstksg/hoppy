@@ -3,6 +3,7 @@ module Foreign.Cppop.Generator.Std (
   c_std__string,
   ) where
 
+import Data.Monoid (mappend)
 import Foreign.Cppop.Generator.Spec
 import Language.Haskell.Syntax (
   HsName (HsIdent),
@@ -24,13 +25,18 @@ c_std__string =
              Just ClassHaskellConversion
              { classHaskellConversionType = HsTyCon $ UnQual $ HsIdent "CppopP.String"
              , classHaskellConversionTypeImports = hsImportForPrelude
-             , classHaskellConversionFromCppFn = "CppopFCRS.decodeAndFreeStdString"
-             , classHaskellConversionFromCppImports = hsImportForForeignC
-             , classHaskellConversionToCppFn = "CppopFCRS.newStdString"
-             , classHaskellConversionToCppImports = hsImportForForeignC
+             , classHaskellConversionToCppFn =
+               "CppopP.flip CppopFC.withCString string_newFromCString"
+             , classHaskellConversionToCppImports = hsImportForPrelude `mappend` hsImportForForeignC
+             , classHaskellConversionFromCppFn = "CppopFC.peekCString <=< string_c_str"
+             , classHaskellConversionFromCppImports =
+               hsImport1 "Prelude" "(<=<)" `mappend` hsImportForForeignC
              }
            }) $
   makeClass (ident1 "std" "string") (Just $ toExtName "StdString")
   []
-  []
-  [ makeMethod "size" (toExtName "string_size") MConst Nonpure [] TSize ]
+  [ makeCtor (toExtName "string_newFromCString") [TPtr $ TConst TChar]
+  ]
+  [ makeMethod "c_str" (toExtName "string_c_str") MConst Nonpure [] $ TPtr $ TConst TChar
+  , makeMethod "size" (toExtName "string_size") MConst Nonpure [] TSize
+  ]

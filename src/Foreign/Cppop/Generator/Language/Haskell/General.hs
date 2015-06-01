@@ -267,7 +267,12 @@ importHsModuleForExtName extName = do
        ", maybe you forgot to include it in an exports list?"]
 
 sayLn :: String -> Generator ()
-sayLn x = tell $ mempty { outputBody = [x] }
+sayLn x =
+  if '\n' `elem` x
+  then abort $ concat
+       ["sayLn: Refusing to speak '\n'.  Use (mapM_ sayLn . lines) instead.  Received ",
+        show x, "."]
+  else tell $ mempty { outputBody = [x] }
 
 saysLn :: [String] -> Generator ()
 saysLn = sayLn . concat
