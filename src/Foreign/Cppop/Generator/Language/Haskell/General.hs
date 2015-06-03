@@ -7,6 +7,7 @@ module Foreign.Cppop.Generator.Language.Haskell.General (
   Output (..),
   Generator,
   runGenerator,
+  evalGenerator,
   execGenerator,
   renderPartial,
   abort,
@@ -34,12 +35,13 @@ module Foreign.Cppop.Generator.Language.Haskell.General (
   toHsFnName,
   toArgName,
   HsTypeSide (..),
+  cppTypeToHsType,
   cppTypeToHsTypeAndUse,
   addImportForClass,
   prettyPrint,
   ) where
 
-import Control.Applicative ((<$), (<$>))
+import Control.Applicative ((<$>))
 import Control.Arrow (first)
 import Control.Monad (when)
 import Control.Monad.Reader (ReaderT, ask, runReaderT)
@@ -48,6 +50,7 @@ import Control.Monad.Writer (WriterT, censor, runWriterT, tell)
 import Data.Char (toLower, toUpper)
 import Data.Foldable (forM_)
 import Data.Function (on)
+import Data.Functor (($>))
 import Data.List (intercalate, intersperse)
 import qualified Data.Map as M
 import Data.Maybe (fromMaybe, isJust)
@@ -211,6 +214,10 @@ runGenerator :: Interface -> String -> Generator a -> Either String (Partial, a)
 runGenerator iface modName generator =
   fmap (first (Partial modName) . swap) $ runWriterT $ runReaderT generator $ Env iface modName
 
+evalGenerator :: Interface -> String -> Generator a -> Either String a
+evalGenerator iface modName =
+  fmap snd . runGenerator iface modName
+
 execGenerator :: Interface -> String -> Generator a -> Either String Partial
 execGenerator iface modName =
   fmap fst . runGenerator iface modName
@@ -332,92 +339,103 @@ toHsCallbackCtorName = toHsFnName . callbackExtName
 -- TODO Rename this to toHsBindingName or toHsValueName; it's used for
 -- non-function bindings too.
 toHsFnName :: ExtName -> String
-toHsFnName extName = case fromExtName extName of
-  x:xs -> toLower x:xs
-  [] -> []
+toHsFnName = internalToHsFnName
 
 toArgName :: Int -> String
 toArgName = ("arg'" ++) . show
 
 data HsTypeSide = HsCSide | HsHsSide
 
-cppTypeToHsTypeAndUse :: HsTypeSide -> Type -> Generator (Maybe HsType)
-cppTypeToHsTypeAndUse side t = case t of
-  TVar _ -> abort $ freeVarErrorMsg "cppTypeToHsTypeAndUse" t
-  TVoid -> return $ Just $ HsTyCon $ Special HsUnitCon
-  TBool -> Just (HsTyCon $ UnQual $ HsIdent "CppopP.Bool") <$ addImports hsImportForPrelude
-  TChar -> Just (HsTyCon $ UnQual $ HsIdent "CppopFC.CChar") <$ addImports hsImportForForeignC
-  TUChar -> Just (HsTyCon $ UnQual $ HsIdent "CppopFC.CUChar") <$ addImports hsImportForForeignC
-  TShort -> Just (HsTyCon $ UnQual $ HsIdent "CppopFC.CShort") <$ addImports hsImportForForeignC
-  TUShort -> Just (HsTyCon $ UnQual $ HsIdent "CppopFC.CUShort") <$ addImports hsImportForForeignC
-  TInt -> Just (HsTyCon $ UnQual $ HsIdent "CppopFC.CInt") <$ addImports hsImportForForeignC
-  TUInt -> Just (HsTyCon $ UnQual $ HsIdent "CppopFC.CUInt") <$ addImports hsImportForForeignC
-  TLong -> Just (HsTyCon $ UnQual $ HsIdent "CppopFC.CLong") <$ addImports hsImportForForeignC
-  TULong -> Just (HsTyCon $ UnQual $ HsIdent "CppopFC.CULong") <$ addImports hsImportForForeignC
-  TLLong -> Just (HsTyCon $ UnQual $ HsIdent "CppopFC.CLLong") <$ addImports hsImportForForeignC
-  TULLong -> Just (HsTyCon $ UnQual $ HsIdent "CppopFC.CULLong") <$ addImports hsImportForForeignC
-  TFloat -> Just (HsTyCon $ UnQual $ HsIdent "CppopFC.CFloat") <$ addImports hsImportForForeignC
-  TDouble -> Just (HsTyCon $ UnQual $ HsIdent "CppopFC.CDouble") <$ addImports hsImportForForeignC
-  TSize -> Just (HsTyCon $ UnQual $ HsIdent "CppopFC.CSize") <$ addImports hsImportForForeignC
-  TSSize -> return Nothing
-  TEnum e ->
-    Just . HsTyCon . UnQual . HsIdent <$> case side of
-      HsCSide -> "CppopFC.CInt" <$ addImports hsImportForForeignC
-      HsHsSide -> toHsEnumTypeName e <$ importHsModuleForExtName (enumExtName e)
-  TPtr (TObj cls) -> do
-    addImportForClass cls
-    return $ Just $ HsTyCon $ UnQual $ HsIdent $ toHsTypeName Nonconst $ classExtName cls
-  TPtr (TConst (TObj cls)) -> do
-    importHsModuleForExtName $ classExtName cls
-    return $ Just $ HsTyCon $ UnQual $ HsIdent $ toHsTypeName Const $ classExtName cls
+-- | __If you're in a 'Generator', use 'cppTypeToHsTypeAndUse' instead.__
+-- Returns the 'HsType' corresponding to a 'Type'.  This can either be the
+-- 'HsCSide' type that is used in a Haskell FFI import, or the 'HsHsSide' type
+-- that is used in the exposed binding.
+cppTypeToHsType :: HsTypeSide -> Type -> Either String HsType
+cppTypeToHsType side t = fst <$> runWriterT (cppTypeToHsTypeAndImports side t)
+
+-- | Returns the 'HsType' corresponding to a 'Type', as 'cppTypeToHsType' does,
+-- and also adds imports to the 'Generator' as necessary for things that the
+-- 'Type' references.  On failure, a 'Left' is returned; 'abort' is not called.
+cppTypeToHsTypeAndUse :: HsTypeSide -> Type -> Generator (Either String HsType)
+cppTypeToHsTypeAndUse side t = case runWriterT $ cppTypeToHsTypeAndImports side t of
+  Left errorMsg -> return $ Left errorMsg
+  Right (hsType, (imports, extNameImports)) -> do
+    addImports imports
+    mapM_ importHsModuleForExtName extNameImports
+    return $ Right hsType
+
+-- | Internal implementation of 'cppTypeToHsType' and 'cppTypeToHsTypeAndUse'.
+cppTypeToHsTypeAndImports :: HsTypeSide
+                          -> Type
+                          -> WriterT (HsImportSet, [ExtName]) (Either String) HsType
+cppTypeToHsTypeAndImports side t = case t of
+  TVar _ -> nope $ freeVarErrorMsg "cppTypeToHsTypeAndImports" t
+  TVoid -> return $ HsTyCon $ Special HsUnitCon
+  TBool -> doImport hsImportForPrelude $> HsTyCon (UnQual $ HsIdent "CppopP.Bool")
+  TChar -> doImport hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "CppopFC.CChar")
+  TUChar -> doImport hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "CppopFC.CUChar")
+  TShort -> doImport hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "CppopFC.CShort")
+  TUShort -> doImport hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "CppopFC.CUShort")
+  TInt -> doImport hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "CppopFC.CInt")
+  TUInt -> doImport hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "CppopFC.CUInt")
+  TLong -> doImport hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "CppopFC.CLong")
+  TULong -> doImport hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "CppopFC.CULong")
+  TLLong -> doImport hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "CppopFC.CLLong")
+  TULLong -> doImport hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "CppopFC.CULLong")
+  TFloat -> doImport hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "CppopFC.CFloat")
+  TDouble -> doImport hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "CppopFC.CDouble")
+  TSize -> doImport hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "CppopFC.CSize")
+  TSSize -> nope "cppTypeToHsTypeAndImports: TSSize not implemented for Haskell."
+  TEnum e -> HsTyCon . UnQual . HsIdent <$> case side of
+    HsCSide -> doImport hsImportForForeignC $> "CppopFC.CInt"
+    HsHsSide -> doImportExtName (enumExtName e) $> toHsEnumTypeName e
+  TPtr (TObj cls) ->
+    doImportExtName (classExtName cls) $>
+    HsTyCon (UnQual $ HsIdent $ toHsTypeName Nonconst $ classExtName cls)
+  TPtr (TConst (TObj cls)) ->
+    doImportExtName (classExtName cls) $>
+    HsTyCon (UnQual $ HsIdent $ toHsTypeName Const $ classExtName cls)
   TPtr (TFn paramTypes retType) -> do
-    paramHsTypesMaybe <- sequence <$> mapM (cppTypeToHsTypeAndUse side) paramTypes
-    retHsTypeMaybe <- cppTypeToHsTypeAndUse side retType
+    paramHsTypes <- mapM (cppTypeToHsTypeAndImports side) paramTypes
+    retHsType <- cppTypeToHsTypeAndImports side retType
     sideFn <- case side of
-      HsCSide -> do addImports hsImportForForeign
+      HsCSide -> do doImport hsImportForForeign
                     return $ HsTyApp $ HsTyCon $ UnQual $ HsIdent "CppopF.FunPtr"
       HsHsSide -> return id
-    case paramHsTypesMaybe of
-      Nothing -> return Nothing
-      Just paramHsTypes -> case retHsTypeMaybe of
-        Nothing -> return Nothing
-        Just retHsType -> do
-          addImports hsImportForPrelude
-          return $ Just $ sideFn $
-            foldr HsTyFun (HsTyApp (HsTyCon $ UnQual $ HsIdent "CppopP.IO") retHsType) paramHsTypes
+    doImport hsImportForPrelude
+    return $ sideFn $
+      foldr HsTyFun (HsTyApp (HsTyCon $ UnQual $ HsIdent "CppopP.IO") retHsType) paramHsTypes
   TPtr t' -> do
-    addImports hsImportForForeign
-    fmap (HsTyApp $ HsTyCon $ UnQual $ HsIdent "CppopF.Ptr") <$>
-      cppTypeToHsTypeAndUse side t'
-  TRef t' -> cppTypeToHsTypeAndUse side $ TPtr t'
+    doImport hsImportForForeign
+    HsTyApp (HsTyCon $ UnQual $ HsIdent "CppopF.Ptr") <$> cppTypeToHsTypeAndImports side t'
+  TRef t' -> cppTypeToHsTypeAndImports side $ TPtr t'
   TFn paramTypes retType -> do
-    paramHsTypesMaybe <- sequence <$> mapM (cppTypeToHsTypeAndUse side) paramTypes
-    retHsTypeMaybe <- cppTypeToHsTypeAndUse side retType
-    case paramHsTypesMaybe of
-      Nothing -> return Nothing
-      Just paramHsTypes -> case retHsTypeMaybe of
-        Nothing -> return Nothing
-        Just retHsType -> do
-          addImports hsImportForPrelude
-          return $ Just $
-            foldr HsTyFun (HsTyApp (HsTyCon $ UnQual $ HsIdent "CppopP.IO") retHsType) paramHsTypes
+    paramHsTypes <- mapM (cppTypeToHsTypeAndImports side) paramTypes
+    retHsType <- cppTypeToHsTypeAndImports side retType
+    doImport hsImportForPrelude
+    return $
+      foldr HsTyFun (HsTyApp (HsTyCon $ UnQual $ HsIdent "CppopP.IO") retHsType) paramHsTypes
   TCallback cb -> do
-    hsTypeMaybe <- cppTypeToHsTypeAndUse side $ callbackToTFn cb
-    case hsTypeMaybe of
-      Nothing -> return Nothing
-      Just hsType -> case side of
-        HsHsSide -> return hsTypeMaybe
-        HsCSide -> do
-          addImports hsImportForSupport
-          return $ Just $ HsTyApp (HsTyCon $ UnQual $ HsIdent "CppopFCRS.CCallback") hsType
+    hsType <- cppTypeToHsTypeAndImports side $ callbackToTFn cb
+    case side of
+      HsHsSide -> return hsType
+      HsCSide -> do
+        doImport hsImportForSupport
+        return $ HsTyApp (HsTyCon $ UnQual $ HsIdent "CppopFCRS.CCallback") hsType
   TObj cls -> case side of
-    HsCSide -> cppTypeToHsTypeAndUse side $ TPtr t
+    HsCSide -> cppTypeToHsTypeAndImports side $ TPtr t
     HsHsSide -> case classHaskellConversion (classConversions cls) of
-      Nothing -> return Nothing
+      Nothing ->
+        nope $ concat
+        ["cppTypeToHsTypeAndImports: Expected a Haskell type for ", show cls,
+         ", but there isn't one."]
       Just hsConv -> do
-        addImports $ classHaskellConversionTypeImports hsConv
-        return $ Just $ classHaskellConversionType hsConv
-  TConst t' -> cppTypeToHsTypeAndUse side t'
+        doImport $ classHaskellConversionTypeImports hsConv
+        return $ classHaskellConversionType hsConv
+  TConst t' -> cppTypeToHsTypeAndImports side t'
+  where nope = lift . Left
+        doImport imports = tell (imports, [])
+        doImportExtName extName = tell (mempty, [extName])
 
 addImportForClass :: Class -> Generator ()
 addImportForClass = importHsModuleForExtName . classExtName

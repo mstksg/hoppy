@@ -179,9 +179,10 @@ sayExportFn mode name methodInfo purity paramTypes retType =
     SayExportForeignImports -> do
       -- Print a "foreign import" statement.
       hsCType <-
-        fromMaybeM
-        (abort $ "sayExportFn: Couldn't create Haskell C-side type signature for export \"" ++
-         fromExtName name ++ "\".") =<<
+        fromEitherM
+        (\e -> abort $ concat
+               ["sayExportFn: Couldn't create Haskell C-side type signature for ",
+                show name, ": ", e]) =<<
         fnToHsTypeAndUse HsCSide methodInfo purity paramTypes retType
       saysLn ["foreign import ccall \"", externalNameToCpp name, "\" ", hsFnImportedName, " :: ",
               prettyPrint hsCType]
@@ -190,9 +191,10 @@ sayExportFn mode name methodInfo purity paramTypes retType =
       -- Print the type signature.
       ln
       hsHsType <-
-        fromMaybeM
-        (abort $ "Couldn't create Haskell Haskell-side type signature for export \"" ++
-         fromExtName name ++ "\".") =<<
+        fromEitherM
+        (\e -> abort $ concat
+               ["Couldn't create Haskell Haskell-side type signature for ",
+                show name, ": ", e]) =<<
         fnToHsTypeAndUse HsHsSide methodInfo purity paramTypes retType
       saysLn [hsFnName, " :: ", prettyPrint hsHsType]
 
@@ -261,15 +263,17 @@ sayExportCallback mode cb = do
       hsFnName'newFunPtr = hsFnName ++ "'newFunPtr"
 
   hsFnCType <-
-    fromMaybeM
-    (abort $ concat
-     ["sayExportCallback: Couldn't create a function C-side type for ", show cb, "."]) =<<
+    fromEitherM
+    (\e -> abort $ concat
+           ["sayExportCallback: Couldn't create a function C-side type for ",
+            show cb, ": ", e]) =<<
     cppTypeToHsTypeAndUse HsCSide fnType
 
   hsFnHsType <-
-    fromMaybeM
-    (abort $ concat
-     ["sayExportCallback: Couldn't create a function Haskell-side type for ", show cb, "."]) =<<
+    fromEitherM
+    (\e -> abort $ concat
+           ["sayExportCallback: Couldn't create a function Haskell-side type for ",
+            show cb, ": ", e]) =<<
     cppTypeToHsTypeAndUse HsHsSide fnType
 
   let getWholeFnType = do
@@ -634,7 +638,7 @@ fnToHsTypeAndUse :: HsTypeSide
                  -> Purity
                  -> [Type]
                  -> Type
-                 -> Generator (Maybe HsQualType)
+                 -> Generator (Either String HsQualType)
 fnToHsTypeAndUse side methodInfo purity paramTypes returnType = do
   params <- mapM contextForParam $
             (case methodInfo of
@@ -644,36 +648,36 @@ fnToHsTypeAndUse side methodInfo purity paramTypes returnType = do
                 Nothing -> []) ++
             zip (map toArgName [1..]) paramTypes
   let context = mapMaybe fst params :: HsContext
-      hsParamsMaybe = mapM snd params
-  case hsParamsMaybe of
-    Nothing -> return Nothing
-    Just hsParams -> do
-      hsReturnMaybe <- cppTypeToHsTypeAndUse side returnType
-      case hsReturnMaybe of
-        Nothing -> return Nothing
-        Just hsReturn -> do
-          hsReturn' <- case purity of
+      hsParamsResult = mapM snd params
+  case hsParamsResult of
+    Left errorMsg -> return $ Left errorMsg
+    Right hsParams -> do
+      hsReturn' <- cppTypeToHsTypeAndUse side returnType
+      case hsReturn' of
+        Left errorMsg -> return $ Left errorMsg
+        Right hsReturn -> do
+          hsReturnForPurity <- case purity of
             Pure -> return hsReturn
             Nonpure -> do
               addImports hsImportForPrelude
               return $ HsTyApp (HsTyCon $ UnQual $ HsIdent "CppopP.IO") hsReturn
-          return $ Just $ HsQualType context $ foldr HsTyFun hsReturn' hsParams
+          return $ Right $ HsQualType context $ foldr HsTyFun hsReturnForPurity hsParams
 
-  where contextForParam :: (String, Type) -> Generator (Maybe HsAsst, Maybe HsType)
+  where contextForParam :: (String, Type) -> Generator (Maybe HsAsst, Either String HsType)
         contextForParam (s, t) = case t of
           TPtr (TObj cls) -> do
             addImportForClass cls
             return $ case side of
               HsHsSide -> let t' = HsTyVar $ HsIdent s
                           in (Just (UnQual $ HsIdent $ toHsClassName Nonconst cls, [t']),
-                              Just t')
-              HsCSide -> (Nothing, Just $ HsTyVar $ HsIdent $ toHsDataTypeName Nonconst cls)
+                              Right t')
+              HsCSide -> (Nothing, Right $ HsTyVar $ HsIdent $ toHsDataTypeName Nonconst cls)
           TPtr (TConst (TObj cls)) -> do
             addImportForClass cls
             return $ case side of
               HsHsSide -> let t' = HsTyVar $ HsIdent s
                           in (Just (UnQual $ HsIdent $ toHsClassName Const cls, [t']),
-                              Just t')
-              HsCSide -> (Nothing, Just $ HsTyVar $ HsIdent $ toHsDataTypeName Const cls)
+                              Right t')
+              HsCSide -> (Nothing, Right $ HsTyVar $ HsIdent $ toHsDataTypeName Const cls)
           TConst t' -> contextForParam (s, t')
           _ -> (,) Nothing <$> cppTypeToHsTypeAndUse side t

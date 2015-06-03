@@ -80,8 +80,10 @@ module Foreign.Cppop.Generator.Spec (
   classModifyConversions,
   ClassHaskellConversion (..),
   -- *** Class templates
-  ClassTemplate, ClassTemplateSuper (..), makeClassTemplate, instantiateClassTemplate,
-  instantiateClassTemplate',
+  ClassTemplate, ClassTemplateSuper (..),
+  ClassTemplateConversionsGen, ClassTemplateConversionsEnv, askTypeArgs, askMethodPrefix,
+  makeClassTemplate, instantiateClassTemplate, instantiateClassTemplate',
+  addClassTemplateConversions,
   classTemplateIdentifier, classTemplateExtNamePrefix, classTemplateVars, classTemplateSuperclasses,
   classTemplateCtors, classTemplateMethods, classTemplateUseReqs,
   -- ** Callbacks
@@ -90,6 +92,7 @@ module Foreign.Cppop.Generator.Spec (
   HsModuleName, HsImportSet, HsImportKey (..), HsImportSpecs (..), HsImportName, HsImportVal (..),
   hsWholeModuleImport, hsQualifiedImport, hsImport1, hsImport1', hsImports, hsImports',
   -- ** Internal to Cppop
+  internalToHsFnName,
   makeHsImportSet,
   getHsImportSet,
   hsImportForForeign,
@@ -103,9 +106,10 @@ import Control.Applicative ((<$>), (<*>))
 import Control.Arrow ((&&&))
 import Control.Monad (forM, liftM2, unless, when)
 import Control.Monad.Except (MonadError, Except, runExcept, throwError)
+import Control.Monad.Reader (Reader, asks, runReader)
 import Control.Monad.State (MonadState, StateT, execStateT, get, modify)
 import Control.Monad.Trans (lift)
-import Data.Char (isAlpha, isAlphaNum, toUpper)
+import Data.Char (isAlpha, isAlphaNum, toLower, toUpper)
 import Data.Function (on)
 import Data.List (intercalate, intersperse)
 import qualified Data.Map as M
@@ -343,6 +347,13 @@ stringOrIdentifier ident = fromMaybe $ case identifierParts ident of
   [] -> error "stringOrIdentifier: Invalid empty identifier."
   parts -> idPartBase $ last parts
 
+-- | This is here because of module circular dependencies; see
+-- 'Foreign.Cppop.Generator.Language.Haskell.General.toHsFnName'.
+internalToHsFnName :: ExtName -> String
+internalToHsFnName extName = case fromExtName extName of
+  x:xs -> toLower x:xs
+  [] -> []
+
 -- | Specifies some C++ object (function or class) to give access to.
 data Export =
   ExportEnum CppEnum
@@ -366,7 +377,8 @@ newtype Identifier = Identifier { identifierParts :: [IdPart] }
 
 instance Show Identifier where
   show ident =
-    intercalate "::" $
+    (\words -> concat $ "<Identifier " : words ++ [">"]) $
+    intersperse "::" $
     concatMap (\part -> case idPartArgs part of
                   Nothing -> [idPartBase part]
                   Just args -> idPartBase part : "<" :
@@ -380,16 +392,6 @@ instance HasTVars Identifier where
                             fmap (map $ substTVar var val) $
                             idPartArgs part }) .
     identifierParts
-
-instance Show Identifier where
-  show ident =
-    (\words -> concat $ "<Identifier " : words ++ ">") $
-    intersperse "::" $
-    concatMap (\part -> case idPartArgs part of
-                  Nothing -> [idPartBase part]
-                  Just args -> idPartBase part : "<" :
-                               intersperse ", " (map show args) ++ [">"]) $
-    identifierParts ident
 
 data IdPart = IdPart
   { idPartBase :: String
@@ -1024,6 +1026,7 @@ data ClassTemplate = ClassTemplate
   , classTemplateSuperclasses :: [ClassTemplateSuper]
   , classTemplateCtors :: [Ctor]
   , classTemplateMethods :: [Method]
+  , classTemplateConversions :: Maybe ClassTemplateConversionsGen
   , classTemplateUseReqs :: Reqs
   }
 
@@ -1044,6 +1047,26 @@ data ClassTemplateSuper =
   | ClassTemplateSuperTemplate ClassTemplate [Type]
     -- ^ A templated superclass for a templated class.
 
+type ClassTemplateConversionsGen = Reader ClassTemplateConversionsEnv ClassConversions
+
+data ClassTemplateConversionsEnv = ClassTemplateConversionsEnv
+  { classTemplateConversionsEnvTypeArgs :: [Type]
+  , classTemplateConversionsEnvMethodPrefix :: String
+  }
+
+makeClassTemplateConversionsEnv :: Class -> [Type] -> ClassTemplateConversionsEnv
+makeClassTemplateConversionsEnv cls typeArgs =
+  ClassTemplateConversionsEnv
+  { classTemplateConversionsEnvTypeArgs = typeArgs
+  , classTemplateConversionsEnvMethodPrefix = internalToHsFnName (classExtName cls) ++ "_"
+  }
+
+askTypeArgs :: Reader ClassTemplateConversionsEnv [Type]
+askTypeArgs = asks classTemplateConversionsEnvTypeArgs
+
+askMethodPrefix :: Reader ClassTemplateConversionsEnv String
+askMethodPrefix = asks classTemplateConversionsEnvMethodPrefix
+
 makeClassTemplate ::
   Identifier
   -- ^ Identifier for the class template.  Should include 'TVar's for all type
@@ -1058,7 +1081,14 @@ makeClassTemplate ::
   -> ClassTemplate
 makeClassTemplate ident maybeExtNamePrefix vars supers ctors methods =
   ClassTemplate ident (stringOrIdentifier ident maybeExtNamePrefix)
-                vars supers ctors methods mempty
+                vars supers ctors methods Nothing mempty
+
+addClassTemplateConversions :: ClassTemplateConversionsGen -> ClassTemplate -> ClassTemplate
+addClassTemplateConversions convs tmpl = case classTemplateConversions tmpl of
+  Nothing -> tmpl { classTemplateConversions = Just convs }
+  Just _ ->
+    error $ concat
+    ["addClassTemplateEncoding: ", show tmpl, " already has conversions, trying to add again."]
 
 instantiateClassTemplate ::
   ClassTemplate  -- ^ The template to instantiate.
@@ -1145,15 +1175,21 @@ instantiateClassTemplate tmpl extNameSuffix typeArgs instantiatedSupers typeArgU
         method { methodExtName =
                     toExtName $ concat [clsExtName, "_", fromExtName $ methodExtName method] }
 
-  return $
-    addClassInstantiationInfo tmpl typeArgs $
-    addUseReqs (classTemplateUseReqs tmpl `mappend` typeArgUseReqs) $
-    substTVars (zip vars typeArgs) $
-    makeClass ident
-              (Just $ toExtName clsExtName)
-              concreteSupers
-              ctors
-              methods
+  let result =
+        (case classTemplateConversions tmpl of
+            Nothing -> id
+            Just convs -> classModifyConversions $ const $
+                          runReader convs $ makeClassTemplateConversionsEnv result typeArgs) $
+        addClassInstantiationInfo tmpl typeArgs $
+        addUseReqs (classTemplateUseReqs tmpl `mappend` typeArgUseReqs) $
+        substTVars (zip vars typeArgs) $
+        makeClass ident
+                  (Just $ toExtName clsExtName)
+                  concreteSupers
+                  ctors
+                  methods
+
+  return result
 
 instantiateClassTemplate' :: ClassTemplate -> String -> [Type] -> [Class] -> Reqs -> Class
 instantiateClassTemplate' tmpl extNameSuffix typeArgs instantiatedSupers typeArgUseReqs =

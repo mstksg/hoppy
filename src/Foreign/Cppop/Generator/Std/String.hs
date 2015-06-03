@@ -8,6 +8,7 @@ import Language.Haskell.Syntax (
   HsType (HsTyCon),
   )
 
+-- | @std::string@
 c_string :: Class
 c_string =
   addReqIncludes [includeStd "string"] $
