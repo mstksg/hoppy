@@ -659,19 +659,18 @@ fnToHsTypeAndUse side methodInfo purity paramTypes returnType = do
 
   where contextForParam :: (String, Type) -> Generator (Maybe HsAsst, Maybe HsType)
         contextForParam (s, t) = case t of
-          TPtr (TObj cls) -> do
-            addImportForClass cls
-            return $ case side of
-              HsHsSide -> let t' = HsTyVar $ HsIdent s
-                          in (Just (UnQual $ HsIdent $ toHsClassName Nonconst cls, [t']),
-                              Just t')
-              HsCSide -> (Nothing, Just $ HsTyVar $ HsIdent $ toHsDataTypeName Nonconst cls)
-          TPtr (TConst (TObj cls)) -> do
-            addImportForClass cls
-            return $ case side of
-              HsHsSide -> let t' = HsTyVar $ HsIdent s
-                          in (Just (UnQual $ HsIdent $ toHsClassName Const cls, [t']),
-                              Just t')
-              HsCSide -> (Nothing, Just $ HsTyVar $ HsIdent $ toHsDataTypeName Const cls)
+          TPtr (TObj cls) -> handlePtr s cls Nonconst
+          TPtr (TConst (TObj cls)) -> handlePtr s cls Const
+          TRef (TObj cls) -> handlePtr s cls Nonconst
+          TRef (TConst (TObj cls)) -> handlePtr s cls Const
           TConst t' -> contextForParam (s, t')
           _ -> (,) Nothing <$> cppTypeToHsTypeAndUse side t
+
+        handlePtr :: String -> Class -> Constness -> Generator (Maybe HsAsst, Maybe HsType)
+        handlePtr s cls cst = do
+          addImportForClass cls
+          return $ case side of
+            HsHsSide -> let t' = HsTyVar $ HsIdent s
+                        in (Just (UnQual $ HsIdent $ toHsClassName cst cls, [t']),
+                            Just t')
+            HsCSide -> (Nothing, Just $ HsTyVar $ HsIdent $ toHsDataTypeName cst cls)

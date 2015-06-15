@@ -297,9 +297,9 @@ sayArgRead dir (n, cppType, maybeCType) = case cppType of
                    show cb, "."]
     says [callbackClassName cb, " ", toArgName n, "(", toArgNameAlt n, ");\n"]
 
-  TRef (TObj _) -> convertObj
-  TRef (TConst (TObj _)) -> convertObj
-  TObj _ -> convertObj
+  TRef t@(TObj _) -> convertObj t
+  TRef t@(TConst (TObj _)) -> convertObj t
+  TObj _ -> convertObj cppType
 
   -- Primitive types don't need to be encoded/decoded.  But if maybeCType is a
   -- Just, then we're expected to do some encoding/decoding, so something is
@@ -311,12 +311,12 @@ sayArgRead dir (n, cppType, maybeCType) = case cppType of
     ["sayArgRead: Don't know how to ", show dir, " to type ", show cType,
      " from type ", show cppType, "."]
 
-  where convertObj = case dir of
+  where convertObj cppType' = case dir of
           DoDecode -> do
-            sayVar (toArgName n) Nothing $ TRef cppType
+            sayVar (toArgName n) Nothing $ TRef cppType'
             says [" = *", toArgNameAlt n, ";\n"]
           DoEncode -> do
-            sayVar (toArgName n) Nothing $ TPtr cppType
+            sayVar (toArgName n) Nothing $ TPtr cppType'
             says [" = &", toArgNameAlt n, ";\n"]
 
 sayArgNames :: Int -> Generator ()
@@ -413,7 +413,9 @@ sayExportCallback sayBody cb = do
             sayVar "result" Nothing retType >> say " = *resultPtr;\n"
             say "delete resultPtr;\n"
             say "return result;\n"
-          (TRef _, Just (TPtr (TObj _))) ->
+          (TRef (TConst (TObj cls1)), Just (TPtr (TConst (TObj cls2)))) | cls1 == cls2 ->
+            say "return *(" >> sayCall >> say ");\n"
+          (TRef (TObj cls1), Just (TPtr (TObj cls2))) | cls1 == cls2 ->
             say "return *(" >> sayCall >> say ");\n"
           ts -> abort $ concat
                 ["sayExportCallback: Unexpected return types ", show ts, "."]
@@ -422,8 +424,12 @@ sayExportCallback sayBody cb = do
       -- along to the impl object.
       sayFunction (className ++ "::operator()")
                   (map toArgName [1..paramCount])
-                  fnType $ Just $
-        say "(*impl_)(" >> sayArgNames paramCount >> say ");\n"
+                  fnType $ Just $ do
+        case retType of
+          TVoid -> say "(*impl_)("
+          _ -> say "return (*impl_)("
+        sayArgNames paramCount
+        say ");\n"
 
       -- Render the function that creates a new callback object.
       let newCallbackFnType = TFn [ fnPtrCType
