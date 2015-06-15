@@ -174,7 +174,9 @@ sayExport sayBody export = case export of
     when sayBody $ do
       addReqs $ fnUseReqs fn
       sayExportFn (fnExtName fn)
-                  (sayIdentifier $ fnIdentifier fn)
+                  (case fnCName fn of
+                     FnName identifier -> Right $ sayIdentifier identifier
+                     FnOp op -> Left op)
                   Nothing
                   (fnParams fn)
                   (fnReturn fn)
@@ -187,7 +189,7 @@ sayExport sayBody export = case export of
     -- Export each of the class's constructors.
     forM_ (classCtors cls) $ \ctor ->
       sayExportFn (ctorExtName ctor)
-                  (say "new" >> sayIdentifier (classIdentifier cls))
+                  (Right $ say "new" >> sayIdentifier (classIdentifier cls))
                   Nothing
                   (ctorParams ctor)
                   clsPtr
@@ -201,10 +203,13 @@ sayExport sayBody export = case export of
     forM_ (classMethods cls) $ \method -> do
       let static = methodStatic method == Static
       sayExportFn (methodExtName method)
-                  (do when static $ do
-                        sayIdentifier (classIdentifier cls)
-                        say "::"
-                      say $ methodCName method)
+                  (case methodCName method of
+                     FnName cName -> Right $ do
+                       when static $ do
+                         sayIdentifier (classIdentifier cls)
+                         say "::"
+                       say cName
+                     FnOp op -> Left op)
                   (if static then Nothing else justClsPtr)
                   (methodParams method)
                   (methodReturn method)
@@ -212,8 +217,14 @@ sayExport sayBody export = case export of
 
   ExportCallback cb -> sayExportCallback sayBody cb
 
-sayExportFn :: ExtName -> Generator () -> Maybe Type -> [Type] -> Type -> Bool -> Generator ()
-sayExportFn extName sayCppName maybeThisType paramTypes retType sayBody = do
+sayExportFn :: ExtName
+            -> Either Operator (Generator ())
+            -> Maybe Type
+            -> [Type]
+            -> Type
+            -> Bool
+            -> Generator ()
+sayExportFn extName opOrCppName maybeThisType paramTypes retType sayBody = do
   let paramCount = length paramTypes
   paramCTypeMaybes <- mapM typeToCType paramTypes
   let paramCTypes = zipWith fromMaybe paramTypes paramCTypeMaybes
@@ -234,12 +245,35 @@ sayExportFn extName sayCppName maybeThisType paramTypes retType sayBody = do
     else Just $ do
       -- Convert arguments that aren't passed in directly.
       mapM_ (sayArgRead DoDecode) $ zip3 [1..] paramTypes paramCTypeMaybes
-      -- Call the exported function or method.
-      let sayCall = do when (isJust maybeThisType) $ say "self->"
-                       sayCppName
-                       say "("
-                       sayArgNames paramCount
-                       say ")"
+
+      -- Determine how to call the exported function or method.
+      let sayCall = case opOrCppName of
+            Left op -> do
+              say "("
+              let effectiveParamCount = paramCount + if isJust maybeThisType then 1 else 0
+                  paramNames@(p1:p2:_) = (if isJust maybeThisType then ("(*self)":) else id) $
+                                         map toArgName [1..]
+                  assertParamCount n =
+                    when (effectiveParamCount /= n) $ abort $ concat
+                    ["sayExportFn: Operator ", show op, " for export ", show extName,
+                     " requires ", show n, " parameter(s), but has ", show effectiveParamCount,
+                     "."]
+              case operatorType op of
+                UnaryPrefixOperator symbol -> assertParamCount 1 >> says [symbol, p1]
+                UnaryPostfixOperator symbol -> assertParamCount 1 >> says [p1, symbol]
+                BinaryOperator symbol -> assertParamCount 2 >> says [p1, symbol, p2]
+                CallOperator ->
+                  says $ p1 : "(" : take (effectiveParamCount - 1) (drop 1 paramNames) ++ [")"]
+                ArrayOperator -> assertParamCount 2 >> says [p1, "[", p2, "]"]
+              say ")"
+            Right sayCppName -> do
+              when (isJust maybeThisType) $ say "self->"
+              sayCppName
+              say "("
+              sayArgNames paramCount
+              say ")"
+
+      -- Write the call, transforming the return value if necessary.
       case (retType, retCTypeMaybe) of
         (TVoid, Nothing) -> sayCall >> say ";\n"
         (_, Nothing) -> say "return " >> sayCall >> say ";\n"
