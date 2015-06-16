@@ -551,12 +551,11 @@ sayExportClassHsType doDecls cls cst = do
 
 sayExportClassHsNull :: Class -> Generator ()
 sayExportClassHsNull cls = do
-  let clsExtName = classExtName cls
-      clsHsNullName = toHsClassNullName cls
+  let clsHsNullName = toHsClassNullName cls
   addImports hsImportForForeign
   ln
-  saysLn [clsHsNullName, " :: ", toHsTypeName Nonconst clsExtName]
-  saysLn [clsHsNullName, " = ", toHsTypeName Nonconst clsExtName, " CppopF.nullPtr"]
+  saysLn [clsHsNullName, " :: ", toHsDataTypeName Nonconst cls]
+  saysLn [clsHsNullName, " = ", toHsDataTypeName Nonconst cls, " CppopF.nullPtr"]
 
 sayExportClassHsCtors :: SayExportMode -> Class -> Generator ()
 sayExportClassHsCtors mode cls =
