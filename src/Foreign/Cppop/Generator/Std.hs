@@ -5,6 +5,7 @@ module Foreign.Cppop.Generator.Std (
 
 import Data.Monoid (mappend)
 import Foreign.Cppop.Generator.Spec
+import Foreign.Cppop.Generator.Spec.ClassFeature
 import Language.Haskell.Syntax (
   HsName (HsIdent),
   HsQName (UnQual),
@@ -20,6 +21,7 @@ mod_std = modifyModule' (makeModule "std" "std.hpp" "std.cpp") $
 c_std__string :: Class
 c_std__string =
   addReqIncludes [includeStd "string"] $
+  classAddFeatures [Assignable, Comparable, Copyable, Equatable] $
   classModifyConversions
   (\c -> c { classHaskellConversion =
              Just ClassHaskellConversion
@@ -39,11 +41,4 @@ c_std__string =
   ]
   [ mkConstMethod c_std__string "c_str" [] $ TPtr $ TConst TChar
   , mkConstMethod c_std__string "size" [] TSize
-    -- TODO Automate these with "class traits".
-  , mkConstMethod c_std__string OpEq [TObj c_std__string] TBool
-  , mkConstMethod c_std__string OpNe [TObj c_std__string] TBool
-  , mkConstMethod c_std__string OpLt [TObj c_std__string] TBool
-  , mkConstMethod c_std__string OpLe [TObj c_std__string] TBool
-  , mkConstMethod c_std__string OpGt [TObj c_std__string] TBool
-  , mkConstMethod c_std__string OpGe [TObj c_std__string] TBool
   ]
