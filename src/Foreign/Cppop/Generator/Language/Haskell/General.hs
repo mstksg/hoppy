@@ -25,7 +25,9 @@ module Foreign.Cppop.Generator.Language.Haskell.General (
   toHsTypeName,
   toHsEnumTypeName,
   toHsEnumCtorName,
-  toHsClassName,
+  toHsValueClassName,
+  toHsWithValuePtrName,
+  toHsPtrClassName,
   toHsCastMethodName,
   toHsDataTypeName,
   toHsClassNullName,
@@ -311,11 +313,21 @@ toHsEnumCtorName enum words =
   where capitalize "" = ""
         capitalize (c:cs) = toUpper c : map toLower cs
 
-toHsClassName :: Constness -> Class -> String
-toHsClassName cst cls = toHsTypeName cst (classExtName cls) ++ "Class"
+-- | The name for the typeclass of types that can be represented as values of
+-- the given C++ class.
+toHsValueClassName :: Class -> String
+toHsValueClassName cls = toHsDataTypeName Nonconst cls ++ "Value"
+
+toHsWithValuePtrName :: Class -> String
+toHsWithValuePtrName cls = concat ["with", toHsDataTypeName Nonconst cls, "Ptr"]
+
+-- | The name for the typeclass of types are pointers to objects of the given
+-- C++ class, or subclasses.
+toHsPtrClassName :: Constness -> Class -> String
+toHsPtrClassName cst cls = toHsDataTypeName cst cls ++ "Ptr"
 
 toHsCastMethodName :: Constness -> Class -> String
-toHsCastMethodName cst cls = "to" ++ toHsTypeName cst (classExtName cls)
+toHsCastMethodName cst cls = "to" ++ toHsDataTypeName cst cls
 
 toHsDataTypeName :: Constness -> Class -> String
 toHsDataTypeName cst cls = toHsTypeName cst $ classExtName cls
@@ -410,7 +422,7 @@ cppTypeToHsTypeAndUse side t = case t of
           addImports hsImportForSupport
           return $ Just $ HsTyApp (HsTyCon $ UnQual $ HsIdent "CppopFCRS.CCallback") hsType
   TObj cls -> case side of
-    HsCSide -> cppTypeToHsTypeAndUse side $ TPtr t
+    HsCSide -> cppTypeToHsTypeAndUse side $ TPtr $ TConst t
     HsHsSide -> case classHaskellConversion (classConversions cls) of
       Nothing -> return Nothing
       Just hsConv -> do

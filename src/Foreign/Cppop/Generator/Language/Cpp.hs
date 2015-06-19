@@ -7,6 +7,32 @@ module Foreign.Cppop.Generator.Language.Cpp (
   classDeleteFnCppName,
   ) where
 
+-- How object passing works:
+--
+-- data Type = ... | TPtr Type | TRef Type | TObj Class | TConst
+--
+-- We consider all of the following cases as passing an object, both into and
+-- out of C++, and independently, as an argument and as a return value:
+--
+-- (1) TObj _                  (equivalent to TConst (TObj _))
+-- (2) TRef (TConst (TObj _))
+-- (3) TRef (TObj _)
+-- (4) TPtr (TConst (TObj _))
+-- (5) TPtr (TObj _)
+--
+-- When passing an object as an argument, it is passed between C++ and a foreign
+-- language via a pointer.  Cases 1, 2, and 4 are passed as const pointers.  For
+-- a foreign language passing a (TObj _) to C++, this means converting a foreign
+-- value to a temporary C++ object.  Passing a (TObj _) argument into or out of
+-- C++, the caller always owns the object.
+--
+-- When returning an object, again, pointers are always what is passed across
+-- the language boundary.  Returning a (TObj _) transfers ownership: a C++
+-- function returning a (TObj _) will copy the object to the heap, and return a
+-- pointer to the object which the caller owns; a callback returning a (TObj _)
+-- will internally create a C++ object from a foreign value, and hand that
+-- object off to the C++ side (which will return it and free the temporary).
+
 -- How callbacks work:
 --
 -- data Type = ... | TCallback Callback
@@ -277,8 +303,8 @@ sayExportFn extName opOrCppName maybeThisType paramTypes retType sayBody = do
       case (retType, retCTypeMaybe) of
         (TVoid, Nothing) -> sayCall >> say ";\n"
         (_, Nothing) -> say "return " >> sayCall >> say ";\n"
-        (TRef _, Just (TPtr _)) -> say "return &(" >> sayCall >> say ");\n"
-        (TObj cls, Just (TPtr (TObj _))) ->
+        (TRef cls, Just (TPtr cls')) | cls == cls' -> say "return &(" >> sayCall >> say ");\n"
+        (TObj cls, Just (TPtr (TConst (TObj cls')))) | cls == cls' ->
           say "return new" >> sayIdentifier (classIdentifier cls) >> say "(" >>
           sayCall >> say ");\n"
         ts -> abort $ concat ["sayExportFn: Unexpected return types ", show ts,
@@ -299,7 +325,7 @@ sayArgRead dir (n, cppType, maybeCType) = case cppType of
 
   TRef t@(TObj _) -> convertObj t
   TRef t@(TConst (TObj _)) -> convertObj t
-  TObj _ -> convertObj cppType
+  TObj _ -> convertObj $ TConst cppType
 
   -- Primitive types don't need to be encoded/decoded.  But if maybeCType is a
   -- Just, then we're expected to do some encoding/decoding, so something is
@@ -408,7 +434,7 @@ sayExportCallback sayBody cb = do
         case (retType, retCTypeMaybe) of
           (TVoid, Nothing) -> sayCall >> say ";\n"
           (_, Nothing) -> say "return " >> sayCall >> say ";\n"
-          (TObj _, Just retCType@(TPtr (TObj _))) -> do
+          (TObj cls1, Just retCType@(TPtr (TConst (TObj cls2)))) | cls1 == cls2 -> do
             sayVar "resultPtr" Nothing retCType >> say " = " >> sayCall >> say ";\n"
             sayVar "result" Nothing retType >> say " = *resultPtr;\n"
             say "delete resultPtr;\n"
@@ -445,7 +471,7 @@ sayExportCallback sayBody cb = do
 typeToCType :: Type -> Generator (Maybe Type)
 typeToCType t = case t of
   TRef t' -> return $ Just $ TPtr t'
-  TObj _ -> return $ Just $ TPtr t
+  TObj _ -> return $ Just $ TPtr $ TConst t
   TConst t' -> typeToCType t'
   _ -> return Nothing
 
