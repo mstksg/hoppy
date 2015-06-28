@@ -532,12 +532,11 @@ sayExportClassHsClass doDecls cls cst = do
   -- spiritually closer to the const version of the pointers for this class, so
   -- we emit for the const case only.
   when (cst == Const) $ do
+    addImports hsImportForPrelude
     ln
-    saysLn ["class ", hsValueClassName, " a", if doDecls then " where" else ""]
-    when doDecls $ do
-      addImports hsImportForPrelude
-      indent $
-        saysLn [hsWithValuePtrName, " :: a -> (", hsTypeName, " -> CppopP.IO b) -> CppopP.IO b"]
+    saysLn ["class ", hsValueClassName, " a where"]
+    indent $
+      saysLn [hsWithValuePtrName, " :: a -> (", hsTypeName, " -> CppopP.IO b) -> CppopP.IO b"]
 
     -- Generate instances for all pointer subtypes.
     ln
