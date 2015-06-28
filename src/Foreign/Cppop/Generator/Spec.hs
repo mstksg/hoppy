@@ -102,7 +102,7 @@ import Control.Monad.Except (MonadError, Except, runExcept, throwError)
 import Control.Monad.State (MonadState, StateT, execStateT, get, modify)
 import Data.Char (isAlpha, isAlphaNum, toUpper)
 import Data.Function (on)
-import Data.List (intercalate)
+import Data.List (intercalate, intersperse)
 import qualified Data.Map as M
 import Data.Maybe (fromMaybe)
 import Data.Monoid (Monoid, mappend, mconcat, mempty)
@@ -169,7 +169,7 @@ interface ifName modules = do
     Left $ unlines $
     "Some external name(s) are exported by multiple modules:" :
     map (\(extName, modules) ->
-          concat $ "- " : show extName : ": " : map show modules)
+          concat $ "- " : show extName : ": " : intersperse ", " (map show modules))
         extNamesInMultipleModules
 
   return Interface
