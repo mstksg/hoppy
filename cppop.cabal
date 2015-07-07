@@ -19,6 +19,7 @@ library
     , Foreign.Cppop.Generator.Language.Haskell.General
     , Foreign.Cppop.Generator.Main
     , Foreign.Cppop.Generator.Spec
+    , Foreign.Cppop.Generator.Spec.ClassFeature
     , Foreign.Cppop.Generator.Std
     , Foreign.Cppop.Generator.Std.List
     , Foreign.Cppop.Generator.Std.String
@@ -44,7 +45,7 @@ library
     , directory >=1.2 && <1.3
     , filepath >=1.3 && <1.4
     , haskell-src >=1.0 && <1.1
-    , mtl >=2.2 && <2.3
+    , mtl >=2.1 && <2.3
     , text >=1.2 && <1.3
   hs-source-dirs: src
   ghc-options: -W -fwarn-incomplete-patterns -fwarn-unused-do-bind

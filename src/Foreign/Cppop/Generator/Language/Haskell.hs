@@ -4,6 +4,32 @@ module Foreign.Cppop.Generator.Language.Haskell (
   generatedFiles,
   ) where
 
+-- How object passing works:
+--
+-- All of the comments about argument passing in Cpp.hs apply here.  The
+-- following types are used for passing arguments from Haskell to C++:
+--
+--  C++ type   | Pass over FFI | HsCSide  | HsHsSide
+-- ------------+---------------+----------+-----------------
+--  Foo        | Foo const*    | FooConst | FooValue a => a
+--  Foo const& | Foo const*    | FooConst | FooValue a => a
+--  Foo&       | Foo*          | Foo      | FooPtr a => a
+--  Foo const* | Foo const*    | FooConst | FooValue a => a
+--  Foo*       | Foo*          | Foo      | FooPtr a => a
+--
+-- FooPtr contains pointers to nonconst Foo (and all subclasses).  FooValue
+-- contains pointers to const and nonconst Foo (and all subclasses), as well as
+-- the convertible Haskell type, if there is one.  The rationale is that
+-- FooValue is used where the callee will not modify the argument, so both a
+-- const pointer to an existing object, and a fresh const pointer to a temporary
+-- on the case of passing a Foo, is fine.  Because functions taking Foo& and
+-- Foo* may modify their argument, we disallow passing a temporary converted
+-- from a Haskell value implicitly; 'withCppObj' can be used for this.
+--
+-- For values returned from C++, and for arguments and return values in
+-- callbacks, the HsCSide column above is the exposed type; polymorphism as in
+-- the HsHsSide column is not provided.
+
 import Control.Applicative ((<$>), (<*>), pure)
 import Control.Arrow ((&&&), second)
 import Control.Monad (forM, when)
@@ -102,11 +128,19 @@ generate iface = do
           else specs
 
 prependExtensions :: String -> String
-prependExtensions =
+prependExtensions = (prependExtensionsPrefix ++)
+
+prependExtensionsPrefix :: String
+prependExtensionsPrefix =
   -- MultiParamTypeClasses are necessary for instances of Decodable and
-  -- Encodable.  FlexiableInstances and TypeSynonymInstances are enabled to
-  -- allow conversions to and from String, which is really [Char].
-  ("{-# LANGUAGE FlexibleInstances, MultiParamTypeClasses, TypeSynonymInstances #-}\n\n" ++)
+  -- Encodable.  FlexibleInstances and TypeSynonymInstances are enabled to allow
+  -- conversions to and from String, which is really [Char].
+  -- UndecidableInstances is needed for instances of the form "SomeClassConstPtr
+  -- a => SomeClassValue a", and OverlappingInstances is needed for the overlap
+  -- between these instances and instances of SomeClassValue for the class's
+  -- native Haskell type, when it's convertible.
+  "{-# LANGUAGE FlexibleInstances, MultiParamTypeClasses, OverlappingInstances, " ++
+  "TypeSynonymInstances, UndecidableInstances #-}\n\n"
 
 generateSource :: Module -> Generator ()
 generateSource m = do
@@ -366,16 +400,19 @@ sayArgProcessing dir t fromVar toVar = case t of
               ToCpp -> " = CppopFCRS.coerceIntegral $ CppopP.fromEnum "
               FromCpp -> " = CppopP.toEnum $ CppopFCRS.coerceIntegral ",
             fromVar, " in"]
+  -- References and pointers are handled equivalently.
   TPtr (TObj cls) -> do
     addImportForClass cls
     saysLn $ case dir of
       ToCpp -> ["let ", toVar, " = ", toHsCastMethodName Nonconst cls, " ", fromVar, " in"]
       FromCpp -> ["let ", toVar, " = ", fromVar, " in"]
-  TPtr (TConst (TObj cls)) -> do
-    addImportForClass cls
-    saysLn $ case dir of
-      ToCpp -> ["let ", toVar, " = ", toHsCastMethodName Const cls, " ", fromVar, " in"]
-      FromCpp -> ["let ", toVar, " = ", fromVar, " in"]
+  TPtr (TConst (TObj cls)) -> case dir of
+    ToCpp -> do
+      addImports $ mconcat [hsImport1 "Prelude" "($)"]
+      addImportForClass cls
+      saysLn [toHsWithValuePtrName cls, " ", fromVar, " $ \\", toVar, " ->"]
+    FromCpp ->
+      saysLn ["let ", toVar, " = ", fromVar, " in"]
   TPtr _ -> doPrimitive
   TRef t' -> sayArgProcessing dir (TPtr t') fromVar toVar
   TFn {} -> abort $ concat ["sayArgProcessing: TFn unimplemented, given ", show t, "."]
@@ -386,10 +423,11 @@ sayArgProcessing dir t fromVar toVar = case t of
       saysLn [toHsCallbackCtorName cb, " ", fromVar, " >>= \\", toVar, " ->"]
     FromCpp ->
       abort $ concat ["sayArgProcessing: Can't receive a callback from C++, given ", show cb, "."]
-  TObj _ -> case dir of
+  TObj cls -> case dir of
     ToCpp -> do
-      addImports $ mconcat [hsImport1 "Prelude" "($)", hsImportForSupport]
-      saysLn ["CppopFCRS.withCppObj ", fromVar, " $ \\", toVar, " ->"]
+      addImports $ mconcat [hsImport1 "Prelude" "($)"]
+      addImportForClass cls
+      saysLn [toHsWithValuePtrName cls, " ", fromVar, " $ \\", toVar, " ->"]
     FromCpp -> do
       addImports $ mconcat [hsImport1 "Prelude" "(>>=)", hsImportForSupport]
       saysLn ["CppopFCRS.decode ", fromVar, " >>= \\", toVar, " ->"]
@@ -451,12 +489,8 @@ sayExportClass mode cls = do
       sayExportClassHsCtors mode cls
 
       forM_ (classMethods cls) $ \method -> do
-        let methodInfo = case methodApplicability method of
-              MNormal -> Just (Nonconst, cls)
-              MStatic -> Nothing
-              MConst -> Just (Const, cls)
-        (sayExportFn mode <$> methodExtName <*> pure methodInfo <*> methodPurity <*>
-         methodParams <*> methodReturn) method
+        (sayExportFn mode <$> methodExtName <*> pure Nothing <*> methodPurity <*>
+         pure (getMethodEffectiveParams cls method) <*> methodReturn) method
 
     SayExportDecls -> do
       sayExportClassHsClass True cls Const
@@ -484,7 +518,9 @@ sayExportClass mode cls = do
 sayExportClassHsClass :: Bool -> Class -> Constness -> Generator ()
 sayExportClassHsClass doDecls cls cst = do
   let hsTypeName = toHsDataTypeName cst cls
-      hsClassName = toHsClassName cst cls
+      hsValueClassName = toHsValueClassName cls
+      hsWithValuePtrName = toHsWithValuePtrName cls
+      hsPtrClassName = toHsPtrClassName cst cls
       hsCastMethodName = toHsCastMethodName cst cls
       supers = classSuperclasses cls
 
@@ -495,19 +531,49 @@ sayExportClassHsClass doDecls cls cst = do
                    return ["CppopFCRS.CppPtr"]
            else return x) $
     case cst of
-      Const -> map (toHsClassName Const) supers
-      Nonconst -> toHsClassName Const cls : map (toHsClassName Nonconst) supers
+      Const -> map (toHsPtrClassName Const) supers
+      Nonconst -> toHsPtrClassName Const cls : map (toHsPtrClassName Nonconst) supers
 
-  -- Print the class definition.
+  -- Print the value class definition.  There is only one of these, and it is
+  -- spiritually closer to the const version of the pointers for this class, so
+  -- we emit for the const case only.
+  when (cst == Const) $ do
+    addImports hsImportForPrelude
+    ln
+    saysLn ["class ", hsValueClassName, " a where"]
+    indent $
+      saysLn [hsWithValuePtrName, " :: a -> (", hsTypeName, " -> CppopP.IO b) -> CppopP.IO b"]
+
+    -- Generate instances for all pointer subtypes.
+    ln
+    saysLn ["instance ", hsPtrClassName, " a => ", hsValueClassName, " a",
+            if doDecls then " where" else ""]
+    when doDecls $ do
+      addImports $ mconcat [hsImports "Prelude" ["($)", "(.)"],
+                            hsImportForPrelude]
+      indent $ saysLn [hsWithValuePtrName, " = CppopP.flip ($) . ", hsCastMethodName]
+
+    -- When the class has a native Haskell type, also print an instance for it.
+    forM_ (classHaskellConversion $ classConversions cls) $ \conv -> do
+      let hsType = classHaskellConversionType conv
+      addImports $ classHaskellConversionTypeImports conv
+      ln
+      saysLn ["instance ", hsValueClassName, " (", prettyPrint hsType, ")",
+              if doDecls then " where" else ""]
+      when doDecls $ do
+        addImports hsImportForSupport
+        indent $ saysLn [hsWithValuePtrName, " = CppopFCRS.withCppObj"]
+
+  -- Print the pointer class definition.
   ln
   saysLn $
     "class (" :
     intersperse ", " (map (++ " this") hsSupers) ++
-    [") => ", hsClassName, " this"]
+    [") => ", hsPtrClassName, " this"]
 
   -- Print the up-cast function.
   ln
-  saysLn [hsCastMethodName, " :: ", hsClassName, " this => this -> ", hsTypeName]
+  saysLn [hsCastMethodName, " :: ", hsPtrClassName, " this => this -> ", hsTypeName]
   when doDecls $ do
     addImports $ mconcat [hsImport1 "Prelude" "(.)", hsImportForForeign, hsImportForSupport]
     saysLn [hsCastMethodName, " = ", hsTypeName, " . CppopF.castPtr . CppopFCRS.toPtr"]
@@ -517,12 +583,9 @@ sayExportClassHsClass doDecls cls cst = do
     let methods = filter ((cst ==) . methodConst) $ classMethods cls
     forM_ methods $ \method ->
       when (methodStatic method == Nonstatic) $
-      (sayExportFn SayExportDecls <$> methodExtName <*>
-       pure (case methodApplicability method of
-                MNormal -> Just (Nonconst, cls)
-                MStatic -> error "sayExportClassHsClass: MStatic after Nonstatic, impossible case."
-                MConst -> Just (Const, cls)) <*>
-       methodPurity <*> methodParams <*> methodReturn) method
+      (sayExportFn SayExportDecls <$> methodExtName <*> pure Nothing <*>
+       methodPurity <*> pure (getMethodEffectiveParams cls method) <*>
+       methodReturn) method
 
 sayExportClassHsStaticMethods :: Class -> Generator ()
 sayExportClassHsStaticMethods cls =
@@ -551,18 +614,17 @@ sayExportClassHsType doDecls cls cst = do
   let neededInstances = flatten $ unfoldTree (id &&& classSuperclasses) cls
   forM_ neededInstances $ \cls' -> do
     addImportForClass cls'
-    saysLn ["instance ", toHsClassName Const cls', " ", hsTypeName]
+    saysLn ["instance ", toHsPtrClassName Const cls', " ", hsTypeName]
     when (cst == Nonconst) $
-      saysLn ["instance ", toHsClassName Nonconst cls', " ", hsTypeName]
+      saysLn ["instance ", toHsPtrClassName Nonconst cls', " ", hsTypeName]
 
 sayExportClassHsNull :: Class -> Generator ()
 sayExportClassHsNull cls = do
-  let clsExtName = classExtName cls
-      clsHsNullName = toHsClassNullName cls
+  let clsHsNullName = toHsClassNullName cls
   addImports hsImportForForeign
   ln
-  saysLn [clsHsNullName, " :: ", toHsTypeName Nonconst clsExtName]
-  saysLn [clsHsNullName, " = ", toHsTypeName Nonconst clsExtName, " CppopF.nullPtr"]
+  saysLn [clsHsNullName, " :: ", toHsDataTypeName Nonconst cls]
+  saysLn [clsHsNullName, " = ", toHsDataTypeName Nonconst cls, " CppopF.nullPtr"]
 
 sayExportClassHsCtors :: SayExportMode -> Class -> Generator ()
 sayExportClassHsCtors mode cls =
@@ -665,19 +727,44 @@ fnToHsTypeAndUse side methodInfo purity paramTypes returnType = do
 
   where contextForParam :: (String, Type) -> Generator (Maybe HsAsst, Either String HsType)
         contextForParam (s, t) = case t of
-          TPtr (TObj cls) -> do
-            addImportForClass cls
-            return $ case side of
-              HsHsSide -> let t' = HsTyVar $ HsIdent s
-                          in (Just (UnQual $ HsIdent $ toHsClassName Nonconst cls, [t']),
-                              Right t')
-              HsCSide -> (Nothing, Right $ HsTyVar $ HsIdent $ toHsDataTypeName Nonconst cls)
-          TPtr (TConst (TObj cls)) -> do
-            addImportForClass cls
-            return $ case side of
-              HsHsSide -> let t' = HsTyVar $ HsIdent s
-                          in (Just (UnQual $ HsIdent $ toHsClassName Const cls, [t']),
-                              Right t')
-              HsCSide -> (Nothing, Right $ HsTyVar $ HsIdent $ toHsDataTypeName Const cls)
+          TPtr (TObj cls) -> receivePtr s cls Nonconst
+          TPtr (TConst (TObj cls)) -> receiveValue s t cls
+          TRef (TObj cls) -> receivePtr s cls Nonconst
+          TRef (TConst (TObj cls)) -> receiveValue s t cls
+          TObj cls -> receiveValue s t cls
           TConst t' -> contextForParam (s, t')
-          _ -> (,) Nothing <$> cppTypeToHsTypeAndUse side t
+          _ -> handoff side t
+
+        -- Use whatever type 'cppTypeToHsTypeAndUse' suggests, with no typeclass
+        -- constraints.
+        handoff :: HsTypeSide -> Type -> Generator (Maybe HsAsst, Either String HsType)
+        handoff side t = (,) Nothing <$> cppTypeToHsTypeAndUse side t
+
+        -- Receive a @FooPtr this => this@.
+        receivePtr :: String -> Class -> Constness -> Generator (Maybe HsAsst, Either String HsType)
+        receivePtr s cls cst = do
+          addImportForClass cls
+          return $ case side of
+            HsHsSide -> let t' = HsTyVar $ HsIdent s
+                        in (Just (UnQual $ HsIdent $ toHsPtrClassName cst cls, [t']),
+                            Right t')
+            HsCSide -> (Nothing, Right $ HsTyVar $ HsIdent $ toHsDataTypeName cst cls)
+
+        -- Receive a @FooValue a => a@.
+        receiveValue :: String -> Type -> Class -> Generator (Maybe HsAsst, Either String HsType)
+        receiveValue s t cls = case side of
+          HsCSide -> handoff side t
+          HsHsSide -> do
+            addImports hsImportForSupport
+            addImportForClass cls
+            let t' = HsTyVar $ HsIdent s
+            return (Just (UnQual $ HsIdent $ toHsValueClassName cls, [t']),
+                    Right t')
+
+getMethodEffectiveParams :: Class -> Method -> [Type]
+getMethodEffectiveParams cls method =
+ (case methodApplicability method of
+    MNormal -> (TPtr (TObj cls):)
+    MConst -> (TPtr (TConst $ TObj cls):)
+    MStatic -> id) $
+ methodParams method

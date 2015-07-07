@@ -7,6 +7,32 @@ module Foreign.Cppop.Generator.Language.Cpp (
   classDeleteFnCppName,
   ) where
 
+-- How object passing works:
+--
+-- data Type = ... | TPtr Type | TRef Type | TObj Class | TConst
+--
+-- We consider all of the following cases as passing an object, both into and
+-- out of C++, and independently, as an argument and as a return value:
+--
+-- (1) TObj _                  (equivalent to TConst (TObj _))
+-- (2) TRef (TConst (TObj _))
+-- (3) TRef (TObj _)
+-- (4) TPtr (TConst (TObj _))
+-- (5) TPtr (TObj _)
+--
+-- When passing an object as an argument, it is passed between C++ and a foreign
+-- language via a pointer.  Cases 1, 2, and 4 are passed as const pointers.  For
+-- a foreign language passing a (TObj _) to C++, this means converting a foreign
+-- value to a temporary C++ object.  Passing a (TObj _) argument into or out of
+-- C++, the caller always owns the object.
+--
+-- When returning an object, again, pointers are always what is passed across
+-- the language boundary.  Returning a (TObj _) transfers ownership: a C++
+-- function returning a (TObj _) will copy the object to the heap, and return a
+-- pointer to the object which the caller owns; a callback returning a (TObj _)
+-- will internally create a C++ object from a foreign value, and hand that
+-- object off to the C++ side (which will return it and free the temporary).
+
 -- How callbacks work:
 --
 -- data Type = ... | TCallback Callback
@@ -174,7 +200,9 @@ sayExport sayBody export = case export of
     when sayBody $ do
       addReqs $ fnUseReqs fn
       sayExportFn (fnExtName fn)
-                  (sayIdentifier $ fnIdentifier fn)
+                  (case fnCName fn of
+                     FnName identifier -> Right $ sayIdentifier identifier
+                     FnOp op -> Left op)
                   Nothing
                   (fnParams fn)
                   (fnReturn fn)
@@ -187,7 +215,7 @@ sayExport sayBody export = case export of
     -- Export each of the class's constructors.
     forM_ (classCtors cls) $ \ctor ->
       sayExportFn (ctorExtName ctor)
-                  (say "new" >> sayIdentifier (classIdentifier cls))
+                  (Right $ say "new" >> sayIdentifier (classIdentifier cls))
                   Nothing
                   (ctorParams ctor)
                   clsPtr
@@ -201,10 +229,13 @@ sayExport sayBody export = case export of
     forM_ (classMethods cls) $ \method -> do
       let static = methodStatic method == Static
       sayExportFn (methodExtName method)
-                  (do when static $ do
-                        sayIdentifier (classIdentifier cls)
-                        say "::"
-                      say $ methodCName method)
+                  (case methodCName method of
+                     FnName cName -> Right $ do
+                       when static $ do
+                         sayIdentifier (classIdentifier cls)
+                         say "::"
+                       say cName
+                     FnOp op -> Left op)
                   (if static then Nothing else justClsPtr)
                   (methodParams method)
                   (methodReturn method)
@@ -212,8 +243,14 @@ sayExport sayBody export = case export of
 
   ExportCallback cb -> sayExportCallback sayBody cb
 
-sayExportFn :: ExtName -> Generator () -> Maybe Type -> [Type] -> Type -> Bool -> Generator ()
-sayExportFn extName sayCppName maybeThisType paramTypes retType sayBody = do
+sayExportFn :: ExtName
+            -> Either Operator (Generator ())
+            -> Maybe Type
+            -> [Type]
+            -> Type
+            -> Bool
+            -> Generator ()
+sayExportFn extName opOrCppName maybeThisType paramTypes retType sayBody = do
   let paramCount = length paramTypes
   paramCTypeMaybes <- mapM typeToCType paramTypes
   let paramCTypes = zipWith fromMaybe paramTypes paramCTypeMaybes
@@ -234,17 +271,40 @@ sayExportFn extName sayCppName maybeThisType paramTypes retType sayBody = do
     else Just $ do
       -- Convert arguments that aren't passed in directly.
       mapM_ (sayArgRead DoDecode) $ zip3 [1..] paramTypes paramCTypeMaybes
-      -- Call the exported function or method.
-      let sayCall = do when (isJust maybeThisType) $ say "self->"
-                       sayCppName
-                       say "("
-                       sayArgNames paramCount
-                       say ")"
+
+      -- Determine how to call the exported function or method.
+      let sayCall = case opOrCppName of
+            Left op -> do
+              say "("
+              let effectiveParamCount = paramCount + if isJust maybeThisType then 1 else 0
+                  paramNames@(p1:p2:_) = (if isJust maybeThisType then ("(*self)":) else id) $
+                                         map toArgName [1..]
+                  assertParamCount n =
+                    when (effectiveParamCount /= n) $ abort $ concat
+                    ["sayExportFn: Operator ", show op, " for export ", show extName,
+                     " requires ", show n, " parameter(s), but has ", show effectiveParamCount,
+                     "."]
+              case operatorType op of
+                UnaryPrefixOperator symbol -> assertParamCount 1 >> says [symbol, p1]
+                UnaryPostfixOperator symbol -> assertParamCount 1 >> says [p1, symbol]
+                BinaryOperator symbol -> assertParamCount 2 >> says [p1, symbol, p2]
+                CallOperator ->
+                  says $ p1 : "(" : take (effectiveParamCount - 1) (drop 1 paramNames) ++ [")"]
+                ArrayOperator -> assertParamCount 2 >> says [p1, "[", p2, "]"]
+              say ")"
+            Right sayCppName -> do
+              when (isJust maybeThisType) $ say "self->"
+              sayCppName
+              say "("
+              sayArgNames paramCount
+              say ")"
+
+      -- Write the call, transforming the return value if necessary.
       case (retType, retCTypeMaybe) of
         (TVoid, Nothing) -> sayCall >> say ";\n"
         (_, Nothing) -> say "return " >> sayCall >> say ";\n"
-        (TRef _, Just (TPtr _)) -> say "return &(" >> sayCall >> say ");\n"
-        (TObj cls, Just (TPtr (TObj _))) ->
+        (TRef cls, Just (TPtr cls')) | cls == cls' -> say "return &(" >> sayCall >> say ");\n"
+        (TObj cls, Just (TPtr (TConst (TObj cls')))) | cls == cls' ->
           say "return new" >> sayIdentifier (classIdentifier cls) >> say "(" >>
           sayCall >> say ");\n"
         ts -> abort $ concat ["sayExportFn: Unexpected return types ", show ts,
@@ -263,9 +323,9 @@ sayArgRead dir (n, cppType, maybeCType) = case cppType of
                    show cb, "."]
     says [callbackClassName cb, " ", toArgName n, "(", toArgNameAlt n, ");\n"]
 
-  TRef (TObj _) -> convertObj
-  TRef (TConst (TObj _)) -> convertObj
-  TObj _ -> convertObj
+  TRef t@(TObj _) -> convertObj t
+  TRef t@(TConst (TObj _)) -> convertObj t
+  TObj _ -> convertObj $ TConst cppType
 
   -- Primitive types don't need to be encoded/decoded.  But if maybeCType is a
   -- Just, then we're expected to do some encoding/decoding, so something is
@@ -277,12 +337,12 @@ sayArgRead dir (n, cppType, maybeCType) = case cppType of
     ["sayArgRead: Don't know how to ", show dir, " to type ", show cType,
      " from type ", show cppType, "."]
 
-  where convertObj = case dir of
+  where convertObj cppType' = case dir of
           DoDecode -> do
-            sayVar (toArgName n) Nothing $ TRef cppType
+            sayVar (toArgName n) Nothing $ TRef cppType'
             says [" = *", toArgNameAlt n, ";\n"]
           DoEncode -> do
-            sayVar (toArgName n) Nothing $ TPtr cppType
+            sayVar (toArgName n) Nothing $ TPtr cppType'
             says [" = &", toArgNameAlt n, ";\n"]
 
 sayArgNames :: Int -> Generator ()
@@ -374,12 +434,14 @@ sayExportCallback sayBody cb = do
         case (retType, retCTypeMaybe) of
           (TVoid, Nothing) -> sayCall >> say ";\n"
           (_, Nothing) -> say "return " >> sayCall >> say ";\n"
-          (TObj _, Just retCType@(TPtr (TObj _))) -> do
+          (TObj cls1, Just retCType@(TPtr (TConst (TObj cls2)))) | cls1 == cls2 -> do
             sayVar "resultPtr" Nothing retCType >> say " = " >> sayCall >> say ";\n"
             sayVar "result" Nothing retType >> say " = *resultPtr;\n"
             say "delete resultPtr;\n"
             say "return result;\n"
-          (TRef _, Just (TPtr (TObj _))) ->
+          (TRef (TConst (TObj cls1)), Just (TPtr (TConst (TObj cls2)))) | cls1 == cls2 ->
+            say "return *(" >> sayCall >> say ");\n"
+          (TRef (TObj cls1), Just (TPtr (TObj cls2))) | cls1 == cls2 ->
             say "return *(" >> sayCall >> say ");\n"
           ts -> abort $ concat
                 ["sayExportCallback: Unexpected return types ", show ts, "."]
@@ -388,8 +450,12 @@ sayExportCallback sayBody cb = do
       -- along to the impl object.
       sayFunction (className ++ "::operator()")
                   (map toArgName [1..paramCount])
-                  fnType $ Just $
-        say "(*impl_)(" >> sayArgNames paramCount >> say ");\n"
+                  fnType $ Just $ do
+        case retType of
+          TVoid -> say "(*impl_)("
+          _ -> say "return (*impl_)("
+        sayArgNames paramCount
+        say ");\n"
 
       -- Render the function that creates a new callback object.
       let newCallbackFnType = TFn [ fnPtrCType
@@ -405,7 +471,7 @@ sayExportCallback sayBody cb = do
 typeToCType :: Type -> Generator (Maybe Type)
 typeToCType t = case t of
   TRef t' -> return $ Just $ TPtr t'
-  TObj _ -> return $ Just $ TPtr t
+  TObj _ -> return $ Just $ TPtr $ TConst t
   TConst t' -> typeToCType t'
   _ -> return Nothing
 

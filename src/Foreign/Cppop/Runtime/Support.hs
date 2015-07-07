@@ -21,7 +21,8 @@ foreign import ccall "wrapper" newFreeHaskellFunPtrFunPtr
   :: (FunPtr (IO ()) -> IO ())
   -> IO (FunPtr (FunPtr (IO ()) -> IO ()))
 
--- | An instance of this class represents a pointer to a C++ object.
+-- | An instance of this class represents a pointer to a C++ object.  All C++
+-- classes bound by Cppop have subclasses of @CppPtr@.
 class CppPtr this where
   -- | Deletes the object with the C++ @delete@ operator.
   delete :: this -> IO ()
@@ -38,6 +39,9 @@ class CppPtr this where
 -- Because the functional dependency points in the direction it does, calls of
 -- the form @'encode' value@ are ambiguously typed, so 'encodeAs' is provided to
 -- resolve the ambiguity.
+--
+-- Prefer 'withCppObj' over calling 'encode' directly, to manage the lifetime of
+-- the object.
 --
 -- See also 'Decodable'.
 class Encodable cppPtrType hsType | cppPtrType -> hsType where
