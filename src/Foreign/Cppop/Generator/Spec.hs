@@ -98,7 +98,7 @@ module Foreign.Cppop.Generator.Spec (
 import Control.Applicative ((<$>), (<*>))
 import Control.Arrow ((&&&))
 import Control.Monad (liftM2, unless)
-import Control.Monad.Except (MonadError, Except, runExcept, throwError)
+import Control.Monad.Error (MonadError, throwError)
 import Control.Monad.State (MonadState, StateT, execStateT, get, modify)
 import Data.Char (isAlpha, isAlphaNum, toUpper)
 import Data.Function (on)
@@ -226,10 +226,10 @@ makeModule name hppPath cppPath = Module
   , moduleHaskellName = Nothing
   }
 
-modifyModule :: Module -> StateT Module (Except String) () -> Either String Module
-modifyModule m action = runExcept $ execStateT action m
+modifyModule :: Module -> StateT Module (Either String) () -> Either String Module
+modifyModule = flip execStateT
 
-modifyModule' :: Module -> StateT Module (Except String) () -> Module
+modifyModule' :: Module -> StateT Module (Either String) () -> Module
 modifyModule' m action = case modifyModule m action of
   Left errorMsg ->
     error $ concat
