@@ -23,6 +23,7 @@ library
     , Foreign.Cppop.Generator.Std
     , Foreign.Cppop.Generator.Std.List
     , Foreign.Cppop.Generator.Std.String
+    , Foreign.Cppop.Generator.Std.Vector
     , Foreign.Cppop.Runtime.Support
   other-modules:
       Foreign.Cppop.Common.Consume

@@ -31,6 +31,8 @@ c_string =
   []
   [ mkCtor c_string "newFromCString" [TPtr $ TConst TChar]
   ]
-  [ mkConstMethod c_string "c_str" [] $ TPtr $ TConst TChar
+  [ mkConstMethod' c_string "at" "at" [TInt] $ TRef TChar
+  , mkConstMethod' c_string "at" "get" [TInt] TChar
+  , mkConstMethod c_string "c_str" [] $ TPtr $ TConst TChar
   , mkConstMethod c_string "size" [] TSize
   ]
