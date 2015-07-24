@@ -555,8 +555,7 @@ sayExportClassHsClass doDecls cls cst = do
 
     -- When the class has a native Haskell type, also print an instance for it.
     forM_ (classHaskellConversion $ classConversions cls) $ \conv -> do
-      let hsType = classHaskellConversionType conv
-      addImports $ classHaskellConversionTypeImports conv
+      hsType <- classHaskellConversionType conv
       ln
       saysLn ["instance ", hsValueClassName, " (", prettyPrint hsType, ")",
               if doDecls then " where" else ""]
@@ -649,26 +648,22 @@ sayExportClassHsSpecialFns mode cls = do
   -- Say Encodable and Decodable instances, if the class is encodable and
   -- decodable.
   forM_ (classHaskellConversion $ classConversions cls) $ \conv -> do
-    let hsType = classHaskellConversionType conv
-        hsTypeStr = concat ["(", prettyPrint hsType, ")"]
+    hsType <- classHaskellConversionType conv
+    let hsTypeStr = concat ["(", prettyPrint hsType, ")"]
         typeName = toHsDataTypeName Nonconst cls
         typeNameConst = toHsDataTypeName Const cls
     case mode of
       SayExportForeignImports -> return ()
 
       SayExportDecls -> do
-        addImports $ mconcat [hsImportForPrelude,
-                              hsImportForSupport,
-                              classHaskellConversionTypeImports conv,
-                              classHaskellConversionToCppImports conv,
-                              classHaskellConversionFromCppImports conv]
+        addImports $ mconcat [hsImportForPrelude, hsImportForSupport]
 
         -- Say the Encodable instances.
         ln
         saysLn ["instance CppopFCRS.Encodable ", typeName, " (", hsTypeStr, ") where"]
         indent $ do
           sayLn "encode ="
-          indent $ mapM_ sayLn $ lines $ classHaskellConversionToCppFn conv
+          indent $ classHaskellConversionToCppFn conv
         ln
         saysLn ["instance CppopFCRS.Encodable ", typeNameConst, " (", hsTypeStr, ") where"]
         indent $
@@ -684,11 +679,10 @@ sayExportClassHsSpecialFns mode cls = do
         saysLn ["instance CppopFCRS.Decodable ", typeNameConst, " (", hsTypeStr, ") where"]
         indent $ do
           sayLn "decode ="
-          indent $ mapM_ sayLn $ lines $ classHaskellConversionFromCppFn conv
+          indent $ classHaskellConversionFromCppFn conv
 
       SayExportBoot -> do
-        addImports $ mconcat [hsImportForSupport,
-                              classHaskellConversionTypeImports conv]
+        addImports hsImportForSupport
         ln
         saysLn ["instance CppopFCRS.Encodable ", typeName, " (", hsTypeStr, ")"]
         saysLn ["instance CppopFCRS.Encodable ", typeNameConst, " (", hsTypeStr, ")"]

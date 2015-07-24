@@ -1,6 +1,7 @@
 module Foreign.Cppop.Generator.Std.String (c_string) where
 
-import Data.Monoid (mappend)
+import Data.Monoid (mconcat)
+import Foreign.Cppop.Generator.Language.Haskell.General (addImports, sayLn)
 import Foreign.Cppop.Generator.Spec
 import Foreign.Cppop.Generator.Spec.ClassFeature
 import Language.Haskell.Syntax (
@@ -17,14 +18,15 @@ c_string =
   classModifyConversions
   (\c -> c { classHaskellConversion =
              Just ClassHaskellConversion
-             { classHaskellConversionType = HsTyCon $ UnQual $ HsIdent "CppopP.String"
-             , classHaskellConversionTypeImports = hsImportForPrelude
-             , classHaskellConversionToCppFn =
-               "CppopP.flip CppopFC.withCString stdString_newFromCString"
-             , classHaskellConversionToCppImports = hsImportForPrelude `mappend` hsImportForForeignC
-             , classHaskellConversionFromCppFn = "CppopFC.peekCString <=< stdString_c_str"
-             , classHaskellConversionFromCppImports =
-               hsImport1 "Control.Monad" "(<=<)" `mappend` hsImportForForeignC
+             { classHaskellConversionType = do
+               addImports hsImportForPrelude
+               return $ HsTyCon $ UnQual $ HsIdent "CppopP.String"
+             , classHaskellConversionToCppFn = do
+               addImports $ mconcat [hsImportForPrelude, hsImportForForeignC]
+               sayLn "CppopP.flip CppopFC.withCString stdString_newFromCString"
+             , classHaskellConversionFromCppFn = do
+               addImports $ mconcat [hsImport1 "Control.Monad" "(<=<)", hsImportForForeignC]
+               sayLn "CppopFC.peekCString <=< stdString_c_str"
              }
            }) $
   makeClass (ident1 "std" "string") (Just $ toExtName "StdString")

@@ -5,9 +5,16 @@ module Foreign.Cppop.Generator.Std.Vector (
   ) where
 
 import Data.Monoid (mconcat, mempty)
+import Foreign.Cppop.Common (fromEitherM)
 import Foreign.Cppop.Generator.Language.Haskell.General (
-  HsTypeSide (HsHsSide),
-  cppTypeToHsType,
+  HsTypeSide (HsCSide, HsHsSide),
+  abort,
+  addImports,
+  cppTypeToHsTypeAndUse,
+  indent,
+  prettyPrint,
+  sayLn,
+  saysLn,
   )
 import Foreign.Cppop.Generator.Spec
 import Foreign.Cppop.Generator.Std.String (c_string)
@@ -25,33 +32,39 @@ tc_vector =
   (do typeArgs <- askTypeArgs
       mp <- askMethodPrefix
       let [t] = typeArgs
-          hsType =
-            either (\e -> error $ concat ["Instantiation of std::vector<", show t,
-                                          ">: Type argument is not convertable: ", e])
-                   id $
-            cppTypeToHsType HsHsSide t
       return ClassConversions
         { classHaskellConversion =
           Just $ ClassHaskellConversion
-          { classHaskellConversionType = HsTyApp (HsTyCon $ Special $ HsListCon) hsType
-          , classHaskellConversionTypeImports = mempty
-          , classHaskellConversionToCppFn =
-            unlines $ map concat
-            [ ["\\xs -> do"]
-            , ["  l <- ", mp, "new"]
-            , ["  ", mp, "reserve l (CppopFCRS.coerceIntegral (CppopP.length xs))"]
-            , ["  CppopP.mapM_ (", mp, "pushBack l <=< CppopFCRS.encode) xs"]
-            , ["  CppopP.return l"]
-            ]
-          , classHaskellConversionToCppImports =
-            mconcat [hsImport1 "Control.Monad" "(<=<)", hsImportForPrelude, hsImportForSupport]
-          , classHaskellConversionFromCppFn =
-            unlines $ map concat
-            [ ["\\l -> do"]
-            , ["  len <- ", mp, "size l"]
-            , ["  CppopP.mapM (", mp, "get l) [0..len CppopP.- 1]"]
-            ]
-          , classHaskellConversionFromCppImports = hsImportForPrelude
+          { classHaskellConversionType = do
+            hsHsType <-
+              fromEitherM
+              (\e -> error $ concat
+                     ["Instantiation of std::vector<", show t,
+                      ">: Type argument is not convertable to a Haskell Haskell-side type: ", e]) =<<
+              cppTypeToHsTypeAndUse HsHsSide t
+            return $ HsTyApp (HsTyCon $ Special $ HsListCon) hsHsType
+          , classHaskellConversionToCppFn = do
+            addImports $ mconcat [hsImport1 "Control.Monad" "(<=<)", hsImportForPrelude, hsImportForSupport]
+            hsCType <-
+              fromEitherM
+              (\e -> abort $ concat
+                     ["Instantiation of std::vector<", show t,
+                      ">: Type argument is not convertable to a Haskell C-side type: ", e]) =<<
+              cppTypeToHsTypeAndUse HsCSide t
+            sayLn "\\xs -> do"
+            indent $ do
+              saysLn ["l <- ", mp, "new"]
+              saysLn [mp, "reserve l (CppopFCRS.coerceIntegral (CppopP.length xs))"]
+              saysLn ["CppopP.mapM_ (", mp,
+                      "pushBack l <=< CppopFCRS.encodeAs (CppopP.undefined :: ",
+                      prettyPrint hsCType, ")) xs"]
+              sayLn "CppopP.return l"
+          , classHaskellConversionFromCppFn = do
+            addImports hsImportForPrelude
+            sayLn "\\l -> do"
+            indent $ do
+              saysLn ["len <- ", mp, "size l"]
+              saysLn ["CppopP.mapM (", mp, "get l) [0..len CppopP.- 1]"]
           }
         }) $
   makeClassTemplate (ident1T "std" "vector" [TVar "T"]) Nothing ["T"] []

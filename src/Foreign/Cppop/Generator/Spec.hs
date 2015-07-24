@@ -1,3 +1,5 @@
+{-# LANGUAGE CPP #-}
+
 module Foreign.Cppop.Generator.Spec (
   -- * Interfaces
   Interface,
@@ -112,7 +114,11 @@ module Foreign.Cppop.Generator.Spec (
 import Control.Applicative ((<$>), (<*>))
 import Control.Arrow ((&&&))
 import Control.Monad (forM, liftM2, unless, when)
+#if MIN_VERSION_mtl(2,2,1)
+import Control.Monad.Except (MonadError, throwError)
+#else
 import Control.Monad.Error (MonadError, throwError)
+#endif
 import Control.Monad.Reader (Reader, asks, runReader)
 import Control.Monad.State (MonadState, StateT, execStateT, get, modify)
 import Control.Monad.Trans (lift)
@@ -125,6 +131,7 @@ import Data.Monoid (Monoid, mappend, mconcat, mempty)
 import qualified Data.Set as S
 import Foreign.Cppop.Common
 import Foreign.Cppop.Common.Consume
+import {-# SOURCE #-} qualified Foreign.Cppop.Generator.Language.Haskell.General as Haskell
 import Language.Haskell.Syntax (HsType)
 
 type ErrorMsg = String
@@ -967,7 +974,7 @@ makeClass identifier maybeExtName supers ctors methods = Class
 -- values, via special functions generated for the class.
 data ClassConversions = ClassConversions
   { classHaskellConversion :: Maybe ClassHaskellConversion
-  } deriving (Show)
+  }
 
 -- | Encoding parameters for a class that is not encodable or decodable.
 classConversionsNone :: ClassConversions
@@ -980,24 +987,21 @@ classModifyConversions f cls = cls { classConversions = f $ classConversions cls
 -- | Controls how conversions between C++ objects and Haskell values happen in
 -- Haskell bindings.
 data ClassHaskellConversion = ClassHaskellConversion
-  { classHaskellConversionType :: HsType
-    -- ^ The Haskell type to use to represent a value of the corresponding C++
-    -- class.
-  , classHaskellConversionTypeImports :: HsImportSet
-    -- ^ Imports required to reference 'classHaskellConversionType'.
-  , classHaskellConversionToCppFn :: String
-    -- ^ A Haskell expression that evaluates to a function that takes an object
-    -- of type 'classHaskellConversionType', and returns a pointer to a new
-    -- non-const C++ class object in IO.
-  , classHaskellConversionToCppImports :: HsImportSet
-    -- ^ Imports required by 'classHaskellConversionToCppFn'.
-  , classHaskellConversionFromCppFn :: String
-    -- ^ A Haskell expression that evaluates to a function that takes a pointer
-    -- to a const C++ class object, and returns an object of type
-    -- 'classHaskellConversionType' in IO.
-  , classHaskellConversionFromCppImports :: HsImportSet
-    -- ^ Imports required by 'classHaskellConversionFromCppFn'.
-  } deriving (Show)
+  { classHaskellConversionType :: Haskell.Generator HsType
+    -- ^ Produces the Haskell type that represents a value of the corresponding
+    -- C++ class.  This generator may add imports, but must not output code or
+    -- add exports.
+  , classHaskellConversionToCppFn :: Haskell.Generator ()
+    -- ^ Produces a Haskell expression that evaluates to a function that takes
+    -- an object of the type that 'classHaskellConversionType' generates, and
+    -- returns a pointer to a new non-const C++ class object in IO.  The
+    -- generator must output code and may add imports, but must not add exports.
+  , classHaskellConversionFromCppFn :: Haskell.Generator ()
+    -- ^ Produces a Haskell expression that evaluates to a function that takes a
+    -- pointer to a const C++ class object, and returns an object of the type
+    -- that 'classHaskellConversionType' generates, in IO.  The generator must
+    -- output code and may add imports, but must not add exports.
+  }
 
 -- | A C++ class constructor declaration.
 data Ctor = Ctor
@@ -1239,7 +1243,6 @@ mkBoolHasProp this name =
      , mkMethod this setName [TBool] TVoid
      ]
 
--- TODO Support parameterized class template encoding.
 data ClassTemplate = ClassTemplate
   { classTemplateIdentifier :: Identifier
   , classTemplateExtNamePrefix :: String
