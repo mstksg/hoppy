@@ -1,5 +1,6 @@
 module Foreign.Cppop.Common (
   fromMaybeM,
+  fromEitherM,
   maybeFail,
   listSubst,
   zipWithM,
@@ -15,6 +16,10 @@ import System.IO (IOMode (ReadMode), hGetContents, withFile)
 -- | @fromMaybeM m x = maybe m return x@
 fromMaybeM :: Monad m => m a -> Maybe a -> m a
 fromMaybeM = flip maybe return
+
+-- | @fromEitherM f x = either f return x@
+fromEitherM :: Monad m => (e -> m a) -> Either e a -> m a
+fromEitherM = flip either return
 
 -- | @maybeFail s x = maybe (fail s) x@
 maybeFail :: Monad m => String -> Maybe a -> m a

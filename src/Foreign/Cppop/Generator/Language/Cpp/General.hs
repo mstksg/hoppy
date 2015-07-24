@@ -79,9 +79,7 @@ identifierChars = ['A'..'Z'] ++ ['a'..'z'] ++ ['0'..'9'] ++ "_"
 -- only requirement is that chunk boundaries are also C++ token boundaries,
 -- because the generator monad automates the process of inserting whitespace
 -- between chunk boundaries where necessary.
-data Chunk = Chunk
-  { chunkContents :: String
-  }
+newtype Chunk = Chunk { chunkContents :: String }
 
 runChunkWriter :: Writer [Chunk] a -> (a, String)
 runChunkWriter = fmap combineChunks . runWriter
@@ -127,7 +125,16 @@ says :: MonadWriter [Chunk] m => [String] -> m ()
 says = tell . map Chunk
 
 sayIdentifier :: MonadWriter [Chunk] m => Identifier -> m ()
-sayIdentifier = say . idToString
+sayIdentifier =
+  sequence_ . intersperse (say "::") . map renderPart . identifierParts
+  where renderPart part = do
+          say $ idPartBase part
+          case idPartArgs part of
+            Nothing -> return ()
+            Just args -> do
+              say "<"
+              sequence_ $ intersperse (say ", ") $ map (sayType Nothing) args
+              say ">"
 
 sayVar :: MonadWriter [Chunk] m => String -> Maybe [String] -> Type -> m ()
 sayVar name maybeParamNames t = sayType' t maybeParamNames topPrecedence $ say name
@@ -142,6 +149,9 @@ sayType' t maybeParamNames outerPrec unwrappedOuter =
               then unwrappedOuter
               else say "(" >> unwrappedOuter >> say ")"
   in case t of
+    -- TODO A TVar here should bail with freeVarErrorMsg as in other places; but
+    -- this monad doesn't have failure yet.
+    TVar v -> say v >> outer
     TVoid -> say "void" >> outer
     TBool -> say "bool" >> outer
     TChar -> say "char" >> outer

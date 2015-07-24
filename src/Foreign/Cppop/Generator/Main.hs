@@ -84,7 +84,8 @@ usage stateVar = do
     , "  --help                      Displays this menu."
     , "  --list-interfaces           Lists the interfaces compiled into this binary."
     , "  --gen-cpp <outdir>          Generate C++ bindings in a directory."
-    , "  --gen-hs <outfile>          Generate Haskell bindings."
+    , "  --gen-hs <outdir>           Generate Haskell bindings under the given"
+    , "                              top-level source directory."
     ]
 
 processArgs :: MVar AppState -> [String] -> IO [Action]

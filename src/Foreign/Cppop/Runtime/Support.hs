@@ -15,6 +15,21 @@ module Foreign.Cppop.Runtime.Support (
 import Control.Exception (bracket)
 import Data.Typeable (Typeable, typeOf)
 import Foreign (FunPtr, Ptr, freeHaskellFunPtr)
+import Foreign.C (
+  CChar,
+  CDouble,
+  CFloat,
+  CInt,
+  CLLong,
+  CLong,
+  CShort,
+  CSize,
+  CUChar,
+  CUInt,
+  CULLong,
+  CULong,
+  CUShort,
+  )
 import System.IO.Unsafe (unsafePerformIO)
 
 foreign import ccall "wrapper" newFreeHaskellFunPtrFunPtr
@@ -46,6 +61,21 @@ class CppPtr this where
 -- See also 'Decodable'.
 class Encodable cppPtrType hsType | cppPtrType -> hsType where
   encode :: hsType -> IO cppPtrType
+
+instance Encodable Bool Bool where encode = return
+instance Encodable CChar CChar where encode = return
+instance Encodable CUChar CUChar where encode = return
+instance Encodable CShort CShort where encode = return
+instance Encodable CUShort CUShort where encode = return
+instance Encodable CInt CInt where encode = return
+instance Encodable CUInt CUInt where encode = return
+instance Encodable CLong CLong where encode = return
+instance Encodable CULong CULong where encode = return
+instance Encodable CLLong CLLong where encode = return
+instance Encodable CULLong CULLong where encode = return
+instance Encodable CFloat CFloat where encode = return
+instance Encodable CDouble CDouble where encode = return
+instance Encodable CSize CSize where encode = return
 
 -- | Takes a dummy argument to help with type resolution of 'encode', a la
 -- 'asTypeOf'.  For example, for a C++ pointer type @StdString@ that gets
