@@ -638,8 +638,6 @@ ident5T a b c d e f ts =
 
 -- | Concrete C++ types.  It is possible to represent invalid C++ types with
 -- this, but that may result in undefined behaviour or invalid code generation.
---
--- TODO Support templated functions and classes.
 data Type =
   TVar String  -- ^ A type variable.  May appear within a template.
   | TVoid  -- ^ @void@

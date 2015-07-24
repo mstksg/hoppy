@@ -1,10 +1,8 @@
 module Foreign.Cppop.Generator.Std.Vector (
   tc_vector,
-  c_vector_int,
-  c_vector_string,
   ) where
 
-import Data.Monoid (mconcat, mempty)
+import Data.Monoid (mconcat)
 import Foreign.Cppop.Common (fromEitherM)
 import Foreign.Cppop.Generator.Language.Haskell.General (
   HsTypeSide (HsCSide, HsHsSide),
@@ -17,7 +15,6 @@ import Foreign.Cppop.Generator.Language.Haskell.General (
   saysLn,
   )
 import Foreign.Cppop.Generator.Spec
-import Foreign.Cppop.Generator.Std.String (c_string)
 import Language.Haskell.Syntax (
   HsQName (Special),
   HsSpecialCon (HsListCon),
@@ -77,10 +74,3 @@ tc_vector =
   , makeMethod OpArray (toExtName "at") MNormal Nonpure [TSize] $ TRef $ TVar "T"
   , makeMethod OpArray (toExtName "get") MConst Nonpure [TSize] $ TVar "T"
   ]
-
--- TODO Remove these instances, they're just for testing.
-c_vector_int :: Class
-c_vector_int = instantiateClassTemplate' tc_vector "Int" [TInt] [] mempty
-
-c_vector_string :: Class
-c_vector_string = instantiateClassTemplate' tc_vector "String" [TObj c_string] [] mempty
