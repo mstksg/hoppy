@@ -73,12 +73,13 @@ module Foreign.Cppop.Generator.Spec (
   -- ** Classes
   Class, makeClass, classIdentifier, classExtName, classSuperclasses, classCtors, classMethods,
   classConversions, classUseReqs,
+  HasClassyExtName (..),
   Ctor, makeCtor, mkCtor, ctorExtName, ctorParams,
   Method,
   MethodApplicability (..),
   Constness (..),
   Staticness (..),
-  makeMethod, makeMethod', mkMethod, mkMethod', mkConstMethod, mkConstMethod',
+  makeMethod, mkMethod, mkMethod', mkConstMethod, mkConstMethod',
   mkStaticMethod, mkStaticMethod',
   mkProps, mkProp, mkStaticProp, mkBoolIsProp, mkBoolHasProp,
   methodCName, methodExtName, methodApplicability, methodPurity, methodParams,
@@ -372,10 +373,10 @@ internalToHsFnName extName = case fromExtName extName of
 -- is absent.
 extNameOrFnIdentifier :: FnName Identifier -> Maybe ExtName -> ExtName
 extNameOrFnIdentifier name =
-  fromMaybe $ toExtName $ case name of
+  fromMaybe $ case name of
     FnName identifier -> case identifierParts identifier of
       [] -> error "extNameOrFnIdentifier: Empty idenfitier."
-      parts -> idPartBase $ last parts
+      parts -> toExtName $ idPartBase $ last parts
     FnOp op -> operatorPreferredExtName op
 
 -- | The name of a function or method.  May be either an alphanumeric string
@@ -456,12 +457,15 @@ data OperatorType =
   | ArrayOperator  -- ^ @x[y]@, a binary operator with non-infix syntax.
 
 data OperatorInfo = OperatorInfo
-  { operatorPreferredExtName' :: String
+  { operatorPreferredExtName' :: ExtName
   , operatorType' :: OperatorType
   }
 
+makeOperatorInfo :: String -> OperatorType -> OperatorInfo
+makeOperatorInfo = OperatorInfo . toExtName
+
 -- | Returns a conventional string to use for the 'ExtName' of an operator.
-operatorPreferredExtName :: Operator -> String
+operatorPreferredExtName :: Operator -> ExtName
 operatorPreferredExtName op = case M.lookup op operatorInfo of
   Just info -> operatorPreferredExtName' info
   Nothing ->
@@ -482,48 +486,48 @@ operatorType op = case M.lookup op operatorInfo of
 operatorInfo :: M.Map Operator OperatorInfo
 operatorInfo =
   let input =
-        [ (OpCall, OperatorInfo "CALL" CallOperator)
-        , (OpComma, OperatorInfo "COMMA" $ BinaryOperator ",")
-        , (OpAssign, OperatorInfo "ASSIGN" $ BinaryOperator "=")
-        , (OpArray, OperatorInfo "ARRAY" ArrayOperator)
-        , (OpDeref, OperatorInfo "DEREF" $ UnaryPrefixOperator "*")
-        , (OpAddress, OperatorInfo "ADDRESS" $ UnaryPrefixOperator "&")
-        , (OpAdd, OperatorInfo "ADD" $ BinaryOperator "+")
-        , (OpAddAssign, OperatorInfo "ADDA" $ BinaryOperator "+=")
-        , (OpSubtract, OperatorInfo "SUB" $ BinaryOperator "-")
-        , (OpSubtractAssign, OperatorInfo "SUBA" $ BinaryOperator "-=")
-        , (OpMultiply, OperatorInfo "MUL" $ BinaryOperator "*")
-        , (OpMultiplyAssign, OperatorInfo "MULA" $ BinaryOperator "*=")
-        , (OpDivide, OperatorInfo "DIV" $ BinaryOperator "/")
-        , (OpDivideAssign, OperatorInfo "DIVA" $ BinaryOperator "/=")
-        , (OpModulo, OperatorInfo "MOD" $ BinaryOperator "%")
-        , (OpModuloAssign, OperatorInfo "MODA" $ BinaryOperator "%=")
-        , (OpPlus, OperatorInfo "PLUS" $ UnaryPrefixOperator "+")
-        , (OpMinus, OperatorInfo "NEG" $ UnaryPrefixOperator "-")
-        , (OpIncPre, OperatorInfo "INC" $ UnaryPrefixOperator "++")
-        , (OpIncPost, OperatorInfo "INCPOST" $ UnaryPostfixOperator "++")
-        , (OpDecPre, OperatorInfo "DEC" $ UnaryPrefixOperator "--")
-        , (OpDecPost, OperatorInfo "DECPOST" $ UnaryPostfixOperator "--")
-        , (OpEq, OperatorInfo "EQ" $ BinaryOperator "==")
-        , (OpNe, OperatorInfo "NE" $ BinaryOperator "!=")
-        , (OpLt, OperatorInfo "LT" $ BinaryOperator "<")
-        , (OpLe, OperatorInfo "LE" $ BinaryOperator "<=")
-        , (OpGt, OperatorInfo "GT" $ BinaryOperator ">")
-        , (OpGe, OperatorInfo "GE" $ BinaryOperator ">=")
-        , (OpNot, OperatorInfo "NOT" $ UnaryPrefixOperator "!")
-        , (OpAnd, OperatorInfo "AND" $ BinaryOperator "&&")
-        , (OpOr, OperatorInfo "OR" $ BinaryOperator "||")
-        , (OpBitNot, OperatorInfo "BNOT" $ UnaryPrefixOperator "~")
-        , (OpBitAnd, OperatorInfo "BAND" $ BinaryOperator "&")
-        , (OpBitAndAssign, OperatorInfo "BANDA" $ BinaryOperator "&=")
-        , (OpBitOr, OperatorInfo "BOR" $ BinaryOperator "|")
-        , (OpBitOrAssign, OperatorInfo "BORA" $ BinaryOperator "|=")
-        , (OpBitXor, OperatorInfo "BXOR" $ BinaryOperator "^")
-        , (OpBitXorAssign, OperatorInfo "BXORA" $ BinaryOperator "^=")
-        , (OpShl, OperatorInfo "SHL" $ BinaryOperator "<<")
-        , (OpShlAssign, OperatorInfo "SHLA" $ BinaryOperator "<<=")
-        , (OpShr, OperatorInfo "SHR" $ BinaryOperator ">>")
-        , (OpShrAssign, OperatorInfo "SHR" $ BinaryOperator ">>=")
+        [ (OpCall, makeOperatorInfo "CALL" CallOperator)
+        , (OpComma, makeOperatorInfo "COMMA" $ BinaryOperator ",")
+        , (OpAssign, makeOperatorInfo "ASSIGN" $ BinaryOperator "=")
+        , (OpArray, makeOperatorInfo "ARRAY" ArrayOperator)
+        , (OpDeref, makeOperatorInfo "DEREF" $ UnaryPrefixOperator "*")
+        , (OpAddress, makeOperatorInfo "ADDRESS" $ UnaryPrefixOperator "&")
+        , (OpAdd, makeOperatorInfo "ADD" $ BinaryOperator "+")
+        , (OpAddAssign, makeOperatorInfo "ADDA" $ BinaryOperator "+=")
+        , (OpSubtract, makeOperatorInfo "SUB" $ BinaryOperator "-")
+        , (OpSubtractAssign, makeOperatorInfo "SUBA" $ BinaryOperator "-=")
+        , (OpMultiply, makeOperatorInfo "MUL" $ BinaryOperator "*")
+        , (OpMultiplyAssign, makeOperatorInfo "MULA" $ BinaryOperator "*=")
+        , (OpDivide, makeOperatorInfo "DIV" $ BinaryOperator "/")
+        , (OpDivideAssign, makeOperatorInfo "DIVA" $ BinaryOperator "/=")
+        , (OpModulo, makeOperatorInfo "MOD" $ BinaryOperator "%")
+        , (OpModuloAssign, makeOperatorInfo "MODA" $ BinaryOperator "%=")
+        , (OpPlus, makeOperatorInfo "PLUS" $ UnaryPrefixOperator "+")
+        , (OpMinus, makeOperatorInfo "NEG" $ UnaryPrefixOperator "-")
+        , (OpIncPre, makeOperatorInfo "INC" $ UnaryPrefixOperator "++")
+        , (OpIncPost, makeOperatorInfo "INCPOST" $ UnaryPostfixOperator "++")
+        , (OpDecPre, makeOperatorInfo "DEC" $ UnaryPrefixOperator "--")
+        , (OpDecPost, makeOperatorInfo "DECPOST" $ UnaryPostfixOperator "--")
+        , (OpEq, makeOperatorInfo "EQ" $ BinaryOperator "==")
+        , (OpNe, makeOperatorInfo "NE" $ BinaryOperator "!=")
+        , (OpLt, makeOperatorInfo "LT" $ BinaryOperator "<")
+        , (OpLe, makeOperatorInfo "LE" $ BinaryOperator "<=")
+        , (OpGt, makeOperatorInfo "GT" $ BinaryOperator ">")
+        , (OpGe, makeOperatorInfo "GE" $ BinaryOperator ">=")
+        , (OpNot, makeOperatorInfo "NOT" $ UnaryPrefixOperator "!")
+        , (OpAnd, makeOperatorInfo "AND" $ BinaryOperator "&&")
+        , (OpOr, makeOperatorInfo "OR" $ BinaryOperator "||")
+        , (OpBitNot, makeOperatorInfo "BNOT" $ UnaryPrefixOperator "~")
+        , (OpBitAnd, makeOperatorInfo "BAND" $ BinaryOperator "&")
+        , (OpBitAndAssign, makeOperatorInfo "BANDA" $ BinaryOperator "&=")
+        , (OpBitOr, makeOperatorInfo "BOR" $ BinaryOperator "|")
+        , (OpBitOrAssign, makeOperatorInfo "BORA" $ BinaryOperator "|=")
+        , (OpBitXor, makeOperatorInfo "BXOR" $ BinaryOperator "^")
+        , (OpBitXorAssign, makeOperatorInfo "BXORA" $ BinaryOperator "^=")
+        , (OpShl, makeOperatorInfo "SHL" $ BinaryOperator "<<")
+        , (OpShlAssign, makeOperatorInfo "SHLA" $ BinaryOperator "<<=")
+        , (OpShr, makeOperatorInfo "SHR" $ BinaryOperator ">>")
+        , (OpShrAssign, makeOperatorInfo "SHR" $ BinaryOperator ">>=")
         ]
   in if map fst input == [minBound..]
      then M.fromList input
@@ -892,7 +896,9 @@ instantiateFnTemplate' tmpl extNameSuffix typeArgs typeArgUseReqs =
   either error id $
   instantiateFnTemplate tmpl extNameSuffix typeArgs typeArgUseReqs
 
--- | A C++ class declaration.
+-- | A C++ class declaration.  A class's external name is automatically combined
+-- with the external names of things inside the class, by way of
+-- 'HasClassyExtName'.
 data Class = Class
   { classIdentifier :: Identifier
   , classExtName :: ExtName
@@ -1001,6 +1007,20 @@ data ClassHaskellConversion = ClassHaskellConversion
     -- output code and may add imports, but must not add exports.
   }
 
+-- | Things that live inside of a class, and have the class's external name
+-- prepended to their own in generated code.  With an external name of @\"bar\"@
+-- and a class with external name @\"foo\"@, the resulting name will be
+-- @\"foo_bar\"@.
+class HasClassyExtName a where
+  -- | Extracts the external name of the object, without the class name added.
+  getClassyExtNameSuffix :: a -> ExtName
+
+  -- | Computes the external name to use in generated code, containing both the
+  -- class's and object's external names.
+  getClassyExtName :: Class -> a -> ExtName
+  getClassyExtName cls x =
+    toExtName $ concat [fromExtName $ classExtName cls, "_", fromExtName $ getClassyExtNameSuffix x]
+
 -- | A C++ class constructor declaration.
 data Ctor = Ctor
   { ctorExtName :: ExtName
@@ -1010,19 +1030,20 @@ data Ctor = Ctor
 instance Show Ctor where
   show ctor = concat ["<Ctor ", show (ctorExtName ctor), " ", show (ctorParams ctor), ">"]
 
+instance HasClassyExtName Ctor where
+  getClassyExtNameSuffix = ctorExtName
+
 -- | Creates a 'Ctor' with full generality.
 makeCtor :: ExtName
          -> [Type]  -- ^ Parameter types.
          -> Ctor
 makeCtor = Ctor
 
--- | @mkCtor cls name@ creates a 'Ctor' whose external name is @className_name@.
-mkCtor :: Class
-       -> String
+-- | @mkCtor name@ creates a 'Ctor' whose external name is @className_name@.
+mkCtor :: String
        -> [Type]  -- ^ Parameter types.
        -> Ctor
-mkCtor this name =
-  makeCtor (toExtName $ fromExtName (classExtName this) ++ "_" ++ name)
+mkCtor = makeCtor . toExtName
 
 -- | A C++ class method declaration.
 --
@@ -1043,6 +1064,9 @@ instance Show Method where
     concat ["<Method ", show (methodExtName method), " ", show (methodCName method), " ",
             show (methodApplicability method), " ", show (methodPurity method), " ",
             show (methodParams method), " ", show (methodReturn method), ">"]
+
+instance HasClassyExtName Method where
+  getClassyExtNameSuffix = methodExtName
 
 data MethodApplicability = MNormal | MStatic | MConst
                          deriving (Eq, Show)
@@ -1083,14 +1107,13 @@ makeMethod = Method . toFnName
 --
 -- For creating multiple bindings to a method, see 'makeMethod''.
 makeMethod' :: IsFnName String name
-            => Class  -- ^ The class to which the method belongs.
-            -> name  -- ^ The C++ name of the method.
+            => name  -- ^ The C++ name of the method.
             -> MethodApplicability
             -> Purity
             -> [Type]  -- ^ Parameter types.
             -> Type  -- ^ Return type.
             -> Method
-makeMethod' this name = makeMethod''' this (toFnName name) Nothing
+makeMethod' name = makeMethod''' (toFnName name) Nothing
 
 -- | This function is internal.
 --
@@ -1099,36 +1122,36 @@ makeMethod' this name = makeMethod''' this (toFnName name) Nothing
 -- is useful for making multiple bindings to a method, e.g. for overloading and
 -- optional arguments.
 makeMethod'' :: IsFnName String name
-             => Class  -- ^ The class to which the method belongs.
-             -> name  -- ^ The C++ name of the method.
+             => name  -- ^ The C++ name of the method.
              -> String  -- ^ A foreign name for the method.
              -> MethodApplicability
              -> Purity
              -> [Type]  -- ^ Parameter types.
              -> Type  -- ^ Return type.
              -> Method
-makeMethod'' this name foreignName = makeMethod''' this (toFnName name) $ Just foreignName
+makeMethod'' name foreignName = makeMethod''' (toFnName name) $ Just foreignName
 
 -- | The implementation of 'makeMethod'' and 'makeMethod'''.
-makeMethod''' :: Class  -- ^ The class to which the method belongs.
-              -> FnName String  -- ^ The C++ name of the method.
+makeMethod''' :: FnName String  -- ^ The C++ name of the method.
               -> Maybe String  -- ^ A foreign name for the method.
               -> MethodApplicability
               -> Purity
               -> [Type]  -- ^ Parameter types.
               -> Type  -- ^ Return type.
               -> Method
-makeMethod''' this (FnName "") _ =
-  error $ concat ["makeMethod: Given an empty method name in ", show this, "."]
-makeMethod''' this _ (Just "") =
-  error $ concat ["makeMethod: Given an empty method foreign name in ", show this, "."]
-makeMethod''' this name maybeForeignName =
-  makeMethod name $ makeClassyExtName this $ flip fromMaybe maybeForeignName $ case name of
-    FnName s -> s
-    FnOp op -> operatorPreferredExtName op
-
-makeClassyExtName :: Class -> String -> ExtName
-makeClassyExtName this suffix = toExtName $ concat [fromExtName $ classExtName this, "_", suffix]
+makeMethod''' (FnName "") maybeForeignName _ _ paramTypes retType =
+  error $ concat ["makeMethod''': Given an empty method name with foreign name ",
+                  show maybeForeignName, ", parameter types ", show paramTypes,
+                  ", and return type ", show retType, "."]
+makeMethod''' name (Just "") _ _ paramTypes retType =
+  error $ concat ["makeMethod''': Given an empty foreign name with method ",
+                  show name, ", parameter types ", show paramTypes, ", and return type ",
+                  show retType, "."]
+makeMethod''' name maybeForeignName appl purity paramTypes retType =
+  let extName = flip fromMaybe (toExtName <$> maybeForeignName) $ case name of
+        FnName s -> toExtName s
+        FnOp op -> operatorPreferredExtName op
+  in makeMethod name extName appl purity paramTypes retType
 
 -- | Creates a nonconst, nonstatic 'Method' for @class::methodName@ and whose
 -- external name is @class_methodName@.  If the name is an operator, then the
@@ -1136,12 +1159,11 @@ makeClassyExtName this suffix = toExtName $ concat [fromExtName $ classExtName t
 --
 -- For creating multiple bindings to a method, see 'mkMethod''.
 mkMethod :: IsFnName String name
-         => Class  -- ^ The class to which the method belongs.
-         -> name  -- ^ The C++ name of the method.
+         => name  -- ^ The C++ name of the method.
          -> [Type]  -- ^ Parameter types.
          -> Type  -- ^ Return type.
          -> Method
-mkMethod this name = makeMethod' this name MNormal Nonpure
+mkMethod name = makeMethod' name MNormal Nonpure
 
 -- | Creates a nonconst, nonstatic 'Method' for method @class::methodName@ and
 -- whose external name is @class_methodName@.  This enables multiple 'Method's
@@ -1149,29 +1171,28 @@ mkMethod this name = makeMethod' this name MNormal Nonpure
 -- the same method, e.g. to make use of optional arguments or overloading.  See
 -- 'mkMethod' for a simpler form.
 mkMethod' :: IsFnName String name
-          => Class  -- ^ The class to which the method belongs.
-          -> name  -- ^ The C++ name of the method.
+          => name  -- ^ The C++ name of the method.
           -> String  -- ^ A foreign name for the method.
           -> [Type]  -- ^ Parameter types.
           -> Type  -- ^ Return type.
           -> Method
-mkMethod' this cName foreignName = makeMethod'' this cName foreignName MNormal Nonpure
+mkMethod' cName foreignName = makeMethod'' cName foreignName MNormal Nonpure
 
 -- | Same as 'mkMethod', but returns an 'MConst' method.
-mkConstMethod :: IsFnName String name => Class -> name -> [Type] -> Type -> Method
-mkConstMethod this name = makeMethod' this name MConst Nonpure
+mkConstMethod :: IsFnName String name => name -> [Type] -> Type -> Method
+mkConstMethod name = makeMethod' name MConst Nonpure
 
 -- | Same as 'mkMethod'', but returns an 'MConst' method.
-mkConstMethod' :: IsFnName String name => Class -> name -> String -> [Type] -> Type -> Method
-mkConstMethod' this cName foreignName = makeMethod'' this cName foreignName MConst Nonpure
+mkConstMethod' :: IsFnName String name => name -> String -> [Type] -> Type -> Method
+mkConstMethod' cName foreignName = makeMethod'' cName foreignName MConst Nonpure
 
 -- | Same as 'mkMethod', but returns an 'MStatic' method.
-mkStaticMethod :: IsFnName String name => Class -> name -> [Type] -> Type -> Method
-mkStaticMethod this name = makeMethod' this name MStatic Nonpure
+mkStaticMethod :: IsFnName String name => name -> [Type] -> Type -> Method
+mkStaticMethod name = makeMethod' name MStatic Nonpure
 
 -- | Same as 'mkMethod'', but returns an 'MStatic' method.
-mkStaticMethod' :: IsFnName String name => Class -> name -> String -> [Type] -> Type -> Method
-mkStaticMethod' this cName foreignName = makeMethod'' this cName foreignName MStatic Nonpure
+mkStaticMethod' :: IsFnName String name => name -> String -> [Type] -> Type -> Method
+mkStaticMethod' cName foreignName = makeMethod'' cName foreignName MStatic Nonpure
 
 -- | Used in conjunction with 'mkProp' and friends, this creates a list of
 -- 'Method's for binding to getter/setter method pairs.  This can be used as
@@ -1191,24 +1212,24 @@ mkProps = concat
 --
 -- > T getFoo() const
 -- > void setFoo(T)
-mkProp :: Class -> String -> Type -> [Method]
-mkProp this name t =
+mkProp :: String -> Type -> [Method]
+mkProp name t =
   let c:cs = name
       setName = 's' : 'e' : 't' : toUpper c : cs
-  in [ mkConstMethod this name [] t
-     , mkMethod this setName [t] TVoid
+  in [ mkConstMethod name [] t
+     , mkMethod setName [t] TVoid
      ]
 
 -- | Creates a getter/setter binding pair for static methods:
 --
 -- > static T getFoo() const
 -- > static void setFoo(T)
-mkStaticProp :: Class -> String -> Type -> [Method]
-mkStaticProp this name t =
+mkStaticProp :: String -> Type -> [Method]
+mkStaticProp name t =
   let c:cs = name
       setName = 's' : 'e' : 't' : toUpper c : cs
-  in [ mkStaticMethod this name [] t
-     , mkStaticMethod this setName [t] TVoid
+  in [ mkStaticMethod name [] t
+     , mkStaticMethod setName [t] TVoid
      ]
 
 -- | Creates a getter/setter binding pair for boolean methods, where the getter
@@ -1216,14 +1237,14 @@ mkStaticProp this name t =
 --
 -- > bool isFoo() const
 -- > void setFoo(bool)
-mkBoolIsProp :: Class -> String -> [Method]
-mkBoolIsProp this name =
+mkBoolIsProp :: String -> [Method]
+mkBoolIsProp name =
   let c:cs = name
       name' = toUpper c : cs
       isName = 'i':'s':name'
       setName = 's':'e':'t':name'
-  in [ mkConstMethod this isName [] TBool
-     , mkMethod this setName [TBool] TVoid
+  in [ mkConstMethod isName [] TBool
+     , mkMethod setName [TBool] TVoid
      ]
 
 -- | Creates a getter/setter binding pair for boolean methods, where the getter
@@ -1231,14 +1252,14 @@ mkBoolIsProp this name =
 --
 -- > bool hasFoo() const
 -- > void setFoo(bool)
-mkBoolHasProp :: Class -> String -> [Method]
-mkBoolHasProp this name =
+mkBoolHasProp :: String -> [Method]
+mkBoolHasProp name =
   let c:cs = name
       name' = toUpper c : cs
       hasName = 'h':'a':'s':name'
       setName = 's':'e':'t':name'
-  in [ mkConstMethod this hasName [] TBool
-     , mkMethod this setName [TBool] TVoid
+  in [ mkConstMethod hasName [] TBool
+     , mkMethod setName [TBool] TVoid
      ]
 
 data ClassTemplate = ClassTemplate
@@ -1388,16 +1409,8 @@ instantiateClassTemplate tmpl extNameSuffix typeArgs instantiatedSupers typeArgU
     ["instantiateClassTemplate: Internal error, unused instantiated superclasses with template ",
      show ident, "."]
 
-  -- Prefix "${classExtName}_" into method and ctor external names.
   let clsExtName = classTemplateExtNamePrefix tmpl ++ extNameSuffix :: String
-      ctors = flip map (classTemplateCtors tmpl) $ \ctor ->
-        ctor { ctorExtName =
-                  toExtName $ concat [clsExtName, "_", fromExtName $ ctorExtName ctor] }
-      methods = flip map (classTemplateMethods tmpl) $ \method ->
-        method { methodExtName =
-                    toExtName $ concat [clsExtName, "_", fromExtName $ methodExtName method] }
-
-  let result =
+      result =
         (case classTemplateConversions tmpl of
             Nothing -> id
             Just convs -> classModifyConversions $ const $
@@ -1408,8 +1421,8 @@ instantiateClassTemplate tmpl extNameSuffix typeArgs instantiatedSupers typeArgU
         makeClass ident
                   (Just $ toExtName clsExtName)
                   concreteSupers
-                  ctors
-                  methods
+                  (classTemplateCtors tmpl)
+                  (classTemplateMethods tmpl)
 
   return result
 

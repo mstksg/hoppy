@@ -31,27 +31,27 @@ featureContents feature cls = case feature of
 assignableContents :: Class -> ([Ctor], [Method])
 assignableContents cls =
   ([],
-   [ mkMethod cls OpAssign [TRef $ TConst $ TObj cls] $ TRef $ TObj cls
+   [ mkMethod OpAssign [TRef $ TConst $ TObj cls] $ TRef $ TObj cls
    ])
 
 comparableContents :: Class -> ([Ctor], [Method])
 comparableContents cls =
   ([],
-   [ mkConstMethod cls OpLt [TRef $ TConst $ TObj cls] TBool
-   , mkConstMethod cls OpLe [TRef $ TConst $ TObj cls] TBool
-   , mkConstMethod cls OpGt [TRef $ TConst $ TObj cls] TBool
-   , mkConstMethod cls OpGe [TRef $ TConst $ TObj cls] TBool
+   [ mkConstMethod OpLt [TRef $ TConst $ TObj cls] TBool
+   , mkConstMethod OpLe [TRef $ TConst $ TObj cls] TBool
+   , mkConstMethod OpGt [TRef $ TConst $ TObj cls] TBool
+   , mkConstMethod OpGe [TRef $ TConst $ TObj cls] TBool
    ])
 
 copyableContents :: Class -> ([Ctor], [Method])
 copyableContents cls =
-  ([ mkCtor cls "copy" [TRef $ TConst $ TObj cls] ], [])
+  ([ mkCtor "copy" [TRef $ TConst $ TObj cls] ], [])
 
 equatableContents :: Class -> ([Ctor], [Method])
 equatableContents cls =
   ([],
-   [ mkConstMethod cls OpEq [TRef $ TConst $ TObj cls] TBool
-   , mkConstMethod cls OpNe [TRef $ TConst $ TObj cls] TBool
+   [ mkConstMethod OpEq [TRef $ TConst $ TObj cls] TBool
+   , mkConstMethod OpNe [TRef $ TConst $ TObj cls] TBool
    ])
 
 -- | Adds the contents of a feature to a class.  Does not check for overlap with

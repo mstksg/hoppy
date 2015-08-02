@@ -155,12 +155,6 @@ sayFunction name paramNames t maybeBody = do
       body  -- TODO Indent.
       say "}\n"
 
-class HasExternalName a where
-  getExternalName :: a -> ExtName
-
-instance HasExternalName Function where
-  getExternalName = fnExtName
-
 data Generation = Generation
   { generatedFiles :: M.Map FilePath String
     -- ^ A map from paths of generated files to the contents of those files.
@@ -214,7 +208,7 @@ sayExport sayBody export = case export of
     addReqs $ classUseReqs cls  -- This is needed at least for the delete function.
     -- Export each of the class's constructors.
     forM_ (classCtors cls) $ \ctor ->
-      sayExportFn (ctorExtName ctor)
+      sayExportFn (getClassyExtName cls ctor)
                   (Right $ say "new" >> sayIdentifier (classIdentifier cls))
                   Nothing
                   (ctorParams ctor)
@@ -228,7 +222,7 @@ sayExport sayBody export = case export of
     -- Export each of the class's methods.
     forM_ (classMethods cls) $ \method -> do
       let static = methodStatic method == Static
-      sayExportFn (methodExtName method)
+      sayExportFn (getClassyExtName cls method)
                   (case methodCName method of
                      FnName cName -> Right $ do
                        when static $ do

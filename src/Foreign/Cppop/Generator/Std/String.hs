@@ -31,10 +31,10 @@ c_string =
            }) $
   makeClass (ident1 "std" "string") (Just $ toExtName "StdString")
   []
-  [ mkCtor c_string "newFromCString" [TPtr $ TConst TChar]
+  [ mkCtor "newFromCString" [TPtr $ TConst TChar]
   ]
-  [ mkConstMethod' c_string "at" "at" [TInt] $ TRef TChar
-  , mkConstMethod' c_string "at" "get" [TInt] TChar
-  , mkConstMethod c_string "c_str" [] $ TPtr $ TConst TChar
-  , mkConstMethod c_string "size" [] TSize
+  [ mkConstMethod' "at" "at" [TInt] $ TRef TChar
+  , mkConstMethod' "at" "get" [TInt] TChar
+  , mkConstMethod "c_str" [] $ TPtr $ TConst TChar
+  , mkConstMethod "size" [] TSize
   ]

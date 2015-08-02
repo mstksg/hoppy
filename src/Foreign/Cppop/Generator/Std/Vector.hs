@@ -65,12 +65,12 @@ tc_vector =
           }
         }) $
   makeClassTemplate (ident1T "std" "vector" [TVar "T"]) Nothing ["T"] []
-  [ makeCtor (toExtName "new") [] ]
-  [ makeMethod "back" (toExtName "back") MConst Nonpure [] $ TVar "T"
-  , makeMethod "capacity" (toExtName "capacity") MConst Nonpure [] TSize
-  , makeMethod "push_back" (toExtName "pushBack") MNormal Nonpure [TVar "T"] TVoid
-  , makeMethod "reserve" (toExtName "reserve") MNormal Nonpure [TSize] TVoid
-  , makeMethod "size" (toExtName "size") MConst Nonpure [] TSize
-  , makeMethod OpArray (toExtName "at") MNormal Nonpure [TSize] $ TRef $ TVar "T"
-  , makeMethod OpArray (toExtName "get") MConst Nonpure [TSize] $ TVar "T"
+  [ mkCtor "new" [] ]
+  [ mkConstMethod "back" [] $ TVar "T"
+  , mkConstMethod "capacity" [] TSize
+  , mkMethod' "push_back" "pushBack" [TVar "T"] TVoid
+  , mkMethod "reserve" [TSize] TVoid
+  , mkConstMethod "size" [] TSize
+  , mkMethod' OpArray "at" [TSize] $ TRef $ TVar "T"
+  , mkConstMethod' OpArray "get" [TSize] $ TVar "T"
   ]

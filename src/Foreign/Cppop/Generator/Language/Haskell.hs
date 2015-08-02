@@ -489,7 +489,7 @@ sayExportClass mode cls = do
       sayExportClassHsCtors mode cls
 
       forM_ (classMethods cls) $ \method -> do
-        (sayExportFn mode <$> methodExtName <*> pure Nothing <*> methodPurity <*>
+        (sayExportFn mode <$> getClassyExtName cls <*> pure Nothing <*> methodPurity <*>
          pure (getMethodEffectiveParams cls method) <*> methodReturn) method
 
     SayExportDecls -> do
@@ -582,7 +582,7 @@ sayExportClassHsClass doDecls cls cst = do
     let methods = filter ((cst ==) . methodConst) $ classMethods cls
     forM_ methods $ \method ->
       when (methodStatic method == Nonstatic) $
-      (sayExportFn SayExportDecls <$> methodExtName <*> pure Nothing <*>
+      (sayExportFn SayExportDecls <$> getClassyExtName cls <*> pure Nothing <*>
        methodPurity <*> pure (getMethodEffectiveParams cls method) <*>
        methodReturn) method
 
@@ -590,7 +590,7 @@ sayExportClassHsStaticMethods :: Class -> Generator ()
 sayExportClassHsStaticMethods cls =
   forM_ (classMethods cls) $ \method ->
     when (methodStatic method == Static) $
-    (sayExportFn SayExportDecls <$> methodExtName <*> pure Nothing <*> methodPurity <*>
+    (sayExportFn SayExportDecls <$> getClassyExtName cls <*> pure Nothing <*> methodPurity <*>
      methodParams <*> methodReturn) method
 
 sayExportClassHsType :: Bool -> Class -> Constness -> Generator ()
@@ -628,7 +628,7 @@ sayExportClassHsNull cls = do
 sayExportClassHsCtors :: SayExportMode -> Class -> Generator ()
 sayExportClassHsCtors mode cls =
   forM_ (classCtors cls) $ \ctor ->
-  (sayExportFn mode <$> ctorExtName <*> pure Nothing <*>
+  (sayExportFn mode <$> getClassyExtName cls <*> pure Nothing <*>
    pure Nonpure <*> ctorParams <*> pure (TPtr $ TObj cls)) ctor
 
 sayExportClassHsSpecialFns :: SayExportMode -> Class -> Generator ()
