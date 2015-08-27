@@ -109,6 +109,7 @@ module Foreign.Cppop.Generator.Spec (
   hsImportForForeignC,
   hsImportForPrelude,
   hsImportForSupport,
+  hsImportForSystemPosixTypes,
   hsImportForUnsafeIO,
   ) where
 
@@ -658,6 +659,7 @@ data Type =
   | TULLong  -- ^ @unsigned long long int@
   | TFloat  -- ^ @float@
   | TDouble  -- ^ @double@
+  | TPtrdiff  -- ^ @ptrdiff_t@
   | TSize  -- ^ @size_t@
   | TSSize  -- ^ @ssize_t@
   | TEnum CppEnum  -- ^ A C++ @enum@.
@@ -689,6 +691,7 @@ instance HasTVars Type where
     TULLong -> t
     TFloat -> t
     TDouble -> t
+    TPtrdiff -> t
     TSize -> t
     TSSize -> t
     TEnum _ -> t
@@ -717,6 +720,7 @@ typeIsConcrete t = case t of
   TULLong -> True
   TFloat -> True
   TDouble -> True
+  TPtrdiff -> True
   TSize -> True
   TSSize -> True
   TEnum _ -> True
@@ -1594,6 +1598,9 @@ hsImportForPrelude = hsQualifiedImport "Prelude" "CppopP"
 
 hsImportForSupport :: HsImportSet
 hsImportForSupport = hsQualifiedImport "Foreign.Cppop.Runtime.Support" "CppopFCRS"
+
+hsImportForSystemPosixTypes :: HsImportSet
+hsImportForSystemPosixTypes = hsQualifiedImport "System.Posix.Types" "CppopSPT"
 
 hsImportForUnsafeIO :: HsImportSet
 hsImportForUnsafeIO = hsQualifiedImport "System.IO.Unsafe" "CppopSIU"

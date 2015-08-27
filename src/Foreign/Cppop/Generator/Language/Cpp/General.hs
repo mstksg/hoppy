@@ -166,6 +166,7 @@ sayType' t maybeParamNames outerPrec unwrappedOuter =
     TULLong -> say "unsigned long long" >> outer
     TFloat -> say "float" >> outer
     TDouble -> say "double" >> outer
+    TPtrdiff -> say "ptrdiff_t" >> outer
     TSize -> say "size_t" >> outer
     TSSize -> say "ssize_t" >> outer
     TEnum e -> sayIdentifier (enumIdentifier e) >> outer

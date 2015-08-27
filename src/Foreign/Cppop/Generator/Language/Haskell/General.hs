@@ -395,8 +395,9 @@ cppTypeToHsTypeAndUse' side t = case t of
   TULLong -> doImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "CppopFC.CULLong")
   TFloat -> doImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "CppopFC.CFloat")
   TDouble -> doImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "CppopFC.CDouble")
+  TPtrdiff -> doImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "CppopFC.CPtrdiff")
   TSize -> doImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "CppopFC.CSize")
-  TSSize -> throwError "cppTypeToHsTypeAndUse': TSSize not implemented for Haskell."
+  TSSize -> doImports hsImportForSystemPosixTypes $> HsTyCon (UnQual $ HsIdent "CppopSPT.CSsize")
   TEnum e -> HsTyCon . UnQual . HsIdent <$> case side of
     HsCSide -> doImports hsImportForForeignC $> "CppopFC.CInt"
     HsHsSide -> doImportForExtName (enumExtName e) $> toHsEnumTypeName e

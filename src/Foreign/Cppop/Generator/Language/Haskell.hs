@@ -388,6 +388,7 @@ sayArgProcessing dir t fromVar toVar = case t of
   TULLong -> doPrimitive
   TFloat -> doPrimitive
   TDouble -> doPrimitive
+  TPtrdiff -> doPrimitive
   TSize -> doPrimitive
   TSSize -> doPrimitive
   TEnum _ -> do
@@ -451,6 +452,7 @@ sayCallAndProcessReturn dir t callWords = case t of
   TULLong -> sayCall
   TFloat -> sayCall
   TDouble -> sayCall
+  TPtrdiff -> sayCall
   TSize -> sayCall
   TSSize -> sayCall
   TEnum _ -> do

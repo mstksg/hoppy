@@ -486,8 +486,9 @@ typeUseReqs t = case t of
   TULLong -> return mempty
   TFloat -> return mempty
   TDouble -> return mempty
-  TSize -> return sizeTReqs
-  TSSize -> return sizeTReqs
+  TPtrdiff -> return cstddefReqs
+  TSize -> return cstddefReqs
+  TSSize -> return cstddefReqs
   TEnum e -> return $ enumUseReqs e
   TPtr t' -> typeUseReqs t'
   TRef t' -> typeUseReqs t'
@@ -503,8 +504,8 @@ typeUseReqs t = case t of
   TObj cls -> return $ classUseReqs cls
   TConst t' -> typeUseReqs t'
 
-sizeTReqs :: Reqs
-sizeTReqs = reqInclude $ includeStd "cstddef"
+cstddefReqs :: Reqs
+cstddefReqs = reqInclude $ includeStd "cstddef"
 
 findExportModule :: ExtName -> Generator Module
 findExportModule extName =
