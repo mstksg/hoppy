@@ -559,10 +559,12 @@ instance Show Identifier where
   show ident =
     (\words -> concat $ "<Identifier " : words ++ [">"]) $
     intersperse "::" $
-    concatMap (\part -> case idPartArgs part of
-                  Nothing -> [idPartBase part]
-                  Just args -> idPartBase part : "<" :
-                               intersperse ", " (map show args) ++ [">"]) $
+    map (\part -> case idPartArgs part of
+            Nothing -> idPartBase part
+            Just args ->
+              concat $
+              idPartBase part : "<" :
+              intersperse ", " (map show args) ++ [">"]) $
     identifierParts ident
 
 instance HasTVars Identifier where
