@@ -246,10 +246,10 @@ sayExportFn :: ExtName
             -> Generator ()
 sayExportFn extName opOrCppName maybeThisType paramTypes retType sayBody = do
   let paramCount = length paramTypes
-  paramCTypeMaybes <- mapM typeToCType paramTypes
-  let paramCTypes = zipWith fromMaybe paramTypes paramCTypeMaybes
-  retCTypeMaybe <- typeToCType retType
-  let retCType = fromMaybe retType retCTypeMaybe
+      paramCTypeMaybes = map typeToCType paramTypes
+      paramCTypes = zipWith fromMaybe paramTypes paramCTypeMaybes
+      retCTypeMaybe = typeToCType retType
+      retCType = fromMaybe retType retCTypeMaybe
 
   addReqs . mconcat =<< mapM typeUseReqs (retType:paramTypes)
 
@@ -356,8 +356,8 @@ sayExportCallback sayBody cb = do
 
   -- The function pointer we receive from foreign code will work with C-types,
   -- so determine what that function looks like.
-  paramCTypes <- zipWith fromMaybe paramTypes <$> mapM typeToCType paramTypes
-  retCType <- fromMaybe retType <$> typeToCType retType
+  let paramCTypes = zipWith fromMaybe paramTypes $ map typeToCType paramTypes
+      retCType = fromMaybe retType $ typeToCType retType
 
   addReqs . mconcat =<< mapM typeUseReqs (retType:paramTypes)
 
@@ -414,8 +414,8 @@ sayExportCallback sayBody cb = do
       -- poiner.
       --
       -- TODO Abstract the duplicated code here and in sayExportFn.
-      paramCTypeMaybes <- mapM typeToCType paramTypes
-      retCTypeMaybe <- typeToCType retType
+      let paramCTypeMaybes = map typeToCType paramTypes
+          retCTypeMaybe = typeToCType retType
 
       sayFunction (implClassName ++ "::operator()")
                   (zipWith (\ctm -> if isJust ctm then toArgNameAlt else toArgName)
@@ -462,12 +462,12 @@ sayExportCallback sayBody cb = do
 
 -- | Returns a 'Type' iff there is a C type distinct from the given C++ type
 -- that should be used for conversion.
-typeToCType :: Type -> Generator (Maybe Type)
+typeToCType :: Type -> Maybe Type
 typeToCType t = case t of
-  TRef t' -> return $ Just $ TPtr t'
-  TObj _ -> return $ Just $ TPtr $ TConst t
+  TRef t' -> Just $ TPtr t'
+  TObj _ -> Just $ TPtr $ TConst t
   TConst t' -> typeToCType t'
-  _ -> return Nothing
+  _ -> Nothing
 
 typeUseReqs :: Type -> Generator Reqs
 typeUseReqs t = case t of
