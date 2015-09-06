@@ -11,7 +11,7 @@ after updating `cppopDir` as appropriate for your environment.
 
       haskellPackages = pkgs.haskellPackages.override {
         overrides = self: super: {
-          cppop = self.callPackage cppopDir {};
+          cppop = self.callPackage (cppopDir + /cppop) {};
 
           # Only to build the example:
           cppop-example-templates-generator = self.callPackage (cppopDir + /examples/templates/generator) {};
