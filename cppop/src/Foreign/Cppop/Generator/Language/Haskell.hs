@@ -133,14 +133,19 @@ prependExtensions = (prependExtensionsPrefix ++)
 prependExtensionsPrefix :: String
 prependExtensionsPrefix =
   -- MultiParamTypeClasses are necessary for instances of Decodable and
-  -- Encodable.  FlexibleInstances and TypeSynonymInstances are enabled to allow
-  -- conversions to and from String, which is really [Char].
+  -- Encodable.  FlexibleContexts is needed for the type signature of the
+  -- function that wraps the actual callback function in callback creation
+  -- functions.
+  --
+  -- FlexibleInstances and TypeSynonymInstances are enabled to allow conversions
+  -- to and from String, which is really [Char].
+  --
   -- UndecidableInstances is needed for instances of the form "SomeClassConstPtr
   -- a => SomeClassValue a", and OverlappingInstances is needed for the overlap
   -- between these instances and instances of SomeClassValue for the class's
   -- native Haskell type, when it's convertible.
-  "{-# LANGUAGE FlexibleInstances, MultiParamTypeClasses, OverlappingInstances, " ++
-  "TypeSynonymInstances, UndecidableInstances #-}\n\n"
+  "{-# LANGUAGE FlexibleContexts, FlexibleInstances, MultiParamTypeClasses, " ++
+  "OverlappingInstances, TypeSynonymInstances, UndecidableInstances #-}\n\n"
 
 generateSource :: Module -> Generator ()
 generateSource m = do
