@@ -3,7 +3,6 @@ module Foreign.Cppop.Generator.Main (
   run,
   ) where
 
-import Control.Applicative ((<$>))
 import Control.Concurrent.MVar (MVar, modifyMVar, newMVar, readMVar)
 import Control.Monad ((<=<), unless, when)
 import Data.Foldable (forM_)

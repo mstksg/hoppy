@@ -113,7 +113,6 @@ module Foreign.Cppop.Generator.Spec (
   hsImportForUnsafeIO,
   ) where
 
-import Control.Applicative ((<$>), (<*>))
 import Control.Arrow ((&&&))
 import Control.Monad (forM, liftM2, unless, when)
 #if MIN_VERSION_mtl(2,2,1)
@@ -129,7 +128,6 @@ import Data.Function (on)
 import Data.List (intercalate, intersperse)
 import qualified Data.Map as M
 import Data.Maybe (fromMaybe)
-import Data.Monoid (Monoid, mappend, mconcat, mempty)
 import qualified Data.Set as S
 import Foreign.Cppop.Common
 import Foreign.Cppop.Common.Consume

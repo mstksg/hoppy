@@ -7,7 +7,6 @@ module Foreign.Cppop.Common (
   writeFileIfDifferent,
   ) where
 
-import Control.Applicative ((<$>))
 import Control.Exception (evaluate)
 import Control.Monad (when)
 import System.Directory (doesFileExist)

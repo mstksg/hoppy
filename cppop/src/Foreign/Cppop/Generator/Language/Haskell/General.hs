@@ -44,7 +44,6 @@ module Foreign.Cppop.Generator.Language.Haskell.General (
   prettyPrint,
   ) where
 
-import Control.Applicative ((<$>))
 import Control.Arrow (first)
 import Control.Monad (when)
 #if MIN_VERSION_mtl(2,2,1)
@@ -62,7 +61,6 @@ import Data.Functor (($>))
 import Data.List (intercalate, intersperse)
 import qualified Data.Map as M
 import Data.Maybe (fromMaybe, isJust)
-import Data.Monoid (Monoid, mappend, mconcat, mempty)
 import Data.Tuple (swap)
 import Foreign.Cppop.Generator.Spec
 import qualified Language.Haskell.Pretty as P

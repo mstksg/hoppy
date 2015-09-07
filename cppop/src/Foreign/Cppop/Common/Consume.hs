@@ -7,7 +7,6 @@ module Foreign.Cppop.Common.Consume (
   execConsumeT,
   ) where
 
-import Control.Applicative ((<*>), Applicative, pure)
 import Control.Monad (ap, liftM)
 import Control.Monad.Trans (MonadTrans, lift)
 import Control.Monad.State (StateT, get, put, runStateT)

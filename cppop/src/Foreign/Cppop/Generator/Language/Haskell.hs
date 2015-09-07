@@ -30,7 +30,6 @@ module Foreign.Cppop.Generator.Language.Haskell (
 -- callbacks, the HsCSide column above is the exposed type; polymorphism as in
 -- the HsHsSide column is not provided.
 
-import Control.Applicative ((<$>), (<*>), pure)
 import Control.Arrow ((&&&), second)
 import Control.Monad (forM, when)
 import Control.Monad.Trans (lift)
@@ -41,7 +40,6 @@ import Data.List (intersperse)
 import Data.Tree (flatten, unfoldTree)
 import qualified Data.Map as M
 import Data.Maybe (isJust, mapMaybe)
-import Data.Monoid (mconcat)
 import qualified Data.Set as S
 import Foreign.Cppop.Common
 import Foreign.Cppop.Generator.Spec
@@ -141,11 +139,11 @@ prependExtensionsPrefix =
   -- to and from String, which is really [Char].
   --
   -- UndecidableInstances is needed for instances of the form "SomeClassConstPtr
-  -- a => SomeClassValue a", and OverlappingInstances is needed for the overlap
+  -- a => SomeClassValue a", and overlapping instances are used for the overlap
   -- between these instances and instances of SomeClassValue for the class's
   -- native Haskell type, when it's convertible.
   "{-# LANGUAGE FlexibleContexts, FlexibleInstances, MultiParamTypeClasses, " ++
-  "OverlappingInstances, TypeSynonymInstances, UndecidableInstances #-}\n\n"
+  "TypeSynonymInstances, UndecidableInstances #-}\n\n"
 
 generateSource :: Module -> Generator ()
 generateSource m = do
@@ -553,7 +551,7 @@ sayExportClassHsClass doDecls cls cst = do
 
     -- Generate instances for all pointer subtypes.
     ln
-    saysLn ["instance ", hsPtrClassName, " a => ", hsValueClassName, " a",
+    saysLn ["instance {-# OVERLAPPABLE #-} ", hsPtrClassName, " a => ", hsValueClassName, " a",
             if doDecls then " where" else ""]
     when doDecls $ do
       addImports $ mconcat [hsImports "Prelude" ["($)", "(.)"],
@@ -564,7 +562,7 @@ sayExportClassHsClass doDecls cls cst = do
     forM_ (classHaskellConversion $ classConversions cls) $ \conv -> do
       hsType <- classHaskellConversionType conv
       ln
-      saysLn ["instance ", hsValueClassName, " (", prettyPrint hsType, ")",
+      saysLn ["instance {-# OVERLAPPING #-} ", hsValueClassName, " (", prettyPrint hsType, ")",
               if doDecls then " where" else ""]
       when doDecls $ do
         addImports hsImportForSupport

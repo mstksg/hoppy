@@ -2,7 +2,6 @@ module Foreign.Cppop.Generator.Std.Vector (
   tc_vector,
   ) where
 
-import Data.Monoid (mconcat)
 import Foreign.Cppop.Common (fromEitherM)
 import Foreign.Cppop.Generator.Language.Haskell.General (
   HsTypeSide (HsCSide, HsHsSide),

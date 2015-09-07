@@ -74,7 +74,6 @@ module Foreign.Cppop.Generator.Language.Cpp (
 -- doesn't store a copy somewhere before returning, then the when the temporary
 -- F object is destructed, the G object will get deleted.
 
-import Control.Applicative ((<$>))
 import Control.Monad (liftM, unless, when)
 import Control.Monad.Reader (MonadReader, ReaderT, ask, runReaderT)
 import Control.Monad.Writer (WriterT, execWriterT, runWriterT, tell)
@@ -83,7 +82,6 @@ import Data.Foldable (forM_)
 import Data.List (intersperse)
 import qualified Data.Map as M
 import Data.Maybe (fromMaybe, isJust)
-import Data.Monoid (mappend, mconcat, mempty)
 import qualified Data.Set as S
 import Foreign.Cppop.Common
 import Foreign.Cppop.Generator.Language.Cpp.General

@@ -1,6 +1,5 @@
 module Foreign.Cppop.Generator.Std.String (c_string) where
 
-import Data.Monoid (mconcat)
 import Foreign.Cppop.Generator.Language.Haskell.General (addImports, sayLn)
 import Foreign.Cppop.Generator.Spec
 import Foreign.Cppop.Generator.Spec.ClassFeature
