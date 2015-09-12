@@ -20,11 +20,11 @@ module Foreign.Cppop.Generator.Language.Cpp (
 -- (4) TPtr (TConst (TObj _))
 -- (5) TPtr (TObj _)
 --
--- When passing an object as an argument, it is passed between C++ and a foreign
--- language via a pointer.  Cases 1, 2, and 4 are passed as const pointers.  For
--- a foreign language passing a (TObj _) to C++, this means converting a foreign
--- value to a temporary C++ object.  Passing a (TObj _) argument into or out of
--- C++, the caller always owns the object.
+-- When passing any of the above types as an argument, an object is passed
+-- between C++ and a foreign language via a pointer.  Cases 1, 2, and 4 are
+-- passed as const pointers.  For a foreign language passing a (TObj _) to C++,
+-- this means converting a foreign value to a temporary C++ object.  Passing a
+-- (TObj _) argument into or out of C++, the caller always owns the object.
 --
 -- When returning an object, again, pointers are always what is passed across
 -- the language boundary.  Returning a (TObj _) transfers ownership: a C++
@@ -41,7 +41,7 @@ module Foreign.Cppop.Generator.Language.Cpp (
 --
 -- We want to call some foreign code from C++.  What C++ type do we associate
 -- with such an entry point?  (Both the C++ and foreign sides of the callback
--- will need to perform en-/decoding.)
+-- will need to perform en-/decoding of arguments/return values.)
 --
 -- Function pointer: Create a function pointer to a foreign wrapper which does
 -- en-/decoding on the foreign side.  But then we need to wrap this in a C++
