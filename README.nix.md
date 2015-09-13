@@ -1,23 +1,17 @@
 Nix expressions are provided to ease building Cppop within
-[Nixpkgs](https://nixos.org/nixpkgs), and to demonstrate building sample
-programs.  Cppop can be inserted into Nixpkgs with the following overrides,
-after updating `cppopDir` as appropriate for your environment.
+[Nixpkgs](https://nixos.org/nixpkgs), to demonstrate building sample programs,
+and to run unit tests.  There is a `default.nix` for each package in the
+repository, as well as a few other Nix files:
 
-    packageOverrides = let cppopDir = /my/projects/cppop.git; in pkgs: rec {
-      # Only to build the example:
-      cppop-example-templates-lib = pkgs.callPackage (cppopDir + /examples/templates/lib) {
-        inherit (haskellPackages) cppop-example-templates-generator;
-      };
+- `/pkgs.nix` provides a modified Nixpkgs with all of the Cppop packages
+  inserted.  You can use this as a model for your own `~/.nixpkgs/config.nix`.
 
-      haskellPackages = pkgs.haskellPackages.override {
-        overrides = self: super: {
-          cppop = self.callPackage (cppopDir + /cppop) {};
+- `/config.nix` may optionally be created to pass additional arguments to the
+  `cppop` package.  `pkgs.nix` will use this file if it exists.  See below for
+  additional options this package accepts.
 
-          # Only to build the example:
-          cppop-example-templates-generator = self.callPackage (cppopDir + /examples/templates/generator) {};
-          cppop-example-templates = self.callPackage (cppopDir + /examples/templates/hs) {};
-        };
-      };
+- `/tests/default.nix` is a `nix-build`able expression that builds and runs all
+  of the Cppop tests.
 
 The `cppop` package accepts two optional parameters.  `enableSplitObjs`, when
 non-null, will override Nixpkgs's default behaivour for Cabal, and the boolean

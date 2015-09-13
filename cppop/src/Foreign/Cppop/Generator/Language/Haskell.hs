@@ -717,9 +717,9 @@ fnToHsTypeAndUse side methodInfo purity paramTypes returnType = do
       case hsReturn' of
         Left errorMsg -> return $ Left errorMsg
         Right hsReturn -> do
-          hsReturnForPurity <- case purity of
-            Pure -> return hsReturn
-            Nonpure -> do
+          hsReturnForPurity <- case (purity, side) of
+            (Pure, HsHsSide) -> return hsReturn
+            _ -> do
               addImports hsImportForPrelude
               return $ HsTyApp (HsTyCon $ UnQual $ HsIdent "CppopP.IO") hsReturn
           return $ Right $ HsQualType context $ foldr HsTyFun hsReturnForPurity hsParams

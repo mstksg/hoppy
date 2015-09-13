@@ -1,0 +1,40 @@
+# This is a modified Nixpkgs that contains all of the individual Cppop packages.
+
+{ haskellOptions ? if builtins.pathExists ./config.nix
+                   then import ./config.nix
+                   else {}
+}:
+
+let
+
+  cppopDir = ./.;
+
+  haskellOverrides = haskellOptions: {
+    overrides = self: super: {
+      cppop = self.callPackage (cppopDir + /cppop) haskellOptions;
+
+      cppop-example-templates-generator =
+        self.callPackage (cppopDir + /examples/templates/generator) {};
+      cppop-example-templates =
+        self.callPackage (cppopDir + /examples/templates/hs) {};
+
+      cppop-tests-basic-generator =
+        self.callPackage (cppopDir + /tests/basic/generator) {};
+      cppop-tests-basic =
+        self.callPackage (cppopDir + /tests/basic/hs) {};
+    };
+  };
+
+  packageOverrides = pkgs: rec {
+    cppop-example-templates-lib = pkgs.callPackage (cppopDir + /examples/templates/lib) {
+      inherit (haskellPackages) cppop-example-templates-generator;
+    };
+
+    cppop-tests-basic-lib = pkgs.callPackage (cppopDir + /tests/basic/lib) {
+      inherit (haskellPackages) cppop-tests-basic-generator;
+    };
+
+    haskellPackages = pkgs.haskellPackages.override (haskellOverrides haskellOptions);
+  };
+
+in import <nixpkgs> { config = { inherit packageOverrides; }; }
