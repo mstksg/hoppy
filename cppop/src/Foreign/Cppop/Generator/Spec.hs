@@ -97,7 +97,8 @@ module Foreign.Cppop.Generator.Spec (
   classTemplateIdentifier, classTemplateExtNamePrefix, classTemplateVars, classTemplateSuperclasses,
   classTemplateCtors, classTemplateMethods, classTemplateUseReqs,
   -- ** Callbacks
-  Callback, makeCallback, callbackExtName, callbackParams, callbackReturn, callbackToTFn,
+  Callback, makeCallback, callbackExtName, callbackParams, callbackReturn, callbackUseReqs,
+  callbackToTFn,
   -- * Haskell imports
   HsModuleName, HsImportSet, HsImportKey (..), HsImportSpecs (..), HsImportName, HsImportVal (..),
   hsWholeModuleImport, hsQualifiedImport, hsImport1, hsImport1', hsImports, hsImports',
@@ -139,7 +140,7 @@ type ErrorMsg = String
 type HaskellImport = String
 
 -- | A complete specification of a C++ API.  Generators for different languages,
--- including the server generator for C++, use these to produce their output.
+-- including the binding generator for C++, use these to produce their output.
 data Interface = Interface
   { interfaceName :: String
     -- ^ Textual name of the interface.
@@ -1464,6 +1465,7 @@ data Callback = Callback
   { callbackExtName :: ExtName
   , callbackParams :: [Type]
   , callbackReturn :: Type
+  , callbackUseReqs :: Reqs
   }
 
 instance Eq Callback where
@@ -1474,11 +1476,15 @@ instance Show Callback where
     concat ["<Callback ", show (callbackExtName cb), " ", show (callbackParams cb), " ",
             show (callbackReturn cb)]
 
+instance HasUseReqs Callback where
+  getUseReqs = callbackUseReqs
+  setUseReqs reqs cb = cb { callbackUseReqs = reqs }
+
 makeCallback :: ExtName
              -> [Type]  -- ^ Parameter types.
              -> Type  -- ^ Return type.
              -> Callback
-makeCallback = Callback
+makeCallback extName paramTypes retType = Callback extName paramTypes retType mempty
 
 -- | Creates a 'TFn' from a callback's parameter and return types.
 callbackToTFn :: Callback -> Type

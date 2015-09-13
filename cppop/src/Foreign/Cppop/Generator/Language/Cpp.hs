@@ -233,7 +233,10 @@ sayExport sayBody export = case export of
                   (methodReturn method)
                   sayBody
 
-  ExportCallback cb -> sayExportCallback sayBody cb
+  ExportCallback cb -> do
+    -- Need <memory> for std::shared_ptr.
+    addReqs $ callbackUseReqs cb `mappend` reqInclude (includeStd "memory")
+    sayExportCallback sayBody cb
 
 sayExportFn :: ExtName
             -> Either Operator (Generator ())

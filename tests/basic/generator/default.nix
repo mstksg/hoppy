@@ -1,10 +1,10 @@
-{ mkDerivation, base, cppop, stdenv }:
+{ mkDerivation, stdenv, base, cppop, haskell-src }:
 mkDerivation {
   pname = "cppop-tests-basic-generator";
   version = "0.1.0";
   src = ./.;
   isLibrary = false;
   isExecutable = true;
-  executableHaskellDepends = [ base cppop ];
+  executableHaskellDepends = [ base cppop haskell-src ];
   license = stdenv.lib.licenses.agpl3;
 }
