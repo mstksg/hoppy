@@ -89,13 +89,13 @@ objectPassingTests =
     [ "by value" ~: do
       withCppObj (HsBox 1) $ \(box :: IntBox) -> getBoxValueByValue box >>= (@?= 1)
       withCppObj (HsBox 2) $ \(box :: IntBoxConst) -> getBoxValueByValue box >>= (@?= 2)
-    , "by reference" ~: do
+    , "by reference" ~:
       withCppObj (HsBox 3) $ \(box :: IntBox) -> getBoxValueByRef box >>= (@?= 3)
       -- Passing a const pointer to a non-const reference is disallowed.
     , "by constant reference" ~: do
       withCppObj (HsBox 5) $ \(box :: IntBox) -> getBoxValueByRefConst box >>= (@?= 5)
       withCppObj (HsBox 6) $ \(box :: IntBoxConst) -> getBoxValueByRefConst box >>= (@?= 6)
-    , "by pointer" ~: do
+    , "by pointer" ~:
       withCppObj (HsBox 7) $ \(box :: IntBox) -> getBoxValueByPtr box >>= (@?= 7)
       -- Passing a const pointer to a non-const pointer is disallowed.
     , "by constant pointer" ~: do

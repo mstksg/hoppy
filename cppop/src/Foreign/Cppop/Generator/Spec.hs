@@ -321,7 +321,7 @@ class HasUseReqs a where
 
 -- | Adds to a type's requirements.
 addUseReqs :: HasUseReqs a => Reqs -> a -> a
-addUseReqs reqs x = modifyUseReqs (mappend reqs) x
+addUseReqs reqs = modifyUseReqs $ mappend reqs
 
 -- | Adds a list of includes to the requirements of a type.
 addReqIncludes :: HasUseReqs a => [Include] -> a -> a
@@ -570,8 +570,9 @@ instance HasTVars Identifier where
   substTVar var val =
     Identifier .
     map (\part -> part { idPartArgs =
-                            fmap (map $ substTVar var val) $
-                            idPartArgs part }) .
+                            map (substTVar var val) <$>
+                            idPartArgs part
+                       }) .
     identifierParts
 
 data IdPart = IdPart
@@ -883,7 +884,7 @@ instantiateFnTemplate tmpl extNameSuffix typeArgs typeArgUseReqs = do
       varCount = length vars
       argCount = length typeArgs
   when (argCount /= varCount) $
-    Left $ concat $
+    Left $ concat
     ["instantiateFnTemplate: ", show argCount, " argument(s) given for ", show varCount,
      "-parameter function template ", show ident, "."]
 

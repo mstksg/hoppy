@@ -1,6 +1,6 @@
 module Main where
 
-import Control.Monad (forM_)
+import Control.Monad ((>=>), forM_)
 import Foreign.Cppop.Runtime.Support (delete, encodeAs, withCppObj)
 import Foreign.Cppop.Example.Instances
 import Foreign.Cppop.Example.Std
@@ -17,6 +17,6 @@ main = do
 
   size <- vectorString_size v
   putStrLn $ concat ["The vector now has ", show size, " elements.  They are:"]
-  forM_ [0..size-1] $ \i -> do
-    vectorString_at v i >>= print
+  forM_ [0..size-1] $
+    vectorString_at v >=> print
   delete v

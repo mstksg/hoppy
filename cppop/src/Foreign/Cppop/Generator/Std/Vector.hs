@@ -38,7 +38,7 @@ tc_vector =
                      ["Instantiation of std::vector<", show t,
                       ">: Type argument is not convertable to a Haskell Haskell-side type: ", e]) =<<
               cppTypeToHsTypeAndUse HsHsSide t
-            return $ HsTyApp (HsTyCon $ Special $ HsListCon) hsHsType
+            return $ HsTyApp (HsTyCon $ Special HsListCon) hsHsType
           , classHaskellConversionToCppFn = do
             addImports $ mconcat [hsImport1 "Control.Monad" "(<=<)", hsImportForPrelude, hsImportForSupport]
             hsCType <-

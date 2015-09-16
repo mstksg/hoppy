@@ -493,7 +493,7 @@ sayExportClass mode cls = do
     SayExportForeignImports -> do
       sayExportClassHsCtors mode cls
 
-      forM_ (classMethods cls) $ \method -> do
+      forM_ (classMethods cls) $ \method ->
         (sayExportFn mode <$> getClassyExtName cls <*> pure Nothing <*> methodPurity <*>
          pure (getMethodEffectiveParams cls method) <*> methodReturn) method
 
