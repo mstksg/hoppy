@@ -20,6 +20,7 @@ library
     , Foreign.Cppop.Generator.Main
     , Foreign.Cppop.Generator.Spec
     , Foreign.Cppop.Generator.Spec.ClassFeature
+    , Foreign.Cppop.Generator.Spec.Template
     , Foreign.Cppop.Generator.Std
     , Foreign.Cppop.Generator.Std.List
     , Foreign.Cppop.Generator.Std.String

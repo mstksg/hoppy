@@ -3,6 +3,7 @@ module Main where
 import Data.Monoid (mempty)
 import Foreign.Cppop.Generator.Main (run)
 import Foreign.Cppop.Generator.Spec
+import Foreign.Cppop.Generator.Spec.Template
 import Foreign.Cppop.Generator.Std (mod_std)
 import Foreign.Cppop.Generator.Std.String (c_string)
 import Foreign.Cppop.Generator.Std.Vector (tc_vector)

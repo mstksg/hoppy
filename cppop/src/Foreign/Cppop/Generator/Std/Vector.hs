@@ -14,6 +14,7 @@ import Foreign.Cppop.Generator.Language.Haskell.General (
   saysLn,
   )
 import Foreign.Cppop.Generator.Spec
+import Foreign.Cppop.Generator.Spec.Template
 import Language.Haskell.Syntax (
   HsQName (Special),
   HsSpecialCon (HsListCon),

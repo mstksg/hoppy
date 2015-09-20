@@ -3,6 +3,7 @@ module Foreign.Cppop.Generator.Std.List (
   ) where
 
 import Foreign.Cppop.Generator.Spec
+import Foreign.Cppop.Generator.Spec.Template
 
 -- | @std::list<T>@
 tc_list :: ClassTemplate
