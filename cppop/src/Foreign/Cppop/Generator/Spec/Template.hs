@@ -253,7 +253,9 @@ instantiateClassTemplate tmpl extNameSuffix typeArgs instantiatedSupers typeArgU
 
 instantiateClassTemplate' :: ClassTemplate -> String -> [Type] -> [Class] -> Reqs -> Class
 instantiateClassTemplate' tmpl extNameSuffix typeArgs instantiatedSupers typeArgUseReqs =
-  either error id $
+  either (error $ concat ["instantiateClassTemplate': Couldn't instantiate ", show tmpl,
+                          " with arguments ", show typeArgs, "."])
+         id $
   instantiateClassTemplate tmpl extNameSuffix typeArgs instantiatedSupers typeArgUseReqs
 
 data ClassInstantiationInfo = ClassInstantiationInfo
