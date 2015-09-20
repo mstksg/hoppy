@@ -181,6 +181,7 @@ sayType' t maybeParamNames outerPrec unwrappedOuter =
       say ")"
     TCallback cb -> says [callbackImplClassName cb, "*"] >> outer
     TObj cls -> sayIdentifier (classIdentifier cls) >> outer
+    TObjToHeap cls -> sayType' (TRef $ TConst $ TObj cls) maybeParamNames outerPrec unwrappedOuter
     TConst t' -> sayType' t' maybeParamNames outerPrec $ say "const" >> unwrappedOuter
                  -- TODO ^ Is using the outer stuff correctly here?
 

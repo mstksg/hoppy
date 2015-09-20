@@ -60,7 +60,6 @@ module Foreign.Cppop.Generator.Spec (
   -- * Basic types
   Type (..),
   HasTVars (..),
-  freeVarErrorMsg,
   -- ** Enums
   CppEnum, makeEnum, enumIdentifier, enumExtName, enumValueNames, enumUseReqs,
   Purity (..),
@@ -102,7 +101,8 @@ module Foreign.Cppop.Generator.Spec (
   -- * Haskell imports
   HsModuleName, HsImportSet, HsImportKey (..), HsImportSpecs (..), HsImportName, HsImportVal (..),
   hsWholeModuleImport, hsQualifiedImport, hsImport1, hsImport1', hsImports, hsImports',
-  -- ** Internal to Cppop
+  -- * Internal to Cppop
+  -- ** Haskell imports
   internalToHsFnName,
   makeHsImportSet,
   getHsImportSet,
@@ -112,6 +112,9 @@ module Foreign.Cppop.Generator.Spec (
   hsImportForSupport,
   hsImportForSystemPosixTypes,
   hsImportForUnsafeIO,
+  -- ** Error messages
+  freeVarErrorMsg,
+  tObjToHeapWrongDirectionErrorMsg,
   ) where
 
 import Control.Arrow ((&&&))
@@ -672,6 +675,13 @@ data Type =
     -- Function pointers must wrap a 'TFn' in a 'TPtr'.
   | TCallback Callback  -- ^ A handle for calling foreign code from C++.
   | TObj Class  -- ^ An instance of a class.
+  | TObjToHeap Class
+    -- ^ A special case of 'TObj' that is only allowed when passing values from
+    -- C++ to a foreign language.  Rather than looking at the object's
+    -- 'ClassConversions', the object will be copied to the heap, and a pointer
+    -- to the new object will be passed.  The object must be copy-constructable.
+    --
+    -- __The foreign language owns the pointer, even for callback arguments.__
   | TConst Type  -- ^ A @const@ version of another type.
   deriving (Eq, Show)
 
@@ -702,6 +712,7 @@ instance HasTVars Type where
     TFn paramTypes retType -> TFn (map recur paramTypes) $ recur retType
     TCallback _ -> t
     TObj _ -> t
+    TObjToHeap _ -> t
     TConst t' -> recur t'
     where recur = substTVar var val
 
@@ -731,15 +742,8 @@ typeIsConcrete t = case t of
   TFn paramTypes retType -> all typeIsConcrete paramTypes && typeIsConcrete retType
   TCallback _ -> True
   TObj _ -> True
+  TObjToHeap _ -> True
   TConst t' -> typeIsConcrete t'
-
--- | Returns an error message that indicates that @caller@ received a 'TVar'
--- where one is not accepted.
-freeVarErrorMsg :: String -> Type -> String
-freeVarErrorMsg caller t = concat $ case t of
-  TVar v -> [caller, ": Unexpected free template type variable ", show v, "."]
-  _ -> ["freeVarErrorMsg: Expected a TVar from caller ", show caller,
-        " but instead received ", show t, "."]
 
 class HasTVars a where
   -- @substTVar var val x@ replaces all occurrences of @'TVar' var@ in @x@ with
@@ -1611,3 +1615,15 @@ hsImportForSystemPosixTypes = hsQualifiedImport "System.Posix.Types" "CppopSPT"
 
 hsImportForUnsafeIO :: HsImportSet
 hsImportForUnsafeIO = hsQualifiedImport "System.IO.Unsafe" "CppopSIU"
+
+-- | Returns an error message that indicates that @caller@ received a 'TVar'
+-- where one is not accepted.
+freeVarErrorMsg :: String -> Type -> String
+freeVarErrorMsg caller t = concat $ case t of
+  TVar v -> [caller, ": Unexpected free template type variable ", show v, "."]
+  _ -> ["freeVarErrorMsg: Expected a TVar from caller ", show caller,
+        " but instead received ", show t, "."]
+
+tObjToHeapWrongDirectionErrorMsg :: String -> Class -> String
+tObjToHeapWrongDirectionErrorMsg caller cls =
+  concat [caller, ": (TObjToHeap ", show cls, ") is not allowed to be passed into C++."]

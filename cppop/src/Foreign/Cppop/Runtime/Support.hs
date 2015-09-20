@@ -6,6 +6,7 @@ module Foreign.Cppop.Runtime.Support (
   Decodable (..),
   decodeAndDelete,
   withCppObj,
+  withScopedPtr,
   -- * Internal
   CCallback (..),
   freeHaskellFunPtrFunPtr,
@@ -109,6 +110,11 @@ decodeAndDelete ptr = do
 withCppObj :: (CppPtr cppPtrType, Encodable cppPtrType hsType)
            => hsType -> (cppPtrType -> IO a) -> IO a
 withCppObj x = bracket (encode x) delete
+
+-- | @withScopedPtr m f@ runs @m@ to get a pointer, which is given to @f@ to
+-- execute.  When @f@ finishes, the pointer is deleted.
+withScopedPtr :: CppPtr cppPtrType => IO cppPtrType -> (cppPtrType -> IO a) -> IO a
+withScopedPtr p = bracket p delete
 
 -- | Internal type that represents a pointer to a C++ callback object (callback
 -- impl object, specifically).

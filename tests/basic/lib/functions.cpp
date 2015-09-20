@@ -8,6 +8,14 @@ long timesTwo(long n) {
     return n * 2;
 }
 
+PtrCtr givePtrCtrByValue() {
+    return PtrCtr();
+}
+
+void givePtrCtrByValueToCallback(GetPtrCtrByValueCallback cb) {
+    cb(PtrCtr());
+}
+
 IntBox makeBoxByValue(int value) {
     return IntBox(value);
 }

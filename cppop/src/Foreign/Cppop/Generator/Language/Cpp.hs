@@ -299,11 +299,14 @@ sayExportFn extName opOrCppName maybeThisType paramTypes retType sayBody = do
         (TVoid, Nothing) -> sayCall >> say ";\n"
         (_, Nothing) -> say "return " >> sayCall >> say ";\n"
         (TRef cls, Just (TPtr cls')) | cls == cls' -> say "return &(" >> sayCall >> say ");\n"
-        (TObj cls, Just (TPtr (TConst (TObj cls')))) | cls == cls' ->
-          say "return new" >> sayIdentifier (classIdentifier cls) >> say "(" >>
-          sayCall >> say ");\n"
+        (TObj cls, Just (TPtr (TConst (TObj cls')))) | cls == cls' -> sayReturnNewCopy cls sayCall
+        (TObjToHeap cls, Just (TPtr (TObj cls'))) | cls == cls' -> sayReturnNewCopy cls sayCall
         ts -> abort $ concat ["sayExportFn: Unexpected return types ", show ts,
                               "while generating binding for ", show extName, "."]
+
+  where sayReturnNewCopy cls sayCall =
+          say "return new" >> sayIdentifier (classIdentifier cls) >> say "(" >>
+          sayCall >> say ");\n"
 
 -- | If @dir@ is 'DoDecode', then we are a C++ function reading an argument from
 -- foreign code.  If @dir@ is 'DoEncode', then we are invoking a foreign
@@ -321,6 +324,13 @@ sayArgRead dir (n, cppType, maybeCType) = case cppType of
   TRef t@(TObj _) -> convertObj t
   TRef t@(TConst (TObj _)) -> convertObj t
   TObj _ -> convertObj $ TConst cppType
+  TObjToHeap cls -> case dir of
+    DoDecode -> error $ tObjToHeapWrongDirectionErrorMsg "sayArgRead" cls
+    DoEncode -> do
+      sayIdentifier $ classIdentifier cls
+      says ["* ", toArgName n, " = new "]
+      sayIdentifier $ classIdentifier cls
+      says ["(", toArgNameAlt n, ");\n"]
 
   -- Primitive types don't need to be encoded/decoded.  But if maybeCType is a
   -- Just, then we're expected to do some encoding/decoding, so something is
@@ -467,6 +477,7 @@ typeToCType :: Type -> Maybe Type
 typeToCType t = case t of
   TRef t' -> Just $ TPtr t'
   TObj _ -> Just $ TPtr $ TConst t
+  TObjToHeap cls -> Just $ TPtr $ TObj cls
   TConst t' -> typeToCType t'
   _ -> Nothing
 
@@ -503,6 +514,7 @@ typeUseReqs t = case t of
     fnTypeReqs <- typeUseReqs $ callbackToTFn cb
     return $ cbClassReqs `mappend` fnTypeReqs
   TObj cls -> return $ classUseReqs cls
+  TObjToHeap cls -> return $ classUseReqs cls
   TConst t' -> typeUseReqs t'
 
 cstddefReqs :: Reqs

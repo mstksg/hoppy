@@ -378,22 +378,22 @@ sayArgProcessing :: CallDirection -> Type -> String -> String -> Generator ()
 sayArgProcessing dir t fromVar toVar = case t of
   TVar _ -> abort $ freeVarErrorMsg "sayArgProcessing" t
   TVoid -> abort "sayArgProcessing: TVoid is not a valid argument type."
-  TBool -> doPrimitive
-  TChar -> doPrimitive
-  TUChar -> doPrimitive
-  TShort -> doPrimitive
-  TUShort -> doPrimitive
-  TInt -> doPrimitive
-  TUInt -> doPrimitive
-  TLong -> doPrimitive
-  TULong -> doPrimitive
-  TLLong -> doPrimitive
-  TULLong -> doPrimitive
-  TFloat -> doPrimitive
-  TDouble -> doPrimitive
-  TPtrdiff -> doPrimitive
-  TSize -> doPrimitive
-  TSSize -> doPrimitive
+  TBool -> noConversion
+  TChar -> noConversion
+  TUChar -> noConversion
+  TShort -> noConversion
+  TUShort -> noConversion
+  TInt -> noConversion
+  TUInt -> noConversion
+  TLong -> noConversion
+  TULong -> noConversion
+  TLLong -> noConversion
+  TULLong -> noConversion
+  TFloat -> noConversion
+  TDouble -> noConversion
+  TPtrdiff -> noConversion
+  TSize -> noConversion
+  TSSize -> noConversion
   TEnum _ -> do
     addImports $ mconcat [hsImport1 "Prelude" "($)", hsImportForPrelude, hsImportForSupport]
     saysLn ["let ", toVar,
@@ -417,7 +417,7 @@ sayArgProcessing dir t fromVar toVar = case t of
       saysLn [toHsWithValuePtrName cls, " ", fromVar, " $ \\", toVar, " ->"]
     FromCpp ->
       saysLn ["let ", toVar, " = ", fromVar, " in"]
-  TPtr _ -> doPrimitive
+  TPtr _ -> noConversion
   TRef t' -> sayArgProcessing dir (TPtr t') fromVar toVar
   TFn {} -> abort $ concat ["sayArgProcessing: TFn unimplemented, given ", show t, "."]
   TCallback cb -> case dir of
@@ -435,9 +435,15 @@ sayArgProcessing dir t fromVar toVar = case t of
     FromCpp -> do
       addImports $ mconcat [hsImport1 "Prelude" "(>>=)", hsImportForSupport]
       saysLn ["CppopFCRS.decode ", fromVar, " >>= \\", toVar, " ->"]
+  TObjToHeap cls -> case dir of
+    ToCpp -> abort $ tObjToHeapWrongDirectionErrorMsg "SayArgProcessing" cls
+    FromCpp -> noConversion
   TConst t' -> sayArgProcessing dir t' fromVar toVar
-  where doPrimitive = saysLn ["let ", toVar, " = ", fromVar, " in"]
+  where noConversion = saysLn ["let ", toVar, " = ", fromVar, " in"]
 
+-- | Note that the 'CallDirection' is the direction of the call, not the
+-- direction of the return.  'ToCpp' means we're returning to the foreign
+-- language, 'FromCpp' means we're returning from it.
 sayCallAndProcessReturn :: CallDirection -> Type -> [String] -> Generator ()
 sayCallAndProcessReturn dir t callWords = case t of
   TVar _ -> abort $ freeVarErrorMsg "sayCallAndProcessReturn" t
@@ -484,6 +490,9 @@ sayCallAndProcessReturn dir t callWords = case t of
       ToCpp -> sayLn "CppopFCRS.decodeAndDelete =<<"
       FromCpp -> sayLn "CppopFCRS.encode =<<"
     sayCall
+  TObjToHeap cls -> case dir of
+    ToCpp -> sayCall
+    FromCpp -> abort $ tObjToHeapWrongDirectionErrorMsg "sayCallAndProcessReturn" cls
   TConst t' -> sayCallAndProcessReturn dir t' callWords
   where sayCall = saysLn $ "(" : callWords ++ [")"]
 

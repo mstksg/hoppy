@@ -440,6 +440,7 @@ cppTypeToHsTypeAndUse' side t = case t of
         ["cppTypeToHsTypeAndUse': Expected a Haskell type for ", show cls,
          ", but there isn't one."]
       Just hsConv -> lift $ classHaskellConversionType hsConv
+  TObjToHeap cls -> cppTypeToHsTypeAndUse' side $ TPtr $ TObj cls
   TConst t' -> cppTypeToHsTypeAndUse' side t'
   where doImports = lift . addImports
         doImportForExtName = lift . importHsModuleForExtName

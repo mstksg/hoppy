@@ -40,9 +40,13 @@ testModule =
   modifyModule' (makeModule "basic" "basic.hpp" "basic.cpp") $
   addModuleExports
   [ ExportClass c_IntBox
+  , ExportClass c_PtrCtr
   , ExportFn f_piapprox
   , ExportFn f_piapproxNonpure
   , ExportFn f_timesTwo
+  , ExportFn f_givePtrCtrByValue
+  , ExportFn f_givePtrCtrByValueToCallback
+  , ExportCallback cb_GetPtrCtrByValueCallback
   , ExportFn f_getBoxValueByValue
   , ExportFn f_getBoxValueByRef
   , ExportFn f_getBoxValueByRefConst
@@ -77,6 +81,7 @@ testModule =
 
 c_IntBox :: Class
 c_IntBox =
+  addReqIncludes [includeLocal "intbox.hpp"] $
   classModifyConversions
   (\c -> c { classHaskellConversion = Just ClassHaskellConversion
              { classHaskellConversionType = do
@@ -96,6 +101,16 @@ c_IntBox =
   , mkMethod "set" [TInt] TVoid
   ]
 
+c_PtrCtr :: Class
+c_PtrCtr =
+  addReqIncludes [includeLocal "ptrctr.hpp"] $
+  makeClass (ident "PtrCtr") Nothing []
+  [ mkCtor "new" [] ]
+  [ mkStaticMethod "resetCounters" [] TVoid
+  , mkStaticMethod "getConstructionCount" [] TInt
+  , mkStaticMethod "getDestructionCount" [] TInt
+  ]
+
 f_piapprox :: Function
 f_piapprox =
   addReqIncludes [includeLocal "functions.hpp"] $
@@ -110,6 +125,24 @@ f_timesTwo :: Function
 f_timesTwo =
   addReqIncludes [includeLocal "functions.hpp"] $
   makeFn (ident "timesTwo") Nothing Pure [TLong] TLong
+
+-- For testing TObjToHeap:
+
+f_givePtrCtrByValue :: Function
+f_givePtrCtrByValue =
+  addReqIncludes [includeLocal "functions.hpp"] $
+  makeFn (ident "givePtrCtrByValue") Nothing Nonpure [] $ TObjToHeap c_PtrCtr
+
+f_givePtrCtrByValueToCallback :: Function
+f_givePtrCtrByValueToCallback =
+  addReqIncludes [includeLocal "functions.hpp"] $
+  makeFn (ident "givePtrCtrByValueToCallback") Nothing Nonpure
+  [TCallback cb_GetPtrCtrByValueCallback] TVoid
+
+cb_GetPtrCtrByValueCallback :: Callback
+cb_GetPtrCtrByValueCallback =
+  addReqIncludes [includeLocal "ptrctr.hpp"] $
+  makeCallback (toExtName "GetPtrCtrByValueCallback") [TObjToHeap c_PtrCtr] TVoid
 
 -- Passing objects to C++:
 

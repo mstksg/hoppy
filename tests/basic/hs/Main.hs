@@ -4,7 +4,15 @@ module Main where
 
 import Control.Monad ((>=>), forM_, when)
 import Foreign.C (CInt)
-import Foreign.Cppop.Runtime.Support (decode, decodeAndDelete, delete, encode, encodeAs, withCppObj)
+import Foreign.Cppop.Runtime.Support (
+  decode,
+  decodeAndDelete,
+  delete,
+  encode,
+  encodeAs,
+  withCppObj,
+  withScopedPtr,
+  )
 import Foreign.Cppop.Test.Basic
 import Foreign.Cppop.Test.Basic.HsBox
 import Test.HUnit (
@@ -32,7 +40,8 @@ tests =
   [ functionTests
   , objectTests
   , conversionTests
-  , objectPassingTests
+  , tObjToHeapTests
+  , classConversionTests
   ]
 
 functionTests :: Test
@@ -82,9 +91,44 @@ conversionTests =
   , "withCppObj" ~: withCppObj (HsBox 6) $ assertBox 6
   ]
 
-objectPassingTests :: Test
-objectPassingTests =
-  "passing objects" ~: TestList
+tObjToHeapTests :: Test
+tObjToHeapTests =
+  "TObjToHeap" ~: TestList
+  [ "PtrCtr functions properly" ~: do
+    ptrCtr_resetCounters
+    getCounts >>= (@?= (0, 0))
+    p <- ptrCtr_new
+    getCounts >>= (@?= (1, 0))
+    p2 <- ptrCtr_new
+    getCounts >>= (@?= (2, 0))
+    delete p
+    getCounts >>= (@?= (2, 1))
+    delete p2
+    getCounts >>= (@?= (2, 2))
+
+  , "returning from C++ by value" ~: do
+    ptrCtr_resetCounters
+    withScopedPtr givePtrCtrByValue $ \p -> do
+      (ctors, dtors) <- getCounts
+      dtors @?= ctors - 1
+    (ctors, dtors) <- getCounts
+    dtors @?= ctors
+
+  , "passing to Haskell callbacks by value" ~: do
+    ptrCtr_resetCounters
+    givePtrCtrByValueToCallback $ \p -> do
+      getCounts >>= (@?= 2) . fst
+      delete p
+    getCounts >>= (@?= (2, 2))
+
+  -- We don't repeat the below tests passing by reference and pointer here,
+  -- because the semantics are exactly the same.
+  ]
+  where getCounts = (,) <$> ptrCtr_getConstructionCount <*> ptrCtr_getDestructionCount
+
+classConversionTests :: Test
+classConversionTests =
+  "class conversion" ~: TestList
   [ "passing to C++" ~: TestList
     [ "by value" ~: do
       withCppObj (HsBox 1) $ \(box :: IntBox) -> getBoxValueByValue box >>= (@?= 1)
