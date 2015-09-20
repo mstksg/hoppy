@@ -23,6 +23,7 @@ cabal install ../generator
 
 # Build the C++ library.
 cd ../lib
+make clean
 ../hs/.cabal-sandbox/bin/generator --gen-cpp .
 make
 cd ../hs
