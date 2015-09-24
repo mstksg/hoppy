@@ -221,13 +221,17 @@ sayExport sayBody export = case export of
     forM_ (classMethods cls) $ \method -> do
       let static = methodStatic method == Static
       sayExportFn (getClassyExtName cls method)
-                  (case methodCName method of
-                     FnName cName -> Right $ do
-                       when static $ do
-                         sayIdentifier (classIdentifier cls)
-                         say "::"
-                       say cName
-                     FnOp op -> Left op)
+                  (case methodImpl method of
+                     RealMethod name -> case name of
+                       FnName cName -> Right $ do
+                         when static $ do
+                           sayIdentifier (classIdentifier cls)
+                           say "::"
+                         say cName
+                       FnOp op -> Left op
+                     FnMethod name -> case name of
+                       FnName cName -> Right $ sayIdentifier cName
+                       FnOp op -> Left op)
                   (if static then Nothing else justClsPtr)
                   (methodParams method)
                   (methodReturn method)

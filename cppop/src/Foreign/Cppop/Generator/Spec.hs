@@ -75,13 +75,14 @@ module Foreign.Cppop.Generator.Spec (
   HasClassyExtName (..),
   Ctor, makeCtor, mkCtor, ctorExtName, ctorParams,
   Method,
+  MethodImpl (..),
   MethodApplicability (..),
   Constness (..),
   Staticness (..),
-  makeMethod, mkMethod, mkMethod', mkConstMethod, mkConstMethod',
+  makeMethod, makeFnMethod, mkMethod, mkMethod', mkConstMethod, mkConstMethod',
   mkStaticMethod, mkStaticMethod',
   mkProps, mkProp, mkStaticProp, mkBoolIsProp, mkBoolHasProp,
-  methodCName, methodExtName, methodApplicability, methodPurity, methodParams,
+  methodImpl, methodExtName, methodApplicability, methodPurity, methodParams,
   methodReturn, methodConst, methodStatic,
   -- *** Conversions to and from foreign values
   ClassConversions (..),
@@ -1061,7 +1062,7 @@ mkCtor = makeCtor . toExtName
 -- written either as part of the associated class or as a separate entity,
 -- independently of how the function is declared in C++.
 data Method = Method
-  { methodCName :: FnName String
+  { methodImpl :: MethodImpl
   , methodExtName :: ExtName
   , methodApplicability :: MethodApplicability
   , methodPurity :: Purity
@@ -1071,12 +1072,25 @@ data Method = Method
 
 instance Show Method where
   show method =
-    concat ["<Method ", show (methodExtName method), " ", show (methodCName method), " ",
-            show (methodApplicability method), " ", show (methodPurity method), " ",
-            show (methodParams method), " ", show (methodReturn method), ">"]
+    concat ["<Method ", show (methodExtName method), " ",
+            case methodImpl method of
+              RealMethod name -> show name
+              FnMethod name -> show name, " ",
+            show (methodApplicability method), " ",
+            show (methodPurity method), " ",
+            show (methodParams method), " ",
+            show (methodReturn method), ">"]
 
 instance HasClassyExtName Method where
   getClassyExtNameSuffix = methodExtName
+
+-- | The C++ code to which a 'Method' is bound.
+data MethodImpl =
+  RealMethod (FnName String)
+  -- ^ The 'Method' is bound to an actual class method.
+  | FnMethod (FnName Identifier)
+    -- ^ The 'Method' is bound to a wrapper function.
+  deriving (Eq, Show)
 
 data MethodApplicability = MNormal | MStatic | MConst
                          deriving (Eq, Show)
@@ -1106,7 +1120,24 @@ makeMethod :: IsFnName String name
            -> [Type]  -- ^ Parameter types.
            -> Type  -- ^ Return type.
            -> Method
-makeMethod = Method . toFnName
+makeMethod name = Method $ RealMethod $ toFnName name
+
+-- | Creates a 'Method' that is in fact backed by a C++ non-member function (a
+-- la 'makeFn'), but appears to be a regular method.  This is useful for
+-- wrapping a method on the C++ side when its arguments aren't right for binding
+-- directly.
+--
+-- A @this@ pointer parameter is __not__ automatically added to the parameter
+-- list for non-static methods created with @makeFnMethod@.
+makeFnMethod :: IsFnName Identifier name
+             => name
+             -> String
+             -> MethodApplicability
+             -> Purity
+             -> [Type]
+             -> Type
+             -> Method
+makeFnMethod cName foreignName = Method (FnMethod $ toFnName cName) (toExtName foreignName)
 
 -- | This function is internal.
 --
