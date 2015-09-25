@@ -203,7 +203,13 @@ classConversionTests =
 primitiveTypeSizeTests :: Test
 primitiveTypeSizeTests =
   "primitive type sizes" ~: TestList
-  [ "TBool" ~: fromIntegral sizeOfBool @?= sizeOf (undefined :: Bool)
+  [ -- TBool has special conversions, since the size of Haskell's Bool can be
+    -- more than one byte.  We also test the special conversion logic here.
+    "TBool" ~: fromIntegral sizeOfBool @?= 1
+  , "TBool true->true conversion" ~: isTrue True >>= (@?= True)
+  , "TBool false->false conversion" ~: isTrue False >>= (@?= False)
+  , "TBool true->false conversion" ~: isFalse True >>= (@?= False)
+  , "TBool false->true conversion" ~: isFalse False >>= (@?= True)
   , "TChar" ~: fromIntegral sizeOfChar @?= sizeOf (undefined :: CChar)
   , "TShort" ~: fromIntegral sizeOfShort @?= sizeOf (undefined :: CShort)
   , "TInt" ~: fromIntegral sizeOfInt @?= sizeOf (undefined :: CInt)

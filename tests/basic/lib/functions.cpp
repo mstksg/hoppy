@@ -1,6 +1,7 @@
 #include "functions.hpp"
 
 #include <cstddef>
+#include "constants.hpp"
 
 int piapprox() {
     return 4;
@@ -112,6 +113,16 @@ int makeBoxByPtrConstCallbackDriver(MakeBoxByPtrConstCallback cb, int value) {
     int result = box->get();
     delete box;
     return result;
+}
+
+bool isTrue(bool x) {
+    // Use external linkage to prevent this from being reduced to the identity
+    // function.
+    return x ? constantlyTrue : constantlyFalse;
+}
+
+bool isFalse(bool x) {
+    return x ? constantlyFalse : constantlyTrue;
 }
 
 size_t sizeOfBool() {

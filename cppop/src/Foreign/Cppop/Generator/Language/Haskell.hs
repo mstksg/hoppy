@@ -378,7 +378,9 @@ sayArgProcessing :: CallDirection -> Type -> String -> String -> Generator ()
 sayArgProcessing dir t fromVar toVar = case t of
   TVar _ -> abort $ freeVarErrorMsg "sayArgProcessing" t
   TVoid -> abort "sayArgProcessing: TVoid is not a valid argument type."
-  TBool -> noConversion
+  TBool -> case dir of
+    ToCpp -> saysLn ["let ", toVar, " = if ", fromVar, " then 1 else 0 in"]
+    FromCpp -> saysLn ["let ", toVar, " = ", fromVar, " /= 0 in"]
   TChar -> noConversion
   TUChar -> noConversion
   TShort -> noConversion
@@ -448,7 +450,12 @@ sayCallAndProcessReturn :: CallDirection -> Type -> [String] -> Generator ()
 sayCallAndProcessReturn dir t callWords = case t of
   TVar _ -> abort $ freeVarErrorMsg "sayCallAndProcessReturn" t
   TVoid -> sayCall
-  TBool -> sayCall
+  TBool -> do
+    case dir of
+      ToCpp -> do addImports $ mconcat [hsImport1 "Prelude" "(/=)", hsImportForPrelude]
+                  sayLn "CppopP.fmap (/= 0)"
+      FromCpp -> sayLn "(\\x -> if x then 1 else 0)"
+    sayCall
   TChar -> sayCall
   TUChar -> sayCall
   TShort -> sayCall

@@ -48,6 +48,8 @@ int makeBoxByPtrCallbackDriver(MakeBoxByPtrCallback, int);
 int makeBoxByPtrConstCallbackDriver(MakeBoxByPtrConstCallback, int);
 
 // Primitive type sizeof checks.
+bool isTrue(bool x);
+bool isFalse(bool x);
 size_t sizeOfBool();
 size_t sizeOfChar();
 size_t sizeOfShort();

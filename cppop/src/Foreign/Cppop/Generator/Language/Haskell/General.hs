@@ -380,7 +380,10 @@ cppTypeToHsTypeAndUse' :: HsTypeSide -> Type -> ErrorT String Generator HsType
 cppTypeToHsTypeAndUse' side t = case t of
   TVar _ -> throwError $ freeVarErrorMsg "cppTypeToHsTypeAndUse'" t
   TVoid -> return $ HsTyCon $ Special HsUnitCon
-  TBool -> doImports hsImportForPrelude $> HsTyCon (UnQual $ HsIdent "CppopP.Bool")
+  -- C++ has sizeof(bool) == 1, whereas Haskell can > 1, so we have to convert.
+  TBool -> case side of
+    HsCSide -> doImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "CppopFC.CChar")
+    HsHsSide -> doImports hsImportForPrelude $> HsTyCon (UnQual $ HsIdent "CppopP.Bool")
   TChar -> doImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "CppopFC.CChar")
   TUChar -> doImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "CppopFC.CUChar")
   TShort -> doImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "CppopFC.CShort")

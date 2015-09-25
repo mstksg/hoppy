@@ -76,6 +76,8 @@ testModule =
   , ExportFn f_makeBoxByRefConstCallbackDriver
   , ExportFn f_makeBoxByPtrCallbackDriver
   , ExportFn f_makeBoxByPtrConstCallbackDriver
+  , ExportFn f_isTrue
+  , ExportFn f_isFalse
   , ExportFn f_sizeOfBool
   , ExportFn f_sizeOfChar
   , ExportFn f_sizeOfShort
@@ -327,6 +329,16 @@ f_makeBoxByPtrConstCallbackDriver =
   [TCallback cb_MakeBoxByPtrConstCallback, TInt] TInt
 
 -- Primitive type sizeof checks.
+
+f_isTrue :: Function
+f_isTrue =
+  addReqIncludes [includeLocal "functions.hpp"] $
+  makeFn (ident "isTrue") Nothing Nonpure [TBool] TBool
+
+f_isFalse :: Function
+f_isFalse =
+  addReqIncludes [includeLocal "functions.hpp"] $
+  makeFn (ident "isFalse") Nothing Nonpure [TBool] TBool
 
 f_sizeOfBool :: Function
 f_sizeOfBool =
