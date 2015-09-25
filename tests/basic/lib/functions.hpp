@@ -47,4 +47,17 @@ int makeBoxByRefConstCallbackDriver(MakeBoxByRefConstCallback, int);
 int makeBoxByPtrCallbackDriver(MakeBoxByPtrCallback, int);
 int makeBoxByPtrConstCallbackDriver(MakeBoxByPtrConstCallback, int);
 
+// Primitive type sizeof checks.
+size_t sizeOfBool();
+size_t sizeOfChar();
+size_t sizeOfShort();
+size_t sizeOfInt();
+size_t sizeOfLong();
+size_t sizeOfLLong();
+size_t sizeOfFloat();
+size_t sizeOfDouble();
+size_t sizeOfPtrdiff();
+size_t sizeOfSize();
+size_t sizeOfSSize();
+
 #endif

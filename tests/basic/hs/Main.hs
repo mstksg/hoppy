@@ -3,7 +3,17 @@
 module Main where
 
 import Control.Monad ((>=>), forM_, when)
-import Foreign.C (CInt)
+import Foreign.C (
+  CChar,
+  CDouble,
+  CFloat,
+  CInt,
+  CLLong,
+  CLong,
+  CPtrdiff,
+  CShort,
+  CSize,
+  )
 import Foreign.Cppop.Runtime.Support (
   decode,
   decodeAndDelete,
@@ -15,6 +25,9 @@ import Foreign.Cppop.Runtime.Support (
   )
 import Foreign.Cppop.Test.Basic
 import Foreign.Cppop.Test.Basic.HsBox
+import Foreign.Storable (sizeOf)
+import System.Exit (exitFailure)
+import System.Posix.Types (CSsize)
 import Test.HUnit (
   Assertion,
   Test (TestCase, TestList),
@@ -24,7 +37,6 @@ import Test.HUnit (
   failures,
   runTestTT,
   )
-import System.Exit (exitFailure)
 
 main :: IO ()
 main = do
@@ -42,6 +54,7 @@ tests =
   , conversionTests
   , tObjToHeapTests
   , classConversionTests
+  , primitiveTypeSizeTests
   ]
 
 functionTests :: Test
@@ -185,4 +198,20 @@ classConversionTests =
     , "by constant pointer" ~:
       makeBoxByPtrConstCallbackDriver (fmap toIntBoxConst . intBox_newWithValue) 5 >>= (@?= 5)
     ]
+  ]
+
+primitiveTypeSizeTests :: Test
+primitiveTypeSizeTests =
+  "primitive type sizes" ~: TestList
+  [ "TBool" ~: fromIntegral sizeOfBool @?= sizeOf (undefined :: Bool)
+  , "TChar" ~: fromIntegral sizeOfChar @?= sizeOf (undefined :: CChar)
+  , "TShort" ~: fromIntegral sizeOfShort @?= sizeOf (undefined :: CShort)
+  , "TInt" ~: fromIntegral sizeOfInt @?= sizeOf (undefined :: CInt)
+  , "TLong" ~: fromIntegral sizeOfLong @?= sizeOf (undefined :: CLong)
+  , "TLLong" ~: fromIntegral sizeOfLLong @?= sizeOf (undefined :: CLLong)
+  , "TFloat" ~: fromIntegral sizeOfFloat @?= sizeOf (undefined :: CFloat)
+  , "TDouble" ~: fromIntegral sizeOfDouble @?= sizeOf (undefined :: CDouble)
+  , "TPtrdiff" ~: fromIntegral sizeOfPtrdiff @?= sizeOf (undefined :: CPtrdiff)
+  , "TSize" ~: fromIntegral sizeOfSize @?= sizeOf (undefined :: CSize)
+  , "TSSize" ~: fromIntegral sizeOfSSize @?= sizeOf (undefined :: CSsize)
   ]

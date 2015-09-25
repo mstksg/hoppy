@@ -76,6 +76,17 @@ testModule =
   , ExportFn f_makeBoxByRefConstCallbackDriver
   , ExportFn f_makeBoxByPtrCallbackDriver
   , ExportFn f_makeBoxByPtrConstCallbackDriver
+  , ExportFn f_sizeOfBool
+  , ExportFn f_sizeOfChar
+  , ExportFn f_sizeOfShort
+  , ExportFn f_sizeOfInt
+  , ExportFn f_sizeOfLong
+  , ExportFn f_sizeOfLLong
+  , ExportFn f_sizeOfFloat
+  , ExportFn f_sizeOfDouble
+  , ExportFn f_sizeOfPtrdiff
+  , ExportFn f_sizeOfSize
+  , ExportFn f_sizeOfSSize
   ]
 
 c_IntBox :: Class
@@ -314,3 +325,60 @@ f_makeBoxByPtrConstCallbackDriver =
   addReqIncludes [includeLocal "functions.hpp"] $
   makeFn (ident "makeBoxByPtrConstCallbackDriver") Nothing Nonpure
   [TCallback cb_MakeBoxByPtrConstCallback, TInt] TInt
+
+-- Primitive type sizeof checks.
+
+f_sizeOfBool :: Function
+f_sizeOfBool =
+  addReqIncludes [includeLocal "functions.hpp"] $
+  makeFn (ident "sizeOfBool") Nothing Pure [] TSize
+
+f_sizeOfChar :: Function
+f_sizeOfChar =
+  addReqIncludes [includeLocal "functions.hpp"] $
+  makeFn (ident "sizeOfChar") Nothing Pure [] TSize
+
+f_sizeOfShort :: Function
+f_sizeOfShort =
+  addReqIncludes [includeLocal "functions.hpp"] $
+  makeFn (ident "sizeOfShort") Nothing Pure [] TSize
+
+f_sizeOfInt :: Function
+f_sizeOfInt =
+  addReqIncludes [includeLocal "functions.hpp"] $
+  makeFn (ident "sizeOfInt") Nothing Pure [] TSize
+
+f_sizeOfLong :: Function
+f_sizeOfLong =
+  addReqIncludes [includeLocal "functions.hpp"] $
+  makeFn (ident "sizeOfLong") Nothing Pure [] TSize
+
+f_sizeOfLLong :: Function
+f_sizeOfLLong =
+  addReqIncludes [includeLocal "functions.hpp"] $
+  makeFn (ident "sizeOfLLong") Nothing Pure [] TSize
+
+f_sizeOfFloat :: Function
+f_sizeOfFloat =
+  addReqIncludes [includeLocal "functions.hpp"] $
+  makeFn (ident "sizeOfFloat") Nothing Pure [] TSize
+
+f_sizeOfDouble :: Function
+f_sizeOfDouble =
+  addReqIncludes [includeLocal "functions.hpp"] $
+  makeFn (ident "sizeOfDouble") Nothing Pure [] TSize
+
+f_sizeOfPtrdiff :: Function
+f_sizeOfPtrdiff =
+  addReqIncludes [includeLocal "functions.hpp"] $
+  makeFn (ident "sizeOfPtrdiff") Nothing Pure [] TSize
+
+f_sizeOfSize :: Function
+f_sizeOfSize =
+  addReqIncludes [includeLocal "functions.hpp"] $
+  makeFn (ident "sizeOfSize") Nothing Pure [] TSize
+
+f_sizeOfSSize :: Function
+f_sizeOfSSize =
+  addReqIncludes [includeLocal "functions.hpp"] $
+  makeFn (ident "sizeOfSSize") Nothing Pure [] TSize

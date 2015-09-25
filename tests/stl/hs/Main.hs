@@ -14,6 +14,7 @@ import Foreign.Cppop.Runtime.Support (
   withScopedPtr,
   )
 import Foreign.Cppop.Test.Stl
+import System.Exit (exitFailure)
 import Test.HUnit (
   Assertion,
   Test (TestCase, TestList),
@@ -23,7 +24,6 @@ import Test.HUnit (
   failures,
   runTestTT,
   )
-import System.Exit (exitFailure)
 
 main :: IO ()
 main = do

@@ -1,5 +1,7 @@
 #include "functions.hpp"
 
+#include <cstddef>
+
 int piapprox() {
     return 4;
 }
@@ -110,4 +112,48 @@ int makeBoxByPtrConstCallbackDriver(MakeBoxByPtrConstCallback cb, int value) {
     int result = box->get();
     delete box;
     return result;
+}
+
+size_t sizeOfBool() {
+    return sizeof(bool);
+}
+
+size_t sizeOfChar() {
+    return sizeof(char);
+}
+
+size_t sizeOfShort() {
+    return sizeof(short);
+}
+
+size_t sizeOfInt() {
+    return sizeof(int);
+}
+
+size_t sizeOfLong(){
+    return sizeof(long);
+}
+
+size_t sizeOfLLong(){
+    return sizeof(long long);
+}
+
+size_t sizeOfFloat(){
+    return sizeof(float);
+}
+
+size_t sizeOfDouble(){
+    return sizeof(double);
+}
+
+size_t sizeOfPtrdiff(){
+    return sizeof(ptrdiff_t);
+}
+
+size_t sizeOfSize(){
+    return sizeof(size_t);
+}
+
+size_t sizeOfSSize(){
+    return sizeof(ssize_t);
 }
