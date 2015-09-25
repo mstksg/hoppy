@@ -219,6 +219,11 @@ sayExport sayBody export = case export of
       Just $ say "delete self;\n"
     -- Export each of the class's methods.
     forM_ (classMethods cls) $ \method -> do
+      let nonMemberCall =
+            methodStatic method == Static ||
+            case methodImpl method of
+              RealMethod {} -> False
+              FnMethod {} -> True
       let static = methodStatic method == Static
       sayExportFn (getClassyExtName cls method)
                   (case methodImpl method of
@@ -232,7 +237,7 @@ sayExport sayBody export = case export of
                      FnMethod name -> case name of
                        FnName cName -> Right $ sayIdentifier cName
                        FnOp op -> Left op)
-                  (if static then Nothing else justClsPtr)
+                  (if nonMemberCall then Nothing else justClsPtr)
                   (methodParams method)
                   (methodReturn method)
                   sayBody

@@ -6,7 +6,6 @@ import Foreign.Cppop.Generator.Language.Haskell.General (addImports, sayLn)
 import Foreign.Cppop.Generator.Spec
 import Foreign.Cppop.Generator.Std (mod_std)
 import Foreign.Cppop.Generator.Std.String (c_string)
-import Foreign.Cppop.Generator.Std.Vector (tc_vector)
 import Language.Haskell.Syntax (
   HsName (HsIdent),
   HsQName (UnQual),

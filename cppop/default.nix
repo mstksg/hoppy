@@ -19,4 +19,8 @@ mkDerivation ({
     if forceParallelBuilding
     then "configureFlags+=\" --ghc-option=-j$NIX_BUILD_CORES\""
     else null;
+
+  postInstall = ''
+    cp -r include $out
+  '';
 } // lib.filterAttrs (k: v: v != null) { inherit enableSplitObjs; })

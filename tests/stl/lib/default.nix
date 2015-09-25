@@ -1,7 +1,7 @@
-{ stdenv, cppop, cppop-tests-basic-generator }:
+{ stdenv, cppop, cppop-tests-stl-generator }:
 
-let gen = cppop-tests-basic-generator;
-    name = "cppop-tests-basic";
+let gen = cppop-tests-stl-generator;
+    name = "cppop-tests-stl";
     libName = "lib${name}.so";
 in
 

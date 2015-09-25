@@ -7,7 +7,7 @@ module Foreign.Cppop.Generator.Spec.Template (
   ClassTemplate, ClassTemplateSuper (..),
   ClassTemplateConversionsGen, ClassTemplateConversionsEnv, askTypeArgs, askMethodPrefix,
   makeClassTemplate, instantiateClassTemplate, instantiateClassTemplate',
-  addClassTemplateConversions,
+  addClassTemplateFeatures, addClassTemplateConversions,
   classTemplateIdentifier, classTemplateExtNamePrefix, classTemplateVars, classTemplateSuperclasses,
   classTemplateCtors, classTemplateMethods, classTemplateUseReqs,
   -- ** Internal to Cppop
@@ -21,6 +21,10 @@ import Data.Function (on)
 import Foreign.Cppop.Common
 import Foreign.Cppop.Common.Consume
 import Foreign.Cppop.Generator.Spec
+import Foreign.Cppop.Generator.Spec.ClassFeature (
+  ClassFeature,
+  classAddFeatures,
+  )
 
 data FnTemplate = FnTemplate
   { fnTemplateIdentifier :: Identifier
@@ -94,6 +98,7 @@ data ClassTemplate = ClassTemplate
   , classTemplateSuperclasses :: [ClassTemplateSuper]
   , classTemplateCtors :: [Ctor]
   , classTemplateMethods :: [Method]
+  , classTemplateFeatures :: [ClassFeature]
   , classTemplateConversions :: Maybe ClassTemplateConversionsGen
   , classTemplateUseReqs :: Reqs
   }
@@ -149,7 +154,11 @@ makeClassTemplate ::
   -> ClassTemplate
 makeClassTemplate ident maybeExtNamePrefix vars supers ctors methods =
   ClassTemplate ident (stringOrIdentifier ident maybeExtNamePrefix)
-                vars supers ctors methods Nothing mempty
+                vars supers ctors methods [] Nothing mempty
+
+addClassTemplateFeatures :: [ClassFeature] -> ClassTemplate -> ClassTemplate
+addClassTemplateFeatures features tmpl =
+  tmpl { classTemplateFeatures = features ++ classTemplateFeatures tmpl }
 
 addClassTemplateConversions :: ClassTemplateConversionsGen -> ClassTemplate -> ClassTemplate
 addClassTemplateConversions convs tmpl = case classTemplateConversions tmpl of
@@ -235,6 +244,8 @@ instantiateClassTemplate tmpl extNameSuffix typeArgs instantiatedSupers typeArgU
      show ident, "."]
 
   let clsExtName = classTemplateExtNamePrefix tmpl ++ extNameSuffix :: String
+      subst :: HasTVars a => a -> a
+      subst = substTVars $ zip vars typeArgs
       result =
         (case classTemplateConversions tmpl of
             Nothing -> id
@@ -242,7 +253,8 @@ instantiateClassTemplate tmpl extNameSuffix typeArgs instantiatedSupers typeArgU
                           runReader convs $ makeClassTemplateConversionsEnv result typeArgs) $
         addClassInstantiationInfo tmpl typeArgs $
         addUseReqs (classTemplateUseReqs tmpl `mappend` typeArgUseReqs) $
-        substTVars (zip vars typeArgs) $
+        classAddFeatures (map subst $ classTemplateFeatures tmpl) $
+        subst $
         makeClass ident
                   (Just $ toExtName clsExtName)
                   concreteSupers

@@ -15,6 +15,7 @@ main = do
   vectorString_pushBack v s
   withCppObj "world!" $ \s' -> vectorString_pushBack v (s' :: StdStringConst)
 
+  -- Walk through the vector using random access.
   size <- vectorString_size v
   putStrLn $ concat ["The vector now has ", show size, " elements.  They are:"]
   forM_ [0..size-1] $

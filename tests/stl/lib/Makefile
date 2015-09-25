@@ -3,8 +3,8 @@ CXXFLAGS += -std=c++11 -fPIC -I../../../cppop/include
 
 .PHONY: clean
 
-libcppop-tests-basic.so: basic.o functions.o ptrctr.o
+libcppop-tests-stl.so: std.o stl.o
 	$(CXX) -shared $^ -o $@
 
 clean:
-	-rm basic.cpp basic.hpp *.o *.so
+	-rm stl.cpp stl.hpp *.o *.so

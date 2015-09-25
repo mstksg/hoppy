@@ -4,5 +4,6 @@ pkgs.stdenv.mkDerivation {
   builder = ./builder.sh;
   buildInputs = let h = pkgs.haskellPackages; in [
     h.cppop-tests-basic
+    h.cppop-tests-stl
   ];
 }
