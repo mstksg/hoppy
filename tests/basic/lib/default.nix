@@ -18,6 +18,9 @@ stdenv.mkDerivation {
   '';
 
   installPhase = ''
+    mkdir -p $out/src
+    install -m 444 *.cpp *.hpp $out/src
+
     mkdir -p $out/lib
     install ${libName} $out/lib/${libName}.0.1.0
     cd $out/lib
