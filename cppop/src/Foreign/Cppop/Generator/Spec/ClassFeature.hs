@@ -100,6 +100,7 @@ trivialIteratorContents mutable cls valueType =
   mconcat
   [ assignableContents cls
   , copyableContents cls
+  , equatableContents cls
   , ([ mkCtor "new" []
      ],
      catMaybes
