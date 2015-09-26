@@ -334,7 +334,7 @@ sayArgRead dir (n, cppType, maybeCType) = case cppType of
   TRef t@(TConst (TObj _)) -> convertObj t
   TObj _ -> convertObj $ TConst cppType
   TObjToHeap cls -> case dir of
-    DoDecode -> error $ tObjToHeapWrongDirectionErrorMsg "sayArgRead" cls
+    DoDecode -> error $ tObjToHeapWrongDirectionErrorMsg (Just "sayArgRead") cls
     DoEncode -> do
       sayIdentifier $ classIdentifier cls
       says ["* ", toArgName n, " = new "]
@@ -492,7 +492,7 @@ typeToCType t = case t of
 
 typeUseReqs :: Type -> Generator Reqs
 typeUseReqs t = case t of
-  TVar _ -> abort $ freeVarErrorMsg "typeUseReqs" t
+  TVar _ -> abort $ freeVarErrorMsg (Just "typeUseReqs") t
   TVoid -> return mempty
   TBool -> return mempty
   TChar -> return mempty

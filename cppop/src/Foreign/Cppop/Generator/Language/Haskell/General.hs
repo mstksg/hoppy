@@ -12,7 +12,8 @@ module Foreign.Cppop.Generator.Language.Haskell.General (
   evalGenerator,
   execGenerator,
   renderPartial,
-  abort,
+  withErrorContext,
+  inFunction,
   -- * Exports
   addExport,
   addExports,
@@ -47,12 +48,11 @@ module Foreign.Cppop.Generator.Language.Haskell.General (
 import Control.Arrow (first)
 import Control.Monad (when)
 #if MIN_VERSION_mtl(2,2,1)
-import Control.Monad.Except (ExceptT, runExceptT, throwError)
+import Control.Monad.Except (Except, catchError, runExcept, throwError)
 #else
-import Control.Monad.Error (ErrorT, runErrorT, throwError)
+import Control.Monad.Error (ErrorT, catchError, runError, runErrorT, throwError)
 #endif
 import Control.Monad.Reader (ReaderT, ask, runReaderT)
-import Control.Monad.Trans (lift)
 import Control.Monad.Writer (WriterT, censor, runWriterT, tell)
 import Data.Char (toLower, toUpper)
 import Data.Foldable (forM_)
@@ -175,7 +175,25 @@ renderImports = map renderModuleImport . M.assocs . getHsImportSet
         maxLineLength :: Int
         maxLineLength = 100
 
+-- | A generator monad for Haskell code.
+--
+-- Errors thrown in this monad are of the form:
+--
+-- > "$problem; $context; $moreContext; $evenMoreContext."
+--
+-- For example:
+--
+-- > "Class Foo is not convertible (use classModifyConversions); generating function bar; in module baz."
+--
+-- The main error message given to 'throwError' should be capitalized and should
+-- not end with punctuation.  If there is a suggestion, include it in
+-- parentheses at the end of the message.  'withErrorContext' and 'inFunction'
+-- add context information, and should be given clauses, without punctuation.
+#if MIN_VERSION_mtl(2,2,1)
+type Generator = ReaderT Env (WriterT Output (Except String))
+#else
 type Generator = ReaderT Env (WriterT Output (Either String))
+#endif
 
 data Env = Env
   { envInterface :: Interface
@@ -218,7 +236,14 @@ instance Monoid Output where
 
 runGenerator :: Interface -> String -> Generator a -> Either String (Partial, a)
 runGenerator iface modName generator =
-  fmap (first (Partial modName) . swap) $ runWriterT $ runReaderT generator $ Env iface modName
+  fmap (first (Partial modName) . swap) $
+#if MIN_VERSION_mtl(2,2,1)
+  runExcept $
+#else
+  runError $
+#endif
+  flip catchError (\msg -> throwError $ msg ++ ".") $
+  runWriterT $ runReaderT generator $ Env iface modName
 
 evalGenerator :: Interface -> String -> Generator a -> Either String a
 evalGenerator iface modName =
@@ -252,9 +277,15 @@ renderPartial partial =
         ]
   in body
 
--- | Halts generation and returns the given error message.
-abort :: String -> Generator a
-abort = lift . lift . Left
+-- | Adds context information to the end of any error message thrown by the
+-- action.  See 'Generator'.
+withErrorContext :: String -> Generator a -> Generator a
+withErrorContext msg' action = catchError action $ \msg -> throwError $ concat [msg, "; ", msg']
+
+-- | Adds the given function name to any error message thrown by the action, for
+-- context.
+inFunction :: String -> Generator a -> Generator a
+inFunction fnName = withErrorContext $ "in " ++ fnName
 
 addExport :: HsExport -> Generator ()
 addExport = addExports . (:[])
@@ -266,7 +297,7 @@ addImports :: HsImportSet -> Generator ()
 addImports imports = tell mempty { outputImports = imports }
 
 importHsModuleForExtName :: ExtName -> Generator ()
-importHsModuleForExtName extName = do
+importHsModuleForExtName extName = inFunction "importHsModuleForExtName" $ do
   iface <- askInterface
   case M.lookup extName $ interfaceNamesToModules iface of
     Just ownerModule -> do
@@ -275,16 +306,15 @@ importHsModuleForExtName extName = do
       when (currentModuleName /= ownerModuleName) $
         addImports $ hsWholeModuleImport ownerModuleName
     Nothing ->
-      abort $ concat
-      ["importHsModuleForExtName: Couldn't find module for ", show extName,
-       ", maybe you forgot to include it in an exports list?"]
+      throwError $ concat
+      ["Couldn't find module for ", show extName,
+       " (maybe you forgot to include it in an exports list?)"]
 
 sayLn :: String -> Generator ()
 sayLn x =
   if '\n' `elem` x
-  then abort $ concat
-       ["sayLn: Refusing to speak '\n'.  Use (mapM_ sayLn . lines) instead.  Received ",
-        show x, "."]
+  then inFunction "sayLn" $ throwError $ concat
+       ["Refusing to speak '\n', received ", show x, " (use (mapM_ sayLn . lines) instead)"]
   else tell $ mempty { outputBody = [x] }
 
 saysLn :: [String] -> Generator ()
@@ -361,92 +391,82 @@ toArgName :: Int -> String
 toArgName = ("arg'" ++) . show
 
 data HsTypeSide = HsCSide | HsHsSide
+                deriving (Eq, Show)
 
 -- | Returns the 'HsType' corresponding to a 'Type', and also adds imports to
 -- the 'Generator' as necessary for Haskell types that the 'Type' references.
--- On failure, a 'Left' is returned; 'abort' is not called.
-cppTypeToHsTypeAndUse :: HsTypeSide -> Type -> Generator (Either String HsType)
-#if MIN_VERSION_mtl(2,2,1)
-cppTypeToHsTypeAndUse side t = runExceptT $ cppTypeToHsTypeAndUse' side t
-#else
-cppTypeToHsTypeAndUse side t = runErrorT $ cppTypeToHsTypeAndUse' side t
-#endif
-
-#if MIN_VERSION_mtl(2,2,1)
-cppTypeToHsTypeAndUse' :: HsTypeSide -> Type -> ExceptT String Generator HsType
-#else
-cppTypeToHsTypeAndUse' :: HsTypeSide -> Type -> ErrorT String Generator HsType
-#endif
-cppTypeToHsTypeAndUse' side t = case t of
-  TVar _ -> throwError $ freeVarErrorMsg "cppTypeToHsTypeAndUse'" t
-  TVoid -> return $ HsTyCon $ Special HsUnitCon
-  -- C++ has sizeof(bool) == 1, whereas Haskell can > 1, so we have to convert.
-  TBool -> case side of
-    HsCSide -> doImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "CppopFC.CChar")
-    HsHsSide -> doImports hsImportForPrelude $> HsTyCon (UnQual $ HsIdent "CppopP.Bool")
-  TChar -> doImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "CppopFC.CChar")
-  TUChar -> doImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "CppopFC.CUChar")
-  TShort -> doImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "CppopFC.CShort")
-  TUShort -> doImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "CppopFC.CUShort")
-  TInt -> doImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "CppopFC.CInt")
-  TUInt -> doImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "CppopFC.CUInt")
-  TLong -> doImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "CppopFC.CLong")
-  TULong -> doImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "CppopFC.CULong")
-  TLLong -> doImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "CppopFC.CLLong")
-  TULLong -> doImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "CppopFC.CULLong")
-  TFloat -> doImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "CppopFC.CFloat")
-  TDouble -> doImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "CppopFC.CDouble")
-  TPtrdiff -> doImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "CppopFC.CPtrdiff")
-  TSize -> doImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "CppopFC.CSize")
-  TSSize -> doImports hsImportForSystemPosixTypes $> HsTyCon (UnQual $ HsIdent "CppopSPT.CSsize")
-  TEnum e -> HsTyCon . UnQual . HsIdent <$> case side of
-    HsCSide -> doImports hsImportForForeignC $> "CppopFC.CInt"
-    HsHsSide -> doImportForExtName (enumExtName e) $> toHsEnumTypeName e
-  TPtr (TObj cls) ->
-    doImportForExtName (classExtName cls) $>
-    HsTyCon (UnQual $ HsIdent $ toHsTypeName Nonconst $ classExtName cls)
-  TPtr (TConst (TObj cls)) ->
-    doImportForExtName (classExtName cls) $>
-    HsTyCon (UnQual $ HsIdent $ toHsTypeName Const $ classExtName cls)
-  TPtr (TFn paramTypes retType) -> do
-    paramHsTypes <- mapM (cppTypeToHsTypeAndUse' side) paramTypes
-    retHsType <- cppTypeToHsTypeAndUse' side retType
-    sideFn <- case side of
-      HsCSide -> do doImports hsImportForForeign
-                    return $ HsTyApp $ HsTyCon $ UnQual $ HsIdent "CppopF.FunPtr"
-      HsHsSide -> return id
-    doImports hsImportForPrelude
-    return $ sideFn $
-      foldr HsTyFun (HsTyApp (HsTyCon $ UnQual $ HsIdent "CppopP.IO") retHsType) paramHsTypes
-  TPtr t' -> do
-    doImports hsImportForForeign
-    HsTyApp (HsTyCon $ UnQual $ HsIdent "CppopF.Ptr") <$> cppTypeToHsTypeAndUse' side t'
-  TRef t' -> cppTypeToHsTypeAndUse' side $ TPtr t'
-  TFn paramTypes retType -> do
-    paramHsTypes <- mapM (cppTypeToHsTypeAndUse' side) paramTypes
-    retHsType <- cppTypeToHsTypeAndUse' side retType
-    doImports hsImportForPrelude
-    return $
-      foldr HsTyFun (HsTyApp (HsTyCon $ UnQual $ HsIdent "CppopP.IO") retHsType) paramHsTypes
-  TCallback cb -> do
-    hsType <- cppTypeToHsTypeAndUse' side $ callbackToTFn cb
-    case side of
-      HsHsSide -> return hsType
-      HsCSide -> do
-        doImports hsImportForSupport
-        return $ HsTyApp (HsTyCon $ UnQual $ HsIdent "CppopFCRS.CCallback") hsType
-  TObj cls -> case side of
-    HsCSide -> cppTypeToHsTypeAndUse' side $ TPtr $ TConst t
-    HsHsSide -> case classHaskellConversion (classConversions cls) of
-      Nothing ->
-        throwError $ concat
-        ["cppTypeToHsTypeAndUse': Expected a Haskell type for ", show cls,
-         ", but there isn't one."]
-      Just hsConv -> lift $ classHaskellConversionType hsConv
-  TObjToHeap cls -> cppTypeToHsTypeAndUse' side $ TPtr $ TObj cls
-  TConst t' -> cppTypeToHsTypeAndUse' side t'
-  where doImports = lift . addImports
-        doImportForExtName = lift . importHsModuleForExtName
+-- On failure, an error is thrown.
+cppTypeToHsTypeAndUse :: HsTypeSide -> Type -> Generator HsType
+cppTypeToHsTypeAndUse side t =
+  withErrorContext (concat ["converting ", show t, " to ", show side, " type"]) $
+  case t of
+    TVar _ -> throwError $ freeVarErrorMsg Nothing t
+    TVoid -> return $ HsTyCon $ Special HsUnitCon
+    -- C++ has sizeof(bool) == 1, whereas Haskell can > 1, so we have to convert.
+    TBool -> case side of
+      HsCSide -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "CppopFC.CChar")
+      HsHsSide -> addImports hsImportForPrelude $> HsTyCon (UnQual $ HsIdent "CppopP.Bool")
+    TChar -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "CppopFC.CChar")
+    TUChar -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "CppopFC.CUChar")
+    TShort -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "CppopFC.CShort")
+    TUShort -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "CppopFC.CUShort")
+    TInt -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "CppopFC.CInt")
+    TUInt -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "CppopFC.CUInt")
+    TLong -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "CppopFC.CLong")
+    TULong -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "CppopFC.CULong")
+    TLLong -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "CppopFC.CLLong")
+    TULLong -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "CppopFC.CULLong")
+    TFloat -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "CppopFC.CFloat")
+    TDouble -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "CppopFC.CDouble")
+    TPtrdiff -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "CppopFC.CPtrdiff")
+    TSize -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "CppopFC.CSize")
+    TSSize -> addImports hsImportForSystemPosixTypes $> HsTyCon (UnQual $ HsIdent "CppopSPT.CSsize")
+    TEnum e -> HsTyCon . UnQual . HsIdent <$> case side of
+      HsCSide -> addImports hsImportForForeignC $> "CppopFC.CInt"
+      HsHsSide -> importHsModuleForExtName (enumExtName e) $> toHsEnumTypeName e
+    TPtr (TObj cls) ->
+      importHsModuleForExtName (classExtName cls) $>
+      HsTyCon (UnQual $ HsIdent $ toHsTypeName Nonconst $ classExtName cls)
+    TPtr (TConst (TObj cls)) ->
+      importHsModuleForExtName (classExtName cls) $>
+      HsTyCon (UnQual $ HsIdent $ toHsTypeName Const $ classExtName cls)
+    TPtr (TFn paramTypes retType) -> do
+      paramHsTypes <- mapM (cppTypeToHsTypeAndUse side) paramTypes
+      retHsType <- cppTypeToHsTypeAndUse side retType
+      sideFn <- case side of
+        HsCSide -> do addImports hsImportForForeign
+                      return $ HsTyApp $ HsTyCon $ UnQual $ HsIdent "CppopF.FunPtr"
+        HsHsSide -> return id
+      addImports hsImportForPrelude
+      return $ sideFn $
+        foldr HsTyFun (HsTyApp (HsTyCon $ UnQual $ HsIdent "CppopP.IO") retHsType) paramHsTypes
+    TPtr t' -> do
+      addImports hsImportForForeign
+      HsTyApp (HsTyCon $ UnQual $ HsIdent "CppopF.Ptr") <$> cppTypeToHsTypeAndUse side t'
+    TRef t' -> cppTypeToHsTypeAndUse side $ TPtr t'
+    TFn paramTypes retType -> do
+      paramHsTypes <- mapM (cppTypeToHsTypeAndUse side) paramTypes
+      retHsType <- cppTypeToHsTypeAndUse side retType
+      addImports hsImportForPrelude
+      return $
+        foldr HsTyFun (HsTyApp (HsTyCon $ UnQual $ HsIdent "CppopP.IO") retHsType) paramHsTypes
+    TCallback cb -> do
+      hsType <- cppTypeToHsTypeAndUse side $ callbackToTFn cb
+      case side of
+        HsHsSide -> return hsType
+        HsCSide -> do
+          addImports hsImportForSupport
+          return $ HsTyApp (HsTyCon $ UnQual $ HsIdent "CppopFCRS.CCallback") hsType
+    TObj cls -> case side of
+      HsCSide -> cppTypeToHsTypeAndUse side $ TPtr $ TConst t
+      HsHsSide ->
+        case classHaskellConversionType <$> classHaskellConversion (classConversions cls) of
+          Nothing ->
+            throwError $ concat
+            ["Expected a Haskell type for ", show cls, " but there isn't one"]
+          Just t' -> t'
+    TObjToHeap cls -> cppTypeToHsTypeAndUse side $ TPtr $ TObj cls
+    TConst t' -> cppTypeToHsTypeAndUse side t'
 
 addImportForClass :: Class -> Generator ()
 addImportForClass = importHsModuleForExtName . classExtName

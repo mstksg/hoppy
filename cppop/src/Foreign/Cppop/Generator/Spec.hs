@@ -1380,12 +1380,16 @@ hsImportForUnsafeIO = hsQualifiedImport "System.IO.Unsafe" "CppopSIU"
 
 -- | Returns an error message that indicates that @caller@ received a 'TVar'
 -- where one is not accepted.
-freeVarErrorMsg :: String -> Type -> String
-freeVarErrorMsg caller t = concat $ case t of
-  TVar v -> [caller, ": Unexpected free template type variable ", show v, "."]
-  _ -> ["freeVarErrorMsg: Expected a TVar from caller ", show caller,
+freeVarErrorMsg :: Maybe String -> Type -> String
+freeVarErrorMsg maybeCaller t = concat $ case t of
+  TVar v -> [maybe "" (++ ": ") maybeCaller,
+             "Unexpected free template type variable ", show v,
+             maybe "" (const ".") maybeCaller]
+  _ -> ["freeVarErrorMsg: Expected a TVar from caller ", show maybeCaller,
         " but instead received ", show t, "."]
 
-tObjToHeapWrongDirectionErrorMsg :: String -> Class -> String
-tObjToHeapWrongDirectionErrorMsg caller cls =
-  concat [caller, ": (TObjToHeap ", show cls, ") is not allowed to be passed into C++."]
+tObjToHeapWrongDirectionErrorMsg :: Maybe String -> Class -> String
+tObjToHeapWrongDirectionErrorMsg maybeCaller cls =
+  concat [maybe "" (++ ": ") maybeCaller,
+          "(TObjToHeap ", show cls, ") cannot be passed into C++",
+          maybe "" (const ".") maybeCaller]

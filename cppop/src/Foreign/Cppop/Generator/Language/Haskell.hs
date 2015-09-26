@@ -1,3 +1,5 @@
+{-# LANGUAGE CPP #-}
+
 module Foreign.Cppop.Generator.Language.Haskell (
   Generation,
   generate,
@@ -32,6 +34,11 @@ module Foreign.Cppop.Generator.Language.Haskell (
 
 import Control.Arrow ((&&&), second)
 import Control.Monad (forM, when)
+#if MIN_VERSION_mtl(2,2,1)
+import Control.Monad.Except (throwError)
+#else
+import Control.Monad.Error (throwError)
+#endif
 import Control.Monad.Trans (lift)
 import Control.Monad.Writer (execWriterT, tell)
 import Data.Foldable (forM_)
@@ -165,74 +172,66 @@ sayExport mode export = case export of
   ExportCallback cb -> sayExportCallback mode cb
 
 sayExportEnum :: SayExportMode -> CppEnum -> Generator ()
-sayExportEnum mode enum = case mode of
-  -- Nothing to import from the C++ side of an enum.
-  SayExportForeignImports -> return ()
+sayExportEnum mode enum =
+  withErrorContext ("generating enum " ++ show (enumExtName enum)) $
+  case mode of
+    -- Nothing to import from the C++ side of an enum.
+    SayExportForeignImports -> return ()
 
-  SayExportDecls -> do
-    let hsTypeName = toHsEnumTypeName enum
-        values :: [(Int, String)]
-        values = map (second $ toHsEnumCtorName enum) $ enumValueNames enum
-    addImports $ mconcat [hsImports "Prelude" ["($)", "(++)"], hsImportForPrelude]
+    SayExportDecls -> do
+      let hsTypeName = toHsEnumTypeName enum
+          values :: [(Int, String)]
+          values = map (second $ toHsEnumCtorName enum) $ enumValueNames enum
+      addImports $ mconcat [hsImports "Prelude" ["($)", "(++)"], hsImportForPrelude]
 
-    -- Print out the data declaration.
-    ln
-    saysLn ["data ", hsTypeName, " ="]
-    indent $ do
-      forM_ (zip (False:repeat True) values) $ \(cont, (_, hsCtorName)) ->
-        saysLn [if cont then "| " else "", hsCtorName]
-      sayLn "deriving (CppopP.Bounded, CppopP.Eq, CppopP.Ord, CppopP.Show)"
-
-    -- Print out the Enum instance.
-    ln
-    saysLn ["instance CppopP.Enum ", hsTypeName, " where"]
-    indent $ do
-      forM_ values $ \(num, hsCtorName) ->
-        saysLn ["fromEnum ", hsCtorName, " = ", show num]
+      -- Print out the data declaration.
       ln
-      forM_ values $ \(num, hsCtorName) ->
-        saysLn ["toEnum ", show num, " = ", hsCtorName]
-      -- TODO Fix the potential name collision of 'n'.
-      saysLn ["toEnum n = CppopP.error $ ",
-              show (concat ["Unknown ", hsTypeName, " numeric value: "]),
-              " ++ CppopP.show n"]
+      saysLn ["data ", hsTypeName, " ="]
+      indent $ do
+        forM_ (zip (False:repeat True) values) $ \(cont, (_, hsCtorName)) ->
+          saysLn [if cont then "| " else "", hsCtorName]
+        sayLn "deriving (CppopP.Bounded, CppopP.Eq, CppopP.Ord, CppopP.Show)"
 
-  SayExportBoot -> do
-    let hsTypeName = toHsEnumTypeName enum
-    addImports hsImportForPrelude
-    ln
-    saysLn ["data ", hsTypeName]
-    saysLn ["instance CppopP.Bounded ", hsTypeName]
-    saysLn ["instance CppopP.Enum ", hsTypeName]
-    saysLn ["instance CppopP.Eq ", hsTypeName]
-    saysLn ["instance CppopP.Ord ", hsTypeName]
-    saysLn ["instance CppopP.Show ", hsTypeName]
+      -- Print out the Enum instance.
+      ln
+      saysLn ["instance CppopP.Enum ", hsTypeName, " where"]
+      indent $ do
+        forM_ values $ \(num, hsCtorName) ->
+          saysLn ["fromEnum ", hsCtorName, " = ", show num]
+        ln
+        forM_ values $ \(num, hsCtorName) ->
+          saysLn ["toEnum ", show num, " = ", hsCtorName]
+        -- TODO Fix the potential name collision of 'n'.
+        saysLn ["toEnum n = CppopP.error $ ",
+                show (concat ["Unknown ", hsTypeName, " numeric value: "]),
+                " ++ CppopP.show n"]
+
+    SayExportBoot -> do
+      let hsTypeName = toHsEnumTypeName enum
+      addImports hsImportForPrelude
+      ln
+      saysLn ["data ", hsTypeName]
+      saysLn ["instance CppopP.Bounded ", hsTypeName]
+      saysLn ["instance CppopP.Enum ", hsTypeName]
+      saysLn ["instance CppopP.Eq ", hsTypeName]
+      saysLn ["instance CppopP.Ord ", hsTypeName]
+      saysLn ["instance CppopP.Show ", hsTypeName]
 
 sayExportFn :: SayExportMode -> ExtName -> Maybe (Constness, Class) -> Purity -> [Type] -> Type -> Generator ()
 sayExportFn mode name methodInfo purity paramTypes retType =
   let hsFnName = toHsFnName name
       hsFnImportedName = hsFnName ++ "'"
   in case mode of
-    SayExportForeignImports -> do
+    SayExportForeignImports -> withErrorContext ("generating imports for function " ++ show name) $ do
       -- Print a "foreign import" statement.
-      hsCType <-
-        fromEitherM
-        (\e -> abort $ concat
-               ["sayExportFn: Couldn't create Haskell C-side type signature for ",
-                show name, ": ", e]) =<<
-        fnToHsTypeAndUse HsCSide methodInfo purity paramTypes retType
+      hsCType <- fnToHsTypeAndUse HsCSide methodInfo purity paramTypes retType
       saysLn ["foreign import ccall \"", externalNameToCpp name, "\" ", hsFnImportedName, " :: ",
               prettyPrint hsCType]
 
-    SayExportDecls -> do
+    SayExportDecls -> withErrorContext ("generating function " ++ show name) $ do
       -- Print the type signature.
       ln
-      hsHsType <-
-        fromEitherM
-        (\e -> abort $ concat
-               ["Couldn't create Haskell Haskell-side type signature for ",
-                show name, ": ", e]) =<<
-        fnToHsTypeAndUse HsHsSide methodInfo purity paramTypes retType
+      hsHsType <- fnToHsTypeAndUse HsHsSide methodInfo purity paramTypes retType
       saysLn [hsFnName, " :: ", prettyPrint hsHsType]
 
       -- Print the function body.
@@ -290,217 +289,208 @@ sayExportFn mode name methodInfo purity paramTypes retType =
 -- Only the implementation of bindings that take a callback of this type will
 -- make use of this @name@ binding; @name@ is not useful to users of bindings.
 sayExportCallback :: SayExportMode -> Callback -> Generator ()
-sayExportCallback mode cb = do
-  let name = callbackExtName cb
-      paramTypes = callbackParams cb
-      retType = callbackReturn cb
-      fnType = callbackToTFn cb
-      hsFnName = toHsCallbackCtorName cb
-      hsFnName'newCallback = hsFnName ++ "'newCallback"
-      hsFnName'newFunPtr = hsFnName ++ "'newFunPtr"
+sayExportCallback mode cb =
+  withErrorContext ("generating callback " ++ show (callbackExtName cb)) $ do
+    let name = callbackExtName cb
+        paramTypes = callbackParams cb
+        retType = callbackReturn cb
+        fnType = callbackToTFn cb
+        hsFnName = toHsCallbackCtorName cb
+        hsFnName'newCallback = hsFnName ++ "'newCallback"
+        hsFnName'newFunPtr = hsFnName ++ "'newFunPtr"
 
-  hsFnCType <-
-    fromEitherM
-    (\e -> abort $ concat
-           ["sayExportCallback: Couldn't create a function C-side type for ",
-            show cb, ": ", e]) =<<
-    cppTypeToHsTypeAndUse HsCSide fnType
+    hsFnCType <- cppTypeToHsTypeAndUse HsCSide fnType
+    hsFnHsType <- cppTypeToHsTypeAndUse HsHsSide fnType
 
-  hsFnHsType <-
-    fromEitherM
-    (\e -> abort $ concat
-           ["sayExportCallback: Couldn't create a function Haskell-side type for ",
-            show cb, ": ", e]) =<<
-    cppTypeToHsTypeAndUse HsHsSide fnType
-
-  let getWholeFnType = do
-        addImports $ mconcat [hsImportForPrelude, hsImportForSupport]
-        return $
-          HsTyFun hsFnHsType $
-          HsTyApp (HsTyCon $ UnQual $ HsIdent "CppopP.IO") $
-          HsTyApp (HsTyCon $ UnQual $ HsIdent "CppopFCRS.CCallback") hsFnCType
-
-  case mode of
-    SayExportForeignImports -> do
-      addImports $ mconcat [hsImportForForeign, hsImportForPrelude, hsImportForSupport]
-      let hsFunPtrType = HsTyApp (HsTyCon $ UnQual $ HsIdent "CppopF.FunPtr") hsFnCType
-          hsFunPtrImportType =
-            HsTyFun hsFnCType $
-            HsTyApp (HsTyCon $ UnQual $ HsIdent "CppopP.IO") hsFunPtrType
-          hsCallbackCtorImportType =
-            HsTyFun hsFunPtrType $
-            HsTyFun (HsTyApp (HsTyCon $ UnQual $ HsIdent "CppopF.FunPtr") $
-                     HsTyFun (HsTyApp (HsTyCon $ UnQual $ HsIdent "CppopF.FunPtr") $
-                              HsTyApp (HsTyCon $ UnQual $ HsIdent "CppopP.IO") $
-                              HsTyCon $ Special HsUnitCon) $
-                     HsTyApp (HsTyCon $ UnQual $ HsIdent "CppopP.IO") $
-                     HsTyCon $ Special HsUnitCon) $
-            HsTyFun (HsTyCon $ UnQual $ HsIdent "CppopP.Bool") $
+    let getWholeFnType = do
+          addImports $ mconcat [hsImportForPrelude, hsImportForSupport]
+          return $
+            HsTyFun hsFnHsType $
             HsTyApp (HsTyCon $ UnQual $ HsIdent "CppopP.IO") $
             HsTyApp (HsTyCon $ UnQual $ HsIdent "CppopFCRS.CCallback") hsFnCType
 
-      saysLn ["foreign import ccall \"wrapper\" ", hsFnName'newFunPtr, " :: ",
-              prettyPrint hsFunPtrImportType]
-      saysLn ["foreign import ccall \"", externalNameToCpp name, "\" ", hsFnName'newCallback, " :: ",
-              prettyPrint hsCallbackCtorImportType]
+    case mode of
+      SayExportForeignImports -> do
+        addImports $ mconcat [hsImportForForeign, hsImportForPrelude, hsImportForSupport]
+        let hsFunPtrType = HsTyApp (HsTyCon $ UnQual $ HsIdent "CppopF.FunPtr") hsFnCType
+            hsFunPtrImportType =
+              HsTyFun hsFnCType $
+              HsTyApp (HsTyCon $ UnQual $ HsIdent "CppopP.IO") hsFunPtrType
+            hsCallbackCtorImportType =
+              HsTyFun hsFunPtrType $
+              HsTyFun (HsTyApp (HsTyCon $ UnQual $ HsIdent "CppopF.FunPtr") $
+                       HsTyFun (HsTyApp (HsTyCon $ UnQual $ HsIdent "CppopF.FunPtr") $
+                                HsTyApp (HsTyCon $ UnQual $ HsIdent "CppopP.IO") $
+                                HsTyCon $ Special HsUnitCon) $
+                       HsTyApp (HsTyCon $ UnQual $ HsIdent "CppopP.IO") $
+                       HsTyCon $ Special HsUnitCon) $
+              HsTyFun (HsTyCon $ UnQual $ HsIdent "CppopP.Bool") $
+              HsTyApp (HsTyCon $ UnQual $ HsIdent "CppopP.IO") $
+              HsTyApp (HsTyCon $ UnQual $ HsIdent "CppopFCRS.CCallback") hsFnCType
 
-    SayExportDecls -> do
-      wholeFnType <- getWholeFnType
-      let paramCount = length paramTypes
-          argNames = map toArgName [1..paramCount]
-          argNames' = map (++ "'") argNames
-      ln
-      saysLn [hsFnName, " :: ", prettyPrint wholeFnType]
-      saysLn [hsFnName, " f'hs = do"]
-      indent $ do
-        sayLet
-          [do saysLn ["f'c ", unwords argNames, " ="]
-              indent $ do
-                addImports $ hsImport1 "Prelude" "(>>=)"
-                forM_ (zip3 paramTypes argNames argNames') $ \(t, argName, argName') ->
-                  sayArgProcessing FromCpp t argName argName'
-                sayCallAndProcessReturn FromCpp retType $
-                  "f'hs" : map (' ':) argNames']
-          Nothing
-        saysLn ["f'p <- ", hsFnName'newFunPtr, " f'c"]
-        saysLn [hsFnName'newCallback, " f'p CppopFCRS.freeHaskellFunPtrFunPtr CppopP.False"]
+        saysLn ["foreign import ccall \"wrapper\" ", hsFnName'newFunPtr, " :: ",
+                prettyPrint hsFunPtrImportType]
+        saysLn ["foreign import ccall \"", externalNameToCpp name, "\" ", hsFnName'newCallback, " :: ",
+                prettyPrint hsCallbackCtorImportType]
 
-    SayExportBoot -> do
-      wholeFnType <- getWholeFnType
-      ln
-      saysLn [hsFnName, " :: ", prettyPrint wholeFnType]
+      SayExportDecls -> do
+        wholeFnType <- getWholeFnType
+        let paramCount = length paramTypes
+            argNames = map toArgName [1..paramCount]
+            argNames' = map (++ "'") argNames
+        ln
+        saysLn [hsFnName, " :: ", prettyPrint wholeFnType]
+        saysLn [hsFnName, " f'hs = do"]
+        indent $ do
+          sayLet
+            [do saysLn ["f'c ", unwords argNames, " ="]
+                indent $ do
+                  addImports $ hsImport1 "Prelude" "(>>=)"
+                  forM_ (zip3 paramTypes argNames argNames') $ \(t, argName, argName') ->
+                    sayArgProcessing FromCpp t argName argName'
+                  sayCallAndProcessReturn FromCpp retType $
+                    "f'hs" : map (' ':) argNames']
+            Nothing
+          saysLn ["f'p <- ", hsFnName'newFunPtr, " f'c"]
+          saysLn [hsFnName'newCallback, " f'p CppopFCRS.freeHaskellFunPtrFunPtr CppopP.False"]
+
+      SayExportBoot -> do
+        wholeFnType <- getWholeFnType
+        ln
+        saysLn [hsFnName, " :: ", prettyPrint wholeFnType]
 
 data CallDirection =
   ToCpp  -- ^ Haskell code is calling out to C++.
   | FromCpp  -- ^ C++ is invoking a callback.
 
 sayArgProcessing :: CallDirection -> Type -> String -> String -> Generator ()
-sayArgProcessing dir t fromVar toVar = case t of
-  TVar _ -> abort $ freeVarErrorMsg "sayArgProcessing" t
-  TVoid -> abort "sayArgProcessing: TVoid is not a valid argument type."
-  TBool -> case dir of
-    ToCpp -> saysLn ["let ", toVar, " = if ", fromVar, " then 1 else 0 in"]
-    FromCpp -> saysLn ["let ", toVar, " = ", fromVar, " /= 0 in"]
-  TChar -> noConversion
-  TUChar -> noConversion
-  TShort -> noConversion
-  TUShort -> noConversion
-  TInt -> noConversion
-  TUInt -> noConversion
-  TLong -> noConversion
-  TULong -> noConversion
-  TLLong -> noConversion
-  TULLong -> noConversion
-  TFloat -> noConversion
-  TDouble -> noConversion
-  TPtrdiff -> noConversion
-  TSize -> noConversion
-  TSSize -> noConversion
-  TEnum _ -> do
-    addImports $ mconcat [hsImport1 "Prelude" "($)", hsImportForPrelude, hsImportForSupport]
-    saysLn ["let ", toVar,
-            -- TODO The coersion here is unnecssary if we replace the C numeric
-            -- types with their Haskell ones across the board (e.g. CInt ->
-            -- Int).
-            case dir of
-              ToCpp -> " = CppopFCRS.coerceIntegral $ CppopP.fromEnum "
-              FromCpp -> " = CppopP.toEnum $ CppopFCRS.coerceIntegral ",
-            fromVar, " in"]
-  -- References and pointers are handled equivalently.
-  TPtr (TObj cls) -> do
-    addImportForClass cls
-    saysLn $ case dir of
-      ToCpp -> ["let ", toVar, " = ", toHsCastMethodName Nonconst cls, " ", fromVar, " in"]
-      FromCpp -> ["let ", toVar, " = ", fromVar, " in"]
-  TPtr (TConst (TObj cls)) -> case dir of
-    ToCpp -> do
-      addImports $ mconcat [hsImport1 "Prelude" "($)"]
+sayArgProcessing dir t fromVar toVar =
+  withErrorContext ("processing argument of type " ++ show t) $
+  case t of
+    TVar _ -> throwError $ freeVarErrorMsg Nothing t
+    TVoid -> throwError $ "TVoid is not a valid argument type"
+    TBool -> case dir of
+      ToCpp -> saysLn ["let ", toVar, " = if ", fromVar, " then 1 else 0 in"]
+      FromCpp -> saysLn ["let ", toVar, " = ", fromVar, " /= 0 in"]
+    TChar -> noConversion
+    TUChar -> noConversion
+    TShort -> noConversion
+    TUShort -> noConversion
+    TInt -> noConversion
+    TUInt -> noConversion
+    TLong -> noConversion
+    TULong -> noConversion
+    TLLong -> noConversion
+    TULLong -> noConversion
+    TFloat -> noConversion
+    TDouble -> noConversion
+    TPtrdiff -> noConversion
+    TSize -> noConversion
+    TSSize -> noConversion
+    TEnum _ -> do
+      addImports $ mconcat [hsImport1 "Prelude" "($)", hsImportForPrelude, hsImportForSupport]
+      saysLn ["let ", toVar,
+              -- TODO The coersion here is unnecssary if we replace the C numeric
+              -- types with their Haskell ones across the board (e.g. CInt ->
+              -- Int).
+              case dir of
+                ToCpp -> " = CppopFCRS.coerceIntegral $ CppopP.fromEnum "
+                FromCpp -> " = CppopP.toEnum $ CppopFCRS.coerceIntegral ",
+              fromVar, " in"]
+    -- References and pointers are handled equivalently.
+    TPtr (TObj cls) -> do
       addImportForClass cls
-      saysLn [toHsWithValuePtrName cls, " ", fromVar, " $ \\", toVar, " ->"]
-    FromCpp ->
-      saysLn ["let ", toVar, " = ", fromVar, " in"]
-  TPtr _ -> noConversion
-  TRef t' -> sayArgProcessing dir (TPtr t') fromVar toVar
-  TFn {} -> abort $ concat ["sayArgProcessing: TFn unimplemented, given ", show t, "."]
-  TCallback cb -> case dir of
-    ToCpp -> do
-      addImports $ hsImport1 "Prelude" "(>>=)"
-      importHsModuleForExtName $ callbackExtName cb
-      saysLn [toHsCallbackCtorName cb, " ", fromVar, " >>= \\", toVar, " ->"]
-    FromCpp ->
-      abort $ concat ["sayArgProcessing: Can't receive a callback from C++, given ", show cb, "."]
-  TObj cls -> case dir of
-    ToCpp -> do
-      addImports $ mconcat [hsImport1 "Prelude" "($)"]
-      addImportForClass cls
-      saysLn [toHsWithValuePtrName cls, " ", fromVar, " $ \\", toVar, " ->"]
-    FromCpp -> do
-      addImports $ mconcat [hsImport1 "Prelude" "(>>=)", hsImportForSupport]
-      saysLn ["CppopFCRS.decode ", fromVar, " >>= \\", toVar, " ->"]
-  TObjToHeap cls -> case dir of
-    ToCpp -> abort $ tObjToHeapWrongDirectionErrorMsg "SayArgProcessing" cls
-    FromCpp -> noConversion
-  TConst t' -> sayArgProcessing dir t' fromVar toVar
+      saysLn $ case dir of
+        ToCpp -> ["let ", toVar, " = ", toHsCastMethodName Nonconst cls, " ", fromVar, " in"]
+        FromCpp -> ["let ", toVar, " = ", fromVar, " in"]
+    TPtr (TConst (TObj cls)) -> case dir of
+      ToCpp -> do
+        addImports $ mconcat [hsImport1 "Prelude" "($)"]
+        addImportForClass cls
+        saysLn [toHsWithValuePtrName cls, " ", fromVar, " $ \\", toVar, " ->"]
+      FromCpp ->
+        saysLn ["let ", toVar, " = ", fromVar, " in"]
+    TPtr _ -> noConversion
+    TRef t' -> sayArgProcessing dir (TPtr t') fromVar toVar
+    TFn {} -> throwError "TFn unimplemented"
+    TCallback cb -> case dir of
+      ToCpp -> do
+        addImports $ hsImport1 "Prelude" "(>>=)"
+        importHsModuleForExtName $ callbackExtName cb
+        saysLn [toHsCallbackCtorName cb, " ", fromVar, " >>= \\", toVar, " ->"]
+      FromCpp -> throwError "Can't receive a callback from C++"
+    TObj cls -> case dir of
+      ToCpp -> do
+        addImports $ mconcat [hsImport1 "Prelude" "($)"]
+        addImportForClass cls
+        saysLn [toHsWithValuePtrName cls, " ", fromVar, " $ \\", toVar, " ->"]
+      FromCpp -> do
+        addImports $ mconcat [hsImport1 "Prelude" "(>>=)", hsImportForSupport]
+        saysLn ["CppopFCRS.decode ", fromVar, " >>= \\", toVar, " ->"]
+    TObjToHeap cls -> case dir of
+      ToCpp -> throwError $ tObjToHeapWrongDirectionErrorMsg Nothing cls
+      FromCpp -> noConversion
+    TConst t' -> sayArgProcessing dir t' fromVar toVar
   where noConversion = saysLn ["let ", toVar, " = ", fromVar, " in"]
 
 -- | Note that the 'CallDirection' is the direction of the call, not the
 -- direction of the return.  'ToCpp' means we're returning to the foreign
 -- language, 'FromCpp' means we're returning from it.
 sayCallAndProcessReturn :: CallDirection -> Type -> [String] -> Generator ()
-sayCallAndProcessReturn dir t callWords = case t of
-  TVar _ -> abort $ freeVarErrorMsg "sayCallAndProcessReturn" t
-  TVoid -> sayCall
-  TBool -> do
-    case dir of
-      ToCpp -> do addImports $ mconcat [hsImport1 "Prelude" "(/=)", hsImportForPrelude]
-                  sayLn "CppopP.fmap (/= 0)"
-      FromCpp -> sayLn "(\\x -> if x then 1 else 0)"
-    sayCall
-  TChar -> sayCall
-  TUChar -> sayCall
-  TShort -> sayCall
-  TUShort -> sayCall
-  TInt -> sayCall
-  TUInt -> sayCall
-  TLong -> sayCall
-  TULong -> sayCall
-  TLLong -> sayCall
-  TULLong -> sayCall
-  TFloat -> sayCall
-  TDouble -> sayCall
-  TPtrdiff -> sayCall
-  TSize -> sayCall
-  TSSize -> sayCall
-  TEnum _ -> do
-    addImports $ mconcat [hsImport1 "Prelude" "(.)", hsImportForPrelude, hsImportForSupport]
-    case dir of
-      -- TODO The coersion here is unnecssary if we replace the C numeric types
-      -- with their Haskell ones across the board (e.g. CInt -> Int).
-      ToCpp -> saysLn ["CppopP.fmap (CppopP.toEnum . CppopFCRS.coerceIntegral)"]
-      FromCpp -> saysLn ["CppopP.fmap (CppopFCRS.coerceIntegral . CppopP.fromEnum)"]
-    sayCall
-  TPtr _ -> sayCall
-  TRef _ -> sayCall
-  TFn {} -> abort $ concat ["sayCallAndProcessReturn: TFn unimplemented, given ", show t, "."]
-  TCallback cb -> case dir of
-    ToCpp ->
-      abort $ concat ["sayCallAndProcessReturn: Can't receive a callback from C++, given ",
-                      show cb, "."]
-    FromCpp -> do
-      addImports $ hsImport1 "Prelude" "(=<<)"
-      importHsModuleForExtName $ callbackExtName cb
-      saysLn [toHsCallbackCtorName cb, "=<<"]
+sayCallAndProcessReturn dir t callWords =
+  withErrorContext ("processing return value of type " ++ show t) $
+  case t of
+    TVar _ -> throwError $ freeVarErrorMsg Nothing t
+    TVoid -> sayCall
+    TBool -> do
+      case dir of
+        ToCpp -> do addImports $ mconcat [hsImport1 "Prelude" "(/=)", hsImportForPrelude]
+                    sayLn "CppopP.fmap (/= 0)"
+        FromCpp -> sayLn "(\\x -> if x then 1 else 0)"
       sayCall
-  TObj _ -> do
-    addImports $ mconcat [hsImport1 "Prelude" "(=<<)", hsImportForSupport]
-    case dir of
-      ToCpp -> sayLn "CppopFCRS.decodeAndDelete =<<"
-      FromCpp -> sayLn "CppopFCRS.encode =<<"
-    sayCall
-  TObjToHeap cls -> case dir of
-    ToCpp -> sayCall
-    FromCpp -> abort $ tObjToHeapWrongDirectionErrorMsg "sayCallAndProcessReturn" cls
-  TConst t' -> sayCallAndProcessReturn dir t' callWords
+    TChar -> sayCall
+    TUChar -> sayCall
+    TShort -> sayCall
+    TUShort -> sayCall
+    TInt -> sayCall
+    TUInt -> sayCall
+    TLong -> sayCall
+    TULong -> sayCall
+    TLLong -> sayCall
+    TULLong -> sayCall
+    TFloat -> sayCall
+    TDouble -> sayCall
+    TPtrdiff -> sayCall
+    TSize -> sayCall
+    TSSize -> sayCall
+    TEnum _ -> do
+      addImports $ mconcat [hsImport1 "Prelude" "(.)", hsImportForPrelude, hsImportForSupport]
+      case dir of
+        -- TODO The coersion here is unnecssary if we replace the C numeric types
+        -- with their Haskell ones across the board (e.g. CInt -> Int).
+        ToCpp -> saysLn ["CppopP.fmap (CppopP.toEnum . CppopFCRS.coerceIntegral)"]
+        FromCpp -> saysLn ["CppopP.fmap (CppopFCRS.coerceIntegral . CppopP.fromEnum)"]
+      sayCall
+    TPtr _ -> sayCall
+    TRef _ -> sayCall
+    TFn {} -> throwError "TFn unimplemented"
+    TCallback cb -> case dir of
+      ToCpp -> throwError "Can't receive a callback from C++"
+      FromCpp -> do
+        addImports $ hsImport1 "Prelude" "(=<<)"
+        importHsModuleForExtName $ callbackExtName cb
+        saysLn [toHsCallbackCtorName cb, "=<<"]
+        sayCall
+    TObj _ -> do
+      addImports $ mconcat [hsImport1 "Prelude" "(=<<)", hsImportForSupport]
+      case dir of
+        ToCpp -> sayLn "CppopFCRS.decodeAndDelete =<<"
+        FromCpp -> sayLn "CppopFCRS.encode =<<"
+      sayCall
+    TObjToHeap cls -> case dir of
+      ToCpp -> sayCall
+      FromCpp -> throwError $ tObjToHeapWrongDirectionErrorMsg Nothing cls
+    TConst t' -> sayCallAndProcessReturn dir t' callWords
   where sayCall = saysLn $ "(" : callWords ++ [")"]
 
 sayExportClass :: SayExportMode -> Class -> Generator ()
@@ -715,7 +705,7 @@ fnToHsTypeAndUse :: HsTypeSide
                  -> Purity
                  -> [Type]
                  -> Type
-                 -> Generator (Either String HsQualType)
+                 -> Generator HsQualType
 fnToHsTypeAndUse side methodInfo purity paramTypes returnType = do
   params <- mapM contextForParam $
             (case methodInfo of
@@ -725,22 +715,16 @@ fnToHsTypeAndUse side methodInfo purity paramTypes returnType = do
                 Nothing -> []) ++
             zip (map toArgName [1..]) paramTypes
   let context = mapMaybe fst params :: HsContext
-      hsParamsResult = mapM snd params
-  case hsParamsResult of
-    Left errorMsg -> return $ Left errorMsg
-    Right hsParams -> do
-      hsReturn' <- cppTypeToHsTypeAndUse side returnType
-      case hsReturn' of
-        Left errorMsg -> return $ Left errorMsg
-        Right hsReturn -> do
-          hsReturnForPurity <- case (purity, side) of
-            (Pure, HsHsSide) -> return hsReturn
-            _ -> do
-              addImports hsImportForPrelude
-              return $ HsTyApp (HsTyCon $ UnQual $ HsIdent "CppopP.IO") hsReturn
-          return $ Right $ HsQualType context $ foldr HsTyFun hsReturnForPurity hsParams
+      hsParams = map snd params
+  hsReturn <- cppTypeToHsTypeAndUse side returnType
+  hsReturnForPurity <- case (purity, side) of
+    (Pure, HsHsSide) -> return hsReturn
+    _ -> do
+      addImports hsImportForPrelude
+      return $ HsTyApp (HsTyCon $ UnQual $ HsIdent "CppopP.IO") hsReturn
+  return $ HsQualType context $ foldr HsTyFun hsReturnForPurity hsParams
 
-  where contextForParam :: (String, Type) -> Generator (Maybe HsAsst, Either String HsType)
+  where contextForParam :: (String, Type) -> Generator (Maybe HsAsst, HsType)
         contextForParam (s, t) = case t of
           TPtr (TObj cls) -> receivePtr s cls Nonconst
           TPtr (TConst (TObj cls)) -> receiveValue s t cls
@@ -752,21 +736,21 @@ fnToHsTypeAndUse side methodInfo purity paramTypes returnType = do
 
         -- Use whatever type 'cppTypeToHsTypeAndUse' suggests, with no typeclass
         -- constraints.
-        handoff :: HsTypeSide -> Type -> Generator (Maybe HsAsst, Either String HsType)
+        handoff :: HsTypeSide -> Type -> Generator (Maybe HsAsst, HsType)
         handoff side t = (,) Nothing <$> cppTypeToHsTypeAndUse side t
 
         -- Receive a @FooPtr this => this@.
-        receivePtr :: String -> Class -> Constness -> Generator (Maybe HsAsst, Either String HsType)
+        receivePtr :: String -> Class -> Constness -> Generator (Maybe HsAsst, HsType)
         receivePtr s cls cst = do
           addImportForClass cls
           return $ case side of
             HsHsSide -> let t' = HsTyVar $ HsIdent s
                         in (Just (UnQual $ HsIdent $ toHsPtrClassName cst cls, [t']),
-                            Right t')
-            HsCSide -> (Nothing, Right $ HsTyVar $ HsIdent $ toHsDataTypeName cst cls)
+                            t')
+            HsCSide -> (Nothing, HsTyVar $ HsIdent $ toHsDataTypeName cst cls)
 
         -- Receive a @FooValue a => a@.
-        receiveValue :: String -> Type -> Class -> Generator (Maybe HsAsst, Either String HsType)
+        receiveValue :: String -> Type -> Class -> Generator (Maybe HsAsst, HsType)
         receiveValue s t cls = case side of
           HsCSide -> handoff side t
           HsHsSide -> do
@@ -774,12 +758,12 @@ fnToHsTypeAndUse side methodInfo purity paramTypes returnType = do
             addImportForClass cls
             let t' = HsTyVar $ HsIdent s
             return (Just (UnQual $ HsIdent $ toHsValueClassName cls, [t']),
-                    Right t')
+                    t')
 
 getMethodEffectiveParams :: Class -> Method -> [Type]
 getMethodEffectiveParams cls method =
- (case methodApplicability method of
-    MNormal -> (TPtr (TObj cls):)
-    MConst -> (TPtr (TConst $ TObj cls):)
-    MStatic -> id) $
- methodParams method
+  (case methodApplicability method of
+     MNormal -> (TPtr (TObj cls):)
+     MConst -> (TPtr (TConst $ TObj cls):)
+     MStatic -> id) $
+  methodParams method

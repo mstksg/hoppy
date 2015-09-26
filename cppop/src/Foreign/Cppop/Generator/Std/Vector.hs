@@ -4,16 +4,16 @@ module Foreign.Cppop.Generator.Std.Vector (
   toExports,
   ) where
 
-import Foreign.Cppop.Common (fromEitherM)
 import Foreign.Cppop.Generator.Language.Haskell.General (
+  Generator,
   HsTypeSide (HsCSide, HsHsSide),
-  abort,
   addImports,
   cppTypeToHsTypeAndUse,
   indent,
   prettyPrint,
   sayLn,
   saysLn,
+  withErrorContext,
   )
 import Foreign.Cppop.Generator.Spec
 import Foreign.Cppop.Generator.Spec.ClassFeature (
@@ -21,7 +21,6 @@ import Foreign.Cppop.Generator.Spec.ClassFeature (
   IteratorMutability (Constant, Mutable),
   classAddFeatures,
   )
-import Foreign.Cppop.Generator.Spec.Template
 import Language.Haskell.Syntax (
   HsQName (Special),
   HsSpecialCon (HsListCon),
@@ -33,6 +32,9 @@ data VectorContents = VectorContents
   , c_iterator :: Class  -- ^ @std::vector<T>::iterator@
   , c_constIterator :: Class  -- ^ @std::vector<T>::const_iterator@
   }
+
+withInstantiationContext :: Type -> Generator a -> Generator a
+withInstantiationContext t = withErrorContext (concat ["instantiating std::vector<", show t, ">"])
 
 instantiate :: String -> Type -> VectorContents
 instantiate classSuffix t =
@@ -46,22 +48,12 @@ instantiate classSuffix t =
         classModifyConversions
         (\c -> c { classHaskellConversion =
                    Just $ ClassHaskellConversion
-                   { classHaskellConversionType = do
-                     hsHsType <-
-                       fromEitherM
-                       (\e -> error $ concat
-                              ["Instantiation of std::vector<", show t,
-                               ">: Type argument is not convertable to a Haskell Haskell-side type: ", e]) =<<
-                       cppTypeToHsTypeAndUse HsHsSide t
+                   { classHaskellConversionType = withInstantiationContext t $ do
+                     hsHsType <- cppTypeToHsTypeAndUse HsHsSide t
                      return $ HsTyApp (HsTyCon $ Special HsListCon) hsHsType
-                   , classHaskellConversionToCppFn = do
+                   , classHaskellConversionToCppFn = withInstantiationContext t $ do
                      addImports $ mconcat [hsImport1 "Control.Monad" "(<=<)", hsImportForPrelude, hsImportForSupport]
-                     hsCType <-
-                       fromEitherM
-                       (\e -> abort $ concat
-                              ["Instantiation of std::vector<", show t,
-                               ">: Type argument is not convertable to a Haskell C-side type: ", e]) =<<
-                       cppTypeToHsTypeAndUse HsCSide t
+                     hsCType <- cppTypeToHsTypeAndUse HsCSide t
                      sayLn "\\xs -> do"
                      indent $ do
                        saysLn ["l <- ", vectorName, "_new"]
@@ -70,7 +62,7 @@ instantiate classSuffix t =
                                "_pushBack l <=< CppopFCRS.encodeAs (CppopP.undefined :: ",
                                prettyPrint hsCType, ")) xs"]
                        sayLn "CppopP.return l"
-                   , classHaskellConversionFromCppFn = do
+                   , classHaskellConversionFromCppFn = withInstantiationContext t $ do
                      addImports hsImportForPrelude
                      sayLn "\\l -> do"
                      indent $ do
