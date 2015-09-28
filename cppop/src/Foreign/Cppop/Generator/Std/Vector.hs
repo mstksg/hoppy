@@ -1,43 +1,50 @@
+-- | Bindings for @std::vector@.
+
 module Foreign.Cppop.Generator.Std.Vector (
-  VectorContents (..),
+  Options (..),
+  defaultOptions,
+  Contents (..),
   instantiate,
+  instantiate',
   toExports,
   ) where
 
-import Foreign.Cppop.Generator.Language.Haskell.General (
-  Generator,
-  HsTypeSide (HsCSide, HsHsSide),
-  addImports,
-  cppTypeToHsTypeAndUse,
-  indent,
-  prettyPrint,
-  sayLn,
-  saysLn,
-  withErrorContext,
-  )
 import Foreign.Cppop.Generator.Spec
 import Foreign.Cppop.Generator.Spec.ClassFeature (
-  ClassFeature (RandomIterator),
+  ClassFeature (Assignable, Copyable, RandomIterator),
   IteratorMutability (Constant, Mutable),
   classAddFeatures,
   )
-import Language.Haskell.Syntax (
-  HsQName (Special),
-  HsSpecialCon (HsListCon),
-  HsType (HsTyApp, HsTyCon),
-  )
 
-data VectorContents = VectorContents
-  { c_vector :: Class  -- ^ @std::vector<T>@
-  , c_iterator :: Class  -- ^ @std::vector<T>::iterator@
-  , c_constIterator :: Class  -- ^ @std::vector<T>::const_iterator@
+data Options = Options
+  { optVectorClassFeatures :: [ClassFeature]
+    -- ^ Additional features to add to the @std::vector@ class.  Vectors are
+    -- always 'Assignable' and 'Copyable', but you may want to add
+    -- 'Foreign.Cppop.Generator.Spec.ClassFeature.Equatable' and
+    -- 'Foreign.Cppop.Generator.Spec.ClassFeature.Comparable' if your value type
+    -- supports those.
   }
 
-withInstantiationContext :: Type -> Generator a -> Generator a
-withInstantiationContext t = withErrorContext (concat ["instantiating std::vector<", show t, ">"])
+defaultOptions :: Options
+defaultOptions = Options []
 
-instantiate :: String -> Type -> VectorContents
-instantiate classSuffix t =
+data Contents = Contents
+  { c_vector :: Class  -- ^ @std::vector\<T\>@
+  , c_iterator :: Class  -- ^ @std::vector\<T\>::iterator@
+  , c_constIterator :: Class  -- ^ @std::vector\<T\>::const_iterator@
+  }
+
+-- | @instantiate classSuffix t@ creates a set of bindings for an instantiation
+-- of @std::vector@ and associated types (e.g. iterators).  In the result, the
+-- 'c_vector' class has an external name of @\"vector\" ++ classSuffix@, and the
+-- iterator classes are further suffixed with @\"Iterator\"@ and
+-- @\"ConstIterator\"@ respectively.
+instantiate :: String -> Type -> Contents
+instantiate classSuffix t = instantiate' classSuffix t defaultOptions
+
+-- | 'instantiate' with additional options.
+instantiate' :: String -> Type -> Options -> Contents
+instantiate' classSuffix t opts =
   let reqs = reqInclude $ includeStd "vector"
       vectorName = "vector" ++ classSuffix
       iteratorName = vectorName ++ "Iterator"
@@ -45,43 +52,36 @@ instantiate classSuffix t =
 
       vector =
         addUseReqs reqs $
-        classModifyConversions
-        (\c -> c { classHaskellConversion =
-                   Just $ ClassHaskellConversion
-                   { classHaskellConversionType = withInstantiationContext t $ do
-                     hsHsType <- cppTypeToHsTypeAndUse HsHsSide t
-                     return $ HsTyApp (HsTyCon $ Special HsListCon) hsHsType
-                   , classHaskellConversionToCppFn = withInstantiationContext t $ do
-                     addImports $ mconcat [hsImport1 "Control.Monad" "(<=<)", hsImportForPrelude, hsImportForSupport]
-                     hsCType <- cppTypeToHsTypeAndUse HsCSide t
-                     sayLn "\\xs -> do"
-                     indent $ do
-                       saysLn ["l <- ", vectorName, "_new"]
-                       saysLn [vectorName, "_reserve l (CppopFCRS.coerceIntegral (CppopP.length xs))"]
-                       saysLn ["CppopP.mapM_ (", vectorName,
-                               "_pushBack l <=< CppopFCRS.encodeAs (CppopP.undefined :: ",
-                               prettyPrint hsCType, ")) xs"]
-                       sayLn "CppopP.return l"
-                   , classHaskellConversionFromCppFn = withInstantiationContext t $ do
-                     addImports hsImportForPrelude
-                     sayLn "\\l -> do"
-                     indent $ do
-                       saysLn ["len <- ", vectorName, "_size l"]
-                       saysLn ["CppopP.mapM (", vectorName, "_get l) [0..len CppopP.- 1]"]
-                   }
-                 }) $
+        classAddFeatures (Assignable : Copyable : optVectorClassFeatures opts) $
         makeClass (ident1T "std" "vector" [t]) (Just $ toExtName vectorName) []
-        [ mkCtor "new" [] ]
-        [ mkConstMethod "back" [] t
-        , mkMethod "begin" [] $ TObjToHeap iterator
+        [ mkCtor "new" []
+        , mkCtor "newSized" [TSize]
+        , mkCtor "newWith" [TSize, TRef $ TConst t]
+        ]
+        [ mkMethod' "at" "at" [TSize] $ TRef t
+        , mkConstMethod' "at" "atConst" [TSize] $ TRef $ TConst t
+        , mkMethod' "back" "back" [] $ TRef t
+        , mkConstMethod' "back" "backConst" [] $ TRef $ TConst t
+        , mkMethod' "begin" "begin" [] $ TObjToHeap iterator
+        , mkConstMethod' "begin" "constBegin" [] $ TObjToHeap constIterator
         , mkConstMethod "capacity" [] TSize
+        , mkMethod "clear" [] TVoid
         , mkConstMethod "empty" [] TBool
-        , mkMethod "end" [] $ TObjToHeap iterator
-        , mkMethod' "push_back" "pushBack" [t] TVoid
+        , mkMethod' "end" "end" [] $ TObjToHeap iterator
+        , mkConstMethod' "end" "endConst" [] $ TObjToHeap constIterator
+        , mkMethod' "erase" "erase" [TObj iterator] TVoid
+        , mkMethod' "erase" "eraseRange" [TObj iterator, TObj iterator] TVoid
+        , mkMethod' "front" "front" [] $ TRef t
+        , mkConstMethod' "front" "frontConst" [] $ TRef $ TConst t
+        , mkMethod "insert" [TObj iterator, TRef $ TConst t] $ TObjToHeap iterator
+        , mkConstMethod' "max_size" "maxSize" [] TSize
+        , mkMethod' "pop_back" "popBack" [] TVoid
+        , mkMethod' "push_back" "pushBack" [TRef $ TConst t] TVoid
         , mkMethod "reserve" [TSize] TVoid
+        , mkMethod' "resize" "resize" [TSize] TVoid
+        , mkMethod' "resize" "resizeWith" [TSize] TVoid
         , mkConstMethod "size" [] TSize
-        , mkMethod' OpArray "at" [TSize] $ TRef t
-        , mkConstMethod' OpArray "get" [TSize] t
+        , mkMethod "swap" [TRef $ TObj vector] TVoid
         ]
 
       iterator =
@@ -96,11 +96,13 @@ instantiate classSuffix t =
         makeClass (identT' [("std", Nothing), ("vector", Just [t]), ("const_iterator", Nothing)])
         (Just $ toExtName constIteratorName) [] [] []
 
-  in VectorContents
+  in Contents
      { c_vector = vector
      , c_iterator = iterator
      , c_constIterator = constIterator
      }
 
-toExports :: VectorContents -> [Export]
+-- | Converts an instantiation into a list of exports to be included in a
+-- module.
+toExports :: Contents -> [Export]
 toExports m = map (ExportClass . ($ m)) [c_vector, c_iterator, c_constIterator]

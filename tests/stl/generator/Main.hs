@@ -41,7 +41,28 @@ testModule :: Module
 testModule =
   modifyModule' (makeModule "stl" "stl.hpp" "stl.cpp") $
   addModuleExports $
-  Vector.toExports vectorString
+  concat
+  [ [ ExportClass c_IntBox
+    ]
+  , Vector.toExports vectorString
+  , Vector.toExports vectorIntBox
+  ]
 
-vectorString :: Vector.VectorContents
+-- | This class is deliberately not encodable, in order to ensure that @vector@
+-- isn't relying on its value type being encodable.
+c_IntBox :: Class
+c_IntBox =
+  addReqIncludes [includeLocal "intbox.hpp"] $
+  makeClass (ident "IntBox") Nothing []
+  [ mkCtor "new" []
+  , mkCtor "newWithValue" [TInt]
+  ]
+  [ mkConstMethod "get" [] TInt
+  , mkMethod "set" [TInt] TVoid
+  ]
+
+vectorString :: Vector.Contents
 vectorString = Vector.instantiate "String" $ TObj c_string
+
+vectorIntBox :: Vector.Contents
+vectorIntBox = Vector.instantiate "IntBox" $ TObj c_IntBox

@@ -104,7 +104,10 @@ trivialIteratorContents mutable cls valueType =
   , ([ mkCtor "new" []
      ],
      catMaybes
-     [ Just $ mkConstMethod OpDeref [] valueType
+     [ case mutable of
+       Constant -> Nothing
+       Mutable -> Just $ mkMethod' OpDeref "get" [] $ TRef valueType
+     , Just $ mkMethod' OpDeref "getConst" [] $ TRef $ TConst valueType
      , case mutable of
        Constant -> Nothing
        Mutable -> Just $ makeFnMethod (ident2 "cppop" "iterator" "put") "put"
@@ -141,10 +144,10 @@ randomIteratorContents mutable cls valueType distanceType =
    , Just $ mkMethod OpSubtract [distanceType] $ TObjToHeap cls
    , Just $ mkMethod' OpSubtract "difference" [TObj cls] distanceType
    , Just $ mkMethod OpSubtractAssign [distanceType] $ TRef $ TObj cls
-   , Just $ mkMethod' OpArray "at" [distanceType] valueType
    , case mutable of
-      Mutable -> Just $ mkMethod' OpArray "atRef" [distanceType] $ TRef valueType
+      Mutable -> Just $ mkMethod' OpArray "at" [distanceType] $ TRef valueType
       Constant -> Nothing
+   , Just $ mkConstMethod' OpArray "atConst" [distanceType] $ TRef $ TConst valueType
    ],
    mempty)
 

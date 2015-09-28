@@ -46,4 +46,7 @@ vectorTests =
       vectorString_pushBack v "abc"
       vectorString_size v >>= (@?= 1)
       vectorString_empty v >>= (@?= False)
+      vectorString_popBack v
+      vectorString_size v >>= (@?= 0)
+      vectorString_empty v >>= (@?= True)
   ]
