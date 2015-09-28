@@ -190,9 +190,9 @@ renderImports = map renderModuleImport . M.assocs . getHsImportSet
 -- parentheses at the end of the message.  'withErrorContext' and 'inFunction'
 -- add context information, and should be given clauses, without punctuation.
 #if MIN_VERSION_mtl(2,2,1)
-type Generator = ReaderT Env (WriterT Output (Except String))
+type Generator = ReaderT Env (WriterT Output (Except ErrorMsg))
 #else
-type Generator = ReaderT Env (WriterT Output (Either String))
+type Generator = ReaderT Env (WriterT Output (Either ErrorMsg))
 #endif
 
 data Env = Env

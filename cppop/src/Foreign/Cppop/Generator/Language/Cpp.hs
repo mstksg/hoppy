@@ -90,7 +90,7 @@ import Foreign.Cppop.Generator.Spec
 data CoderDirection = DoDecode | DoEncode
                     deriving (Eq, Show)
 
-type Generator = ReaderT Env (WriterT [Chunk] (WriterT (S.Set Include) (Either String)))
+type Generator = ReaderT Env (WriterT [Chunk] (WriterT (S.Set Include) (Either ErrorMsg)))
 
 data Env = Env
   { envInterface :: Interface
@@ -113,10 +113,10 @@ askModule :: MonadReader Env m => m Module
 askModule = liftM envModule ask
 
 -- | Halts generation and returns the given error message.
-abort :: String -> Generator a
+abort :: ErrorMsg -> Generator a
 abort = lift . lift . lift . Left
 
-execGenerator :: Interface -> Module -> Maybe String -> Generator a -> Either String String
+execGenerator :: Interface -> Module -> Maybe String -> Generator a -> Either ErrorMsg String
 execGenerator interface m maybeHeaderGuardName action = do
   (contents, includes) <-
     (runWriterT $

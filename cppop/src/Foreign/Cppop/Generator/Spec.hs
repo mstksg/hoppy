@@ -4,7 +4,6 @@ module Foreign.Cppop.Generator.Spec (
   -- * Interfaces
   Interface,
   ErrorMsg,
-  HaskellImport,
   interface,
   interfaceName,
   interfaceModules,
@@ -128,9 +127,8 @@ import {-# SOURCE #-} qualified Foreign.Cppop.Generator.Language.Haskell.General
 import {-# SOURCE #-} Foreign.Cppop.Generator.Spec.Template (ClassInstantiationInfo)
 import Language.Haskell.Syntax (HsType)
 
+-- | Indicates strings that are error messages.
 type ErrorMsg = String
-
-type HaskellImport = String
 
 -- | A complete specification of a C++ API.  Generators for different languages,
 -- including the binding generator for C++, use these to produce their output.

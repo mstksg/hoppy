@@ -150,16 +150,6 @@ withCurrentCache stateVar fn = modifyMVar stateVar $ \state -> do
                      appCaches state
   return (state { appCaches = M.insert name cache $ appCaches state }, result)
 
-getCurrentCache :: MVar AppState -> IO InterfaceCache
-getCurrentCache stateVar = do
-  state <- readMVar stateVar
-  let currentInterface = appCurrentInterface state
-      name = interfaceName currentInterface
-  return $
-    fromMaybe (emptyCache currentInterface) $
-    M.lookup name $
-    appCaches state
-
 listInterfaces :: MVar AppState -> IO ()
 listInterfaces = mapM_ (putStrLn . interfaceName) . appInterfaces <=< readMVar
 
