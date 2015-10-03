@@ -42,12 +42,16 @@ instance Monad m => MonadConsume s (ConsumeT s m) where
       [] -> return Nothing
       x:xs -> put' xs >> return (Just x)
 
+-- | Runs the consume action, returning the remainder of the stream, and the
+-- action's result.
 runConsumeT :: Monad m => [s] -> ConsumeT s m a -> m ([s], a)
 runConsumeT stream (ConsumeT m) = liftM swap $ runStateT m stream
 
+-- | Runs the consume action, returning the action's result.
 evalConsumeT :: Monad m => [s] -> ConsumeT s m a -> m a
 evalConsumeT stream = liftM snd . runConsumeT stream
 
+-- | Runs the consume action, returning the remainder of the stream.
 execConsumeT :: Monad m => [s] -> ConsumeT s m a -> m [s]
 execConsumeT stream = liftM fst . runConsumeT stream
 

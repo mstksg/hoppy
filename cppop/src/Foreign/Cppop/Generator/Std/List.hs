@@ -1,3 +1,4 @@
+-- | Bindings for @std::list@.
 module Foreign.Cppop.Generator.Std.List (
   tc_list,
   ) where

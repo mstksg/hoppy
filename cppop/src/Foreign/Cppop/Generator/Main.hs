@@ -1,3 +1,4 @@
+-- | A driver for a command-line interface to a generator.
 module Foreign.Cppop.Generator.Main (
   Action (..),
   run,
@@ -19,10 +20,14 @@ import System.Exit (exitFailure, exitSuccess)
 import System.FilePath ((</>), takeDirectory)
 import System.IO (hPutStrLn, stderr)
 
+-- | Actions that can be requested of the program.
 data Action =
   ListInterfaces
+  -- ^ Lists the interfaces compiled into the generator.
   | GenCpp FilePath
+    -- ^ Generates C++ wrappers for an interface in the given location.
   | GenHaskell FilePath
+    -- ^ Generates Haskell bindings for an interface in the given location.
 
 data AppState = AppState
   { appInterfaces :: [Interface]
@@ -62,6 +67,8 @@ getGeneratedHaskell cache = case generatedHaskell cache of
     l@(Left _) -> return (cache, l)
     r@(Right gen) -> return (cache { generatedHaskell = Just gen }, r)
 
+-- | @run interfaces args@ runs the driver with the command-line arguments from
+-- @args@ against the listed interfaces.
 run :: [Interface] -> [String] -> IO [Action]
 run interfaces args = do
   stateVar <- newMVar $ initialAppState interfaces

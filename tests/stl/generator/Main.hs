@@ -31,7 +31,7 @@ main = case interfaceResult of
 
 interfaceResult :: Either String Interface
 interfaceResult =
-  addInterfaceHaskellModuleBase ["Foreign", "Cppop", "Test"] =<<
+  interfaceAddHaskellModuleBase ["Foreign", "Cppop", "Test"] =<<
   interface "test" modules
 
 modules :: [Module]

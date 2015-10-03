@@ -1,9 +1,10 @@
 {-# LANGUAGE CPP #-}
 
+-- | Shared portion of the Haskell code generator.  Usable by binding
+-- definitions.
 module Foreign.Cppop.Generator.Language.Haskell.General (
   getModuleName,
   toModuleName,
-  HsExport,
   -- * Code generators
   Partial (..),
   Output (..),
@@ -15,6 +16,7 @@ module Foreign.Cppop.Generator.Language.Haskell.General (
   withErrorContext,
   inFunction,
   -- * Exports
+  HsExport,
   addExport,
   addExports,
   -- * Imports
@@ -26,7 +28,6 @@ module Foreign.Cppop.Generator.Language.Haskell.General (
   ln,
   indent,
   sayLet,
-  toHsTypeName,
   toHsEnumTypeName,
   toHsEnumCtorName,
   toHsValueClassName,
@@ -41,7 +42,6 @@ module Foreign.Cppop.Generator.Language.Haskell.General (
   toArgName,
   HsTypeSide (..),
   cppTypeToHsTypeAndUse,
-  addImportForClass,
   prettyPrint,
   ) where
 
@@ -71,17 +71,20 @@ import Language.Haskell.Syntax (
   HsType (HsTyApp, HsTyCon, HsTyFun),
   )
 
+-- | Returns the complete Haskell module name for a 'Module' in an 'Interface',
+-- taking into account the 'interfaceHaskellModuleBase' and the
+-- 'moduleHaskellName'.
 getModuleName :: Interface -> Module -> String
 getModuleName interface m =
   intercalate "." $
-  fromMaybe ["Foreign", "Cppop", "Generated"] (interfaceHaskellModuleBase interface) ++
+  interfaceHaskellModuleBase interface ++
   fromMaybe [toModuleName $ moduleName m] (moduleHaskellName m)
 
+-- | Performs case conversions on the given string to ensure that it is a valid
+-- component of a Haskell module name.
 toModuleName :: String -> String
 toModuleName (x:xs) = toUpper x : xs
 toModuleName "" = ""
-
-type HsExport = String
 
 -- | Renders a set of imports in Haskell syntax on multiple lines.
 renderImports :: HsImportSet -> [String]
@@ -195,6 +198,7 @@ type Generator = ReaderT Env (WriterT Output (Except ErrorMsg))
 type Generator = ReaderT Env (WriterT Output (Either ErrorMsg))
 #endif
 
+-- | Context information for generating Haskell code.
 data Env = Env
   { envInterface :: Interface
   , envModuleName :: String
@@ -206,6 +210,8 @@ askInterface = envInterface <$> ask
 askModuleName :: Generator String
 askModuleName = envModuleName <$> ask
 
+-- | A partially-rendered 'Module'.  Contains all of the module's bindings, but
+-- may be subject to further processing.
 data Partial = Partial
   { partialModuleHsName :: String
   , partialOutput :: Output
@@ -217,10 +223,20 @@ instance Eq Partial where
 instance Ord Partial where
   compare = compare `on` partialModuleHsName
 
+-- | A chunk of generated Haskell code, including information about imports and
+-- exports.
 data Output = Output
   { outputExports :: [HsExport]
+    -- ^ Haskell module exports.  Each 'HsExport' should include one item to go
+    -- in the export list of the generated module.  Should only contain objects
+    -- imported or defined in the same 'Output'.
   , outputImports :: HsImportSet
+    -- ^ Haskell module imports.  Should include all imports needed for the
+    -- 'outputBody'.
   , outputBody :: [String]
+    -- ^ Lines of Haskell code (possibly empty).  These lines may not contain
+    -- the newline character in them.  There is an implicit newline between each
+    -- string, as given by @intercalate \"\\n\" . outputBody@.
   }
 
 instance Monoid Output where
@@ -234,7 +250,10 @@ instance Monoid Output where
            (mconcat $ map outputImports os)
            (mconcat $ map outputBody os)
 
-runGenerator :: Interface -> String -> Generator a -> Either String (Partial, a)
+-- | Runs a generator action for the given interface and module name string.
+-- Returns an error message if an error occurred, otherwise the action's output
+-- together with its value.
+runGenerator :: Interface -> String -> Generator a -> Either ErrorMsg (Partial, a)
 runGenerator iface modName generator =
   fmap (first (Partial modName) . swap) $
 #if MIN_VERSION_mtl(2,2,1)
@@ -245,14 +264,17 @@ runGenerator iface modName generator =
   flip catchError (\msg -> throwError $ msg ++ ".") $
   runWriterT $ runReaderT generator $ Env iface modName
 
-evalGenerator :: Interface -> String -> Generator a -> Either String a
+-- | Runs a generator action and returns the its value.
+evalGenerator :: Interface -> String -> Generator a -> Either ErrorMsg a
 evalGenerator iface modName =
   fmap snd . runGenerator iface modName
 
-execGenerator :: Interface -> String -> Generator a -> Either String Partial
+-- | Runs a generator action and returns its output.
+execGenerator :: Interface -> String -> Generator a -> Either ErrorMsg Partial
 execGenerator iface modName =
   fmap fst . runGenerator iface modName
 
+-- | Converts a 'Partial' into a complete Haskell module.
 renderPartial :: Partial -> String
 renderPartial partial =
   let modName = partialModuleHsName partial
@@ -287,15 +309,24 @@ withErrorContext msg' action = catchError action $ \msg -> throwError $ concat [
 inFunction :: String -> Generator a -> Generator a
 inFunction fnName = withErrorContext $ "in " ++ fnName
 
+-- | Indicates strings that represent an item in a Haskell module export list.
+type HsExport = String
+
+-- | Adds an export to the current module.
 addExport :: HsExport -> Generator ()
 addExport = addExports . (:[])
 
+-- | Adds multiple exports to the current module.
 addExports :: [HsExport] -> Generator ()
 addExports exports = tell $ mempty { outputExports = exports }
 
+-- | Adds imports to the current module.
 addImports :: HsImportSet -> Generator ()
 addImports imports = tell mempty { outputImports = imports }
 
+-- | Imports all of the objects for the given external name into the current
+-- module.  This is a no-op of the external name is defined in the current
+-- module.
 importHsModuleForExtName :: ExtName -> Generator ()
 importHsModuleForExtName extName = inFunction "importHsModuleForExtName" $ do
   iface <- askInterface
@@ -304,12 +335,16 @@ importHsModuleForExtName extName = inFunction "importHsModuleForExtName" $ do
       let ownerModuleName = getModuleName iface ownerModule
       currentModuleName <- askModuleName
       when (currentModuleName /= ownerModuleName) $
+        -- Yes, this currently imports the whole dang module to keep things
+        -- simple.
         addImports $ hsWholeModuleImport ownerModuleName
     Nothing ->
       throwError $ concat
       ["Couldn't find module for ", show extName,
        " (maybe you forgot to include it in an exports list?)"]
 
+-- | Outputs a line of Haskell code.  A newline will be added on the end of the
+-- input.  Newline characters must not be given to this function.
 sayLn :: String -> Generator ()
 sayLn x =
   if '\n' `elem` x
@@ -317,15 +352,34 @@ sayLn x =
        ["Refusing to speak '\n', received ", show x, " (use (mapM_ sayLn . lines) instead)"]
   else tell $ mempty { outputBody = [x] }
 
+-- | Outputs multiple words to form a line of Haskell code (effectively @saysLn
+-- = sayLn . concat@).
 saysLn :: [String] -> Generator ()
 saysLn = sayLn . concat
 
+-- | Outputs an empty line of Haskell code.  This is reportedly valid Perl code
+-- as well.
 ln :: Generator ()
 ln = sayLn ""
 
+-- | Runs the given action, indenting all code output by the action one level.
 indent :: Generator a -> Generator a
 indent = censor $ \o -> o { outputBody = map (\x -> ' ':' ':x) $ outputBody o }
 
+-- | Takes a list of binding actions and a body action, and outputs a @let@
+-- expression.  By passing in 'Nothing' for the body, it will be omitted, so
+-- @let@ statements in @do@ blocks can be created as well.  Output is of the
+-- form:
+--
+-- > let
+-- >   <binding1>
+-- >   ...
+-- >   <bindingN>
+-- >   in
+-- >     <body>
+--
+-- To stretch a binding over multiple lines, lines past the first should use
+-- 'indent' manually.
 sayLet :: [Generator ()] -> Maybe (Generator ()) -> Generator ()
 sayLet bindings maybeBody = do
   sayLn "let"
@@ -336,6 +390,9 @@ sayLet bindings maybeBody = do
       sayLn "in"
       indent body
 
+-- | Internal helper function for constructing Haskell names from external
+-- names.  Returns a name that is a suitable Haskell type name for the external
+-- name, and if given 'Const', then with @\"Const\"@ appended.
 toHsTypeName :: Constness -> ExtName -> String
 toHsTypeName cst extName =
   (case cst of
@@ -345,9 +402,14 @@ toHsTypeName cst extName =
     x:xs -> toUpper x:xs
     [] -> []
 
+-- | Returns the Haskell name for an enum.
 toHsEnumTypeName :: CppEnum -> String
 toHsEnumTypeName = toHsTypeName Nonconst . enumExtName
 
+-- | Constructs the data constructor name for a value in an enum.  Like C++ and
+-- unlike say Java, Haskell enum values aren't in a separate enum-specific
+-- namespace, so we prepend the enum name to the value name to get the data
+-- constructor name.  The value name is a list of words; see 'enumValueNames'.
 toHsEnumCtorName :: CppEnum -> [String] -> String
 toHsEnumCtorName enum words =
   concat $ toHsEnumTypeName enum : "_" : map capitalize words
@@ -359,39 +421,60 @@ toHsEnumCtorName enum words =
 toHsValueClassName :: Class -> String
 toHsValueClassName cls = toHsDataTypeName Nonconst cls ++ "Value"
 
+-- | The name of the method within the 'toHsValueClassName' typeclass for
+-- accessing an object of the type as a pointer.
 toHsWithValuePtrName :: Class -> String
 toHsWithValuePtrName cls = concat ["with", toHsDataTypeName Nonconst cls, "Ptr"]
 
--- | The name for the typeclass of types are pointers to objects of the given
--- C++ class, or subclasses.
+-- | The name for the typeclass of types that are (possibly const) pointers to
+-- objects of the given C++ class, or subclasses.
 toHsPtrClassName :: Constness -> Class -> String
 toHsPtrClassName cst cls = toHsDataTypeName cst cls ++ "Ptr"
 
+-- | The name of the function that upcasts pointers to the specific class type
+-- and constness.
 toHsCastMethodName :: Constness -> Class -> String
 toHsCastMethodName cst cls = "to" ++ toHsDataTypeName cst cls
 
+-- | The name of the data type that represents a pointer to an object of the
+-- given class and constness.
 toHsDataTypeName :: Constness -> Class -> String
 toHsDataTypeName cst cls = toHsTypeName cst $ classExtName cls
 
+-- | The name of the variable that holds a null pointer of the specific class
+-- type.
 toHsClassNullName :: Class -> String
 toHsClassNullName cls = toHsFnName (classExtName cls) ++ "_null"
 
+-- | The name of the foreign function import wrapping @delete@ for the given
+-- class type.  This is in internal to the binding; normal users should use
+-- 'Foreign.Cppop.Runtime.Support.delete'.
 toHsClassDeleteFnName :: Class -> String
 toHsClassDeleteFnName cls = 'd':'e':'l':'e':'t':'e':'\'':toHsDataTypeName Nonconst cls
 
+-- | The name of the function that takes a Haskell function and wraps it in a
+-- callback object.  This is internal to the binding; normal users can pass
+-- Haskell functions to be used as callbacks inplicitly.
 toHsCallbackCtorName :: Callback -> String
 toHsCallbackCtorName = toHsFnName . callbackExtName
 
--- TODO Rename this to toHsBindingName or toHsValueName; it's used for
--- non-function bindings too.
+-- | Converts an external name into a name suitable for a Haskell function or
+-- variable.
 toHsFnName :: ExtName -> String
-toHsFnName = internalToHsFnName
+toHsFnName extName = case fromExtName extName of
+  x:xs -> toLower x:xs
+  [] -> []
 
+-- | Returns a distinct argument variable name for each nonnegative number.
 toArgName :: Int -> String
 toArgName = ("arg'" ++) . show
 
-data HsTypeSide = HsCSide | HsHsSide
-                deriving (Eq, Show)
+-- | The Haskell side of bindings performs conversions between C FFI types and
+-- Haskell types.  This denotes which side's type is being requested.
+data HsTypeSide =
+  HsCSide  -- ^ The C type sent from C++.
+  | HsHsSide  -- ^ The Haskell-native type.
+  deriving (Eq, Show)
 
 -- | Returns the 'HsType' corresponding to a 'Type', and also adds imports to
 -- the 'Generator' as necessary for Haskell types that the 'Type' references.
@@ -467,9 +550,6 @@ cppTypeToHsTypeAndUse side t =
           Just t' -> t'
     TObjToHeap cls -> cppTypeToHsTypeAndUse side $ TPtr $ TObj cls
     TConst t' -> cppTypeToHsTypeAndUse side t'
-
-addImportForClass :: Class -> Generator ()
-addImportForClass = importHsModuleForExtName . classExtName
 
 -- | Prints a value like 'P.prettyPrint', but removes newlines so that they
 -- don't cause problems with this module's textual generation.  Should be mainly

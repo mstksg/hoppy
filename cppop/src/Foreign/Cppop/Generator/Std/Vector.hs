@@ -1,5 +1,4 @@
 -- | Bindings for @std::vector@.
-
 module Foreign.Cppop.Generator.Std.Vector (
   Options (..),
   defaultOptions,
@@ -16,6 +15,7 @@ import Foreign.Cppop.Generator.Spec.ClassFeature (
   classAddFeatures,
   )
 
+-- | Options for instantiating the vector classes.
 data Options = Options
   { optVectorClassFeatures :: [ClassFeature]
     -- ^ Additional features to add to the @std::vector@ class.  Vectors are
@@ -25,9 +25,11 @@ data Options = Options
     -- supports those.
   }
 
+-- | The default options have no additional 'ClassFeature's.
 defaultOptions :: Options
 defaultOptions = Options []
 
+-- | A set of instantiated vector classes.
 data Contents = Contents
   { c_vector :: Class  -- ^ @std::vector\<T\>@
   , c_iterator :: Class  -- ^ @std::vector\<T\>::iterator@

@@ -1,10 +1,8 @@
+-- | Internal portion of the C++ code generator.
 module Foreign.Cppop.Generator.Language.Cpp (
   Generation,
   generate,
   generatedFiles,
-  -- * Exported only for other generators, do not use.
-  externalNameToCpp,
-  classDeleteFnCppName,
   ) where
 
 -- How object passing works:
@@ -153,13 +151,15 @@ sayFunction name paramNames t maybeBody = do
       body  -- TODO Indent.
       say "}\n"
 
+-- | The in-memory result of generating C++ code for an interface.
 data Generation = Generation
   { generatedFiles :: M.Map FilePath String
     -- ^ A map from paths of generated files to the contents of those files.
     -- The file paths are relative paths below the C++ generation root.
   }
 
-generate :: Interface -> Either String Generation
+-- | Runs the C++ code generator against an interface.
+generate :: Interface -> Either ErrorMsg Generation
 generate interface =
   fmap (Generation . M.fromList) $
   execWriterT $

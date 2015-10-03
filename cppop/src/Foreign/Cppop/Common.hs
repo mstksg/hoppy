@@ -1,3 +1,4 @@
+-- | General routines.
 module Foreign.Cppop.Common (
   fromMaybeM,
   fromEitherM,
@@ -24,9 +25,11 @@ fromEitherM = flip either return
 maybeFail :: Monad m => String -> Maybe a -> m a
 maybeFail = fromMaybeM . fail
 
+-- | @listSubst a b xs@ replaces all @x@ in @xs@ such that @x == a@ with @b@.
 listSubst :: Eq a => a -> a -> [a] -> [a]
 listSubst x x' = map $ \y -> if y == x then x' else y
 
+-- | Zips two lists using a monadic function.
 zipWithM :: Monad m => (a -> b -> m c) -> [a] -> [b] -> m [c]
 zipWithM f xs ys = sequence $ zipWith f xs ys
 

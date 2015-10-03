@@ -1,5 +1,11 @@
 {-# LANGUAGE CPP #-}
 
+-- | The primary data types for specifying C++ interfaces.
+--
+-- 'Show' instances in this module produce strings of the form @\"\<TypeOfObject
+-- nameOfObject otherInfo...\>\"@.  They can be used in error messages without
+-- specifying a noun separately, i.e. write @show cls@ instead of @\"the class
+-- \" ++ show cls@.
 module Foreign.Cppop.Generator.Spec (
   -- * Interfaces
   Interface,
@@ -9,7 +15,8 @@ module Foreign.Cppop.Generator.Spec (
   interfaceModules,
   interfaceNamesToModules,
   interfaceHaskellModuleBase,
-  addInterfaceHaskellModuleBase,
+  interfaceDefaultHaskellModuleBase,
+  interfaceAddHaskellModuleBase,
   -- * C++ includes
   Include,
   includeStd,
@@ -21,8 +28,8 @@ module Foreign.Cppop.Generator.Spec (
   moduleHppPath,
   moduleCppPath,
   moduleExports,
-  moduleHaskellName,
   moduleReqs,
+  moduleHaskellName,
   makeModule,
   modifyModule,
   modifyModule',
@@ -93,7 +100,6 @@ module Foreign.Cppop.Generator.Spec (
   -- * Internal to Cppop
   typeIsConcrete,
   stringOrIdentifier,
-  internalToHsFnName,
   classInstantiationInfo,
   -- ** Haskell imports
   makeHsImportSet,
@@ -117,7 +123,7 @@ import Control.Monad.Except (MonadError, throwError)
 import Control.Monad.Error (MonadError, throwError)
 #endif
 import Control.Monad.State (MonadState, StateT, execStateT, get, modify)
-import Data.Char (isAlpha, isAlphaNum, toLower, toUpper)
+import Data.Char (isAlpha, isAlphaNum, toUpper)
 import Data.Function (on)
 import Data.List (intercalate, intersperse)
 import qualified Data.Map as M
@@ -134,29 +140,18 @@ type ErrorMsg = String
 -- including the binding generator for C++, use these to produce their output.
 data Interface = Interface
   { interfaceName :: String
-    -- ^ Textual name of the interface.
+    -- ^ The textual name of the interface.
   , interfaceModules :: M.Map String Module
-    -- ^ All of the individual modules, by name.
+    -- ^ All of the individual modules, by 'moduleName'.
   , interfaceNamesToModules :: M.Map ExtName Module
     -- ^ Maps each 'ExtName' exported by some module to the module that exports
     -- the name.
-  , interfaceHaskellModuleBase :: Maybe [String]
+  , interfaceHaskellModuleBase' :: Maybe [String]
+    -- ^ See 'interfaceHaskellModuleBase'.
   }
 
 instance Show Interface where
   show iface = concat ["<Interface ", show (interfaceName iface), ">"]
-
--- | An @#include@ directive in a C++ file.
-data Include = Include { includeToString :: String }
-             deriving (Eq, Ord, Show)
-
--- | Creates an @#include \<...\>@ directive.
-includeStd :: String -> Include
-includeStd path = Include $ "#include <" ++ path ++ ">\n"
-
--- | Creates an @#include "..."@ directive.
-includeLocal :: String -> Include
-includeLocal path = Include $ "#include \"" ++ path ++ "\"\n"
 
 -- | Constructs an 'Interface' from the required parts.  Some validation is
 -- performed; if the resulting interface would be invalid, an error message is
@@ -193,12 +188,31 @@ interface ifName modules = do
     { interfaceName = ifName
     , interfaceModules = M.fromList $ map (moduleName &&& id) modules
     , interfaceNamesToModules = M.map (\[x] -> x) extNamesToModules
-    , interfaceHaskellModuleBase = Nothing
+    , interfaceHaskellModuleBase' = Nothing
     }
 
-addInterfaceHaskellModuleBase :: [String] -> Interface -> Either String Interface
-addInterfaceHaskellModuleBase modulePath iface = case interfaceHaskellModuleBase iface of
-  Nothing -> Right iface { interfaceHaskellModuleBase = Just modulePath }
+-- | The name of the parent Haskell module under which a Haskell module will be
+-- generated for a Cppop 'Module'.  This is a list of Haskell module path
+-- components, in other words, @'Data.List.intercalate' "."@ on the list
+-- produces a Haskell module name.  Defaults to
+-- 'interfaceDefaultHaskellModuleBase', and may be overridden with
+-- 'interfaceAddHaskellModuleBase'.
+interfaceHaskellModuleBase :: Interface -> [String]
+interfaceHaskellModuleBase =
+  fromMaybe interfaceDefaultHaskellModuleBase . interfaceHaskellModuleBase'
+
+-- | The default Haskell module under which Cppop modules will be generated.
+-- This is @Foreign.Cppop.Generated@, that is:
+--
+-- > ["Foreign", "Cppop", "Generated"]
+interfaceDefaultHaskellModuleBase :: [String]
+interfaceDefaultHaskellModuleBase = ["Foreign", "Cppop", "Generated"]
+
+-- | Sets an interface to generate all of its modules under the given Haskell
+-- module prefix.  See 'interfaceHaskellModuleBase'.
+interfaceAddHaskellModuleBase :: [String] -> Interface -> Either String Interface
+interfaceAddHaskellModuleBase modulePath iface = case interfaceHaskellModuleBase' iface of
+  Nothing -> Right iface { interfaceHaskellModuleBase' = Just modulePath }
   Just existingPath ->
     Left $ concat
     [ "addInterfaceHaskellModuleBase: Trying to add Haskell module base "
@@ -206,13 +220,46 @@ addInterfaceHaskellModuleBase modulePath iface = case interfaceHaskellModuleBase
     , " which already has a module base ", intercalate "." existingPath
     ]
 
+-- | An @#include@ directive in a C++ file.
+data Include = Include
+  { includeToString :: String
+    -- ^ Returns the complete @#include ...@ line for an include, including
+    -- trailing newline.
+  } deriving (Eq, Ord, Show)
+
+-- | Creates an @#include \<...\>@ directive.
+includeStd :: String -> Include
+includeStd path = Include $ "#include <" ++ path ++ ">\n"
+
+-- | Creates an @#include "..."@ directive.
+includeLocal :: String -> Include
+includeLocal path = Include $ "#include \"" ++ path ++ "\"\n"
+
+-- | A portion of functionality in a C++ API.  An 'Interface' is composed of
+-- multiple modules.  A module will generate a single compilation unit
+-- containing bindings for all of the module's exports.  The C++ code for a
+-- generated module will @#include@ everything necessary for what is written to
+-- the header and source files separately, but you may also declare module-level
+-- requirements to avoid having to declare requirements on every export in a
+-- module.
 data Module = Module
   { moduleName :: String
+    -- ^ The module's name.  A module name must identify a unique module within
+    -- an 'Interface'.
   , moduleHppPath :: String
+    -- ^ A relative path under a C++ sources root to which the generator will
+    -- write a header file for the module's C++ bindings.
   , moduleCppPath :: String
+    -- ^ A relative path under a C++ sources root to which the generator will
+    -- write a source file for the module's C++ bindings.
   , moduleExports :: M.Map ExtName Export
+    -- ^ All of the exports in a module.
   , moduleReqs :: Reqs
+    -- ^ Module-level requirements.
   , moduleHaskellName :: Maybe [String]
+    -- ^ The generated Haskell module name, underneath the
+    -- 'interfaceHaskellModuleBase'.  If absent (by default), the 'moduleName'
+    -- is used.  May be modified with 'addModuleHaskellName'.
   }
 
 instance Eq Module where
@@ -228,11 +275,10 @@ instance HasUseReqs Module where
   getUseReqs = moduleReqs
   setUseReqs reqs m = m { moduleReqs = reqs }
 
-makeModule :: String  -- ^ The module name.
-           -> String
-           -- ^ The path within a project to a C++ header file to generate.
-           -> String
-           -- ^ The path within a project to a C++ source file to generate.
+-- | Creates an empty module, ready to be configured with 'modifyModule'.
+makeModule :: String  -- ^ 'moduleName'
+           -> String  -- ^ 'moduleHppPath'
+           -> String  -- ^ 'moduleCppPath'
            -> Module
 makeModule name hppPath cppPath = Module
   { moduleName = name
@@ -243,9 +289,13 @@ makeModule name hppPath cppPath = Module
   , moduleHaskellName = Nothing
   }
 
-modifyModule :: Module -> StateT Module (Either String) () -> Either String Module
+-- | Extends a module.  To be used with the module state-monad actions in this
+-- package.
+modifyModule :: Module -> StateT Module (Either String) () -> Either ErrorMsg Module
 modifyModule = flip execStateT
 
+-- | Same as 'modifyModule', but calls 'error' in the case of failure, which is
+-- okay in for a generator which would abort in this case anyway.
 modifyModule' :: Module -> StateT Module (Either String) () -> Module
 modifyModule' m action = case modifyModule m action of
   Left errorMsg ->
@@ -253,12 +303,16 @@ modifyModule' m action = case modifyModule m action of
     ["modifyModule' failed to modify ", show m, ": ", errorMsg]
   Right m' -> m'
 
+-- | Replaces a module's 'moduleHppPath'.
 setModuleHppPath :: MonadState Module m => String -> m ()
 setModuleHppPath path = modify $ \m -> m { moduleHppPath = path }
 
+-- | Replaces a module's 'moduleCppPath'.
 setModuleCppPath :: MonadState Module m => String -> m ()
 setModuleCppPath path = modify $ \m -> m { moduleCppPath = path }
 
+-- | Adds exports to a module.  An export must only be added to any module at
+-- most once, and must not be added to multiple modules.
 addModuleExports :: (MonadError String m, MonadState Module m) => [Export] -> m ()
 addModuleExports exports = do
   m <- get
@@ -271,6 +325,8 @@ addModuleExports exports = do
          ["addModuleExports: ", show m, " defines external names multiple times: ",
           show duplicateNames]
 
+-- | Changes a module's 'moduleHaskellName' from the default.  This can only be
+-- called once on a module.
 addModuleHaskellName :: (MonadError String m, MonadState Module m) => [String] -> m ()
 addModuleHaskellName name = do
   m <- get
@@ -300,28 +356,40 @@ instance Monoid Reqs where
 reqInclude :: Include -> Reqs
 reqInclude include = mempty { reqsIncludes = S.singleton include }
 
--- | C++ types that have requirements in order to use them.
+-- | C++ types that have requirements in order to use them in generated
+-- bindings.
 class HasUseReqs a where
+  -- | Returns an object's requirements.
   getUseReqs :: a -> Reqs
 
+  -- | Replaces an object's requirements with new ones.
   setUseReqs :: Reqs -> a -> a
   setUseReqs = modifyUseReqs . const
 
+  -- | Modifies an object's requirements.
   modifyUseReqs :: (Reqs -> Reqs) -> a -> a
   modifyUseReqs f x = setUseReqs (f $ getUseReqs x) x
 
--- | Adds to a type's requirements.
+-- | Adds to a object's requirements.
 addUseReqs :: HasUseReqs a => Reqs -> a -> a
 addUseReqs reqs = modifyUseReqs $ mappend reqs
 
--- | Adds a list of includes to the requirements of a type.
+-- | Adds a list of includes to the requirements of an object.
 addReqIncludes :: HasUseReqs a => [Include] -> a -> a
 addReqIncludes includes =
   modifyUseReqs $ mappend mempty { reqsIncludes = S.fromList includes }
 
--- | An external name is a string that Cppop clients use to uniquely identify an
--- object to invoke at runtime.  An external name must start with an alphabetic
--- character, and may only contain alphanumeric characters and @'_'@.
+-- | An external name is a string that generated bindings use to uniquely
+-- identify an object at runtime.  An external name must start with an
+-- alphabetic character, and may only contain alphanumeric characters and @'_'@.
+-- You are free to use whatever naming style you like; case conversions will be
+-- performed automatically when required.  Cppop does make use of some
+-- conventions though, for example with 'Operator's and in the provided bindings
+-- for the C++ standard library.
+--
+-- External names must be unique within an interface.  They may not be reused
+-- between modules.  This assumption is used for symbol naming in compiled
+-- shared objects and to freely import modules in Haskell bindings.
 newtype ExtName = ExtName
   { fromExtName :: String
     -- ^ Returns the string an an 'ExtName' contains.
@@ -353,13 +421,6 @@ stringOrIdentifier ident = fromMaybe $ case identifierParts ident of
   [] -> error "stringOrIdentifier: Invalid empty identifier."
   parts -> idPartBase $ last parts
 
--- | This is here because of module circular dependencies; see
--- 'Foreign.Cppop.Generator.Language.Haskell.General.toHsFnName'.
-internalToHsFnName :: ExtName -> String
-internalToHsFnName extName = case fromExtName extName of
-  x:xs -> toLower x:xs
-  [] -> []
-
 -- | Generates an 'ExtName' from an @'FnName' 'Identifier'@, if the given name
 -- is absent.
 extNameOrFnIdentifier :: FnName Identifier -> Maybe ExtName -> ExtName
@@ -370,11 +431,13 @@ extNameOrFnIdentifier name =
       parts -> toExtName $ idPartBase $ last parts
     FnOp op -> operatorPreferredExtName op
 
--- | The name of a function or method.  May be either an alphanumeric string
--- ('FnName') or an operator ('FnOp').
+-- | The C++ name of a function or method.
 data FnName name =
   FnName name
+  -- ^ A regular, \"alphanumeric\" name.  The exact type depends on what kind of
+  -- object is being named.
   | FnOp Operator
+    -- ^ An operator name.
   deriving (Eq, Ord)
 
 instance Show name => Show (FnName name) where
@@ -394,6 +457,7 @@ instance IsFnName t t where
 instance IsFnName t Operator where
   toFnName = FnOp
 
+-- | Overloadable C++ operators.
 data Operator =
   OpCall  -- ^ @x(...)@
   | OpComma -- ^ @x, y@
@@ -444,7 +508,7 @@ data OperatorType =
   UnaryPrefixOperator String  -- ^ Prefix unary operators.  Examples: @!x@, @*x@, @++x@.
   | UnaryPostfixOperator String  -- ^ Postfix unary operators.  Examples: @x--, x++@.
   | BinaryOperator String  -- ^ Infix binary operators.  Examples: @x * y@, @x >>= y@.
-  | CallOperator  -- ^ @bx(...)@ with arbitrary arity.
+  | CallOperator  -- ^ @x(...)@ with arbitrary arity.
   | ArrayOperator  -- ^ @x[y]@, a binary operator with non-infix syntax.
 
 data OperatorInfo = OperatorInfo
@@ -526,10 +590,10 @@ operatorInfo =
 
 -- | Specifies some C++ object (function or class) to give access to.
 data Export =
-  ExportEnum CppEnum
-  | ExportFn Function
-  | ExportClass Class
-  | ExportCallback Callback
+  ExportEnum CppEnum  -- ^ Exports an enum.
+  | ExportFn Function  -- ^ Exports a function.
+  | ExportClass Class  -- ^ Exports a class with all of its contents.
+  | ExportCallback Callback  -- ^ Exports a callback.
   deriving (Show)
 
 -- | Returns the external name of an export.
@@ -540,10 +604,11 @@ exportExtName export = case export of
   ExportClass c -> classExtName c
   ExportCallback cb -> callbackExtName cb
 
--- | An absolute path from the top-level C++ namespace down to some named
--- object.
-newtype Identifier = Identifier { identifierParts :: [IdPart] }
-                   deriving (Eq)
+-- | A path to some C++ object, including namespaces.
+newtype Identifier = Identifier
+  { identifierParts :: [IdPart]
+    -- ^ The separate parts of the identifier, between @::@s.
+  } deriving (Eq)
 
 instance Show Identifier where
   show ident =
@@ -566,9 +631,12 @@ instance HasTVars Identifier where
                        }) .
     identifierParts
 
+-- | A single component of an 'Identifier', between @::@s.
 data IdPart = IdPart
   { idPartBase :: String
+    -- ^ The name within the enclosing scope.
   , idPartArgs :: Maybe [Type]
+    -- ^ Template arguments, if present.
   } deriving (Eq, Show)
 
 -- | Creates an identifier of the form @a@.
@@ -599,7 +667,7 @@ ident4 a b c d e = ident' [a, b, c, d, e]
 ident5 :: String -> String -> String -> String -> String -> String -> Identifier
 ident5 a b c d e f = ident' [a, b, c, d, e, f]
 
--- | Creates an identifier of the form @a<...>@.
+-- | Creates an identifier of the form @a\<...\>@.
 identT :: String -> [Type] -> Identifier
 identT a ts = Identifier [IdPart a $ Just ts]
 
@@ -608,34 +676,34 @@ identT a ts = Identifier [IdPart a $ Just ts]
 identT' :: [(String, Maybe [Type])] -> Identifier
 identT' = Identifier . map (uncurry IdPart)
 
--- | Creates an identifier of the form @a::b<...>@.
+-- | Creates an identifier of the form @a::b\<...\>@.
 ident1T :: String -> String -> [Type] -> Identifier
 ident1T a b ts = Identifier [IdPart a Nothing, IdPart b $ Just ts]
 
--- | Creates an identifier of the form @a::b::c<...>@.
+-- | Creates an identifier of the form @a::b::c\<...\>@.
 ident2T :: String -> String -> String -> [Type] -> Identifier
 ident2T a b c ts = Identifier [IdPart a Nothing, IdPart b Nothing, IdPart c $ Just ts]
 
--- | Creates an identifier of the form @a::b::c::d<...>@.
+-- | Creates an identifier of the form @a::b::c::d\<...\>@.
 ident3T :: String -> String -> String -> String -> [Type] -> Identifier
 ident3T a b c d ts =
   Identifier [IdPart a Nothing, IdPart b Nothing, IdPart c Nothing,
               IdPart d $ Just ts]
 
--- | Creates an identifier of the form @a::b::c::d::e<...>@.
+-- | Creates an identifier of the form @a::b::c::d::e\<...\>@.
 ident4T :: String -> String -> String -> String -> String -> [Type] -> Identifier
 ident4T a b c d e ts =
   Identifier [IdPart a Nothing, IdPart b Nothing, IdPart c Nothing,
               IdPart d Nothing, IdPart e $ Just ts]
 
--- | Creates an identifier of the form @a::b::c::d::e::f<...>@.
+-- | Creates an identifier of the form @a::b::c::d::e::f\<...\>@.
 ident5T :: String -> String -> String -> String -> String -> String -> [Type] -> Identifier
 ident5T a b c d e f ts =
   Identifier [IdPart a Nothing, IdPart b Nothing, IdPart c Nothing,
               IdPart d Nothing, IdPart e Nothing, IdPart f $ Just ts]
 
 -- | Concrete C++ types.  It is possible to represent invalid C++ types with
--- this, but that may result in undefined behaviour or invalid code generation.
+-- this, but we try to catch these and fail cleanly as much as possible.
 data Type =
   TVar String  -- ^ A type variable.  May appear within a template.
   | TVoid  -- ^ @void@
@@ -704,6 +772,7 @@ instance HasTVars Type where
     TConst t' -> recur t'
     where recur = substTVar var val
 
+-- | Returns whether there are no 'TVar' variables in the given type.
 typeIsConcrete :: Type -> Bool
 typeIsConcrete t = case t of
   TVar _ -> False
@@ -733,24 +802,30 @@ typeIsConcrete t = case t of
   TObjToHeap _ -> True
   TConst t' -> typeIsConcrete t'
 
+-- | Things with 'Type's that may contain 'TVar' type variables.
 class HasTVars a where
-  -- @substTVar var val x@ replaces all occurrences of @'TVar' var@ in @x@ with
-  -- @val@.  (Classes and callbacks pointed to by 'TCallback' and 'TObj' are not
-  -- recurred into.)
+  -- | @substTVar var val x@ replaces all occurrences of @'TVar' var@ in @x@
+  -- with @val@.  (Classes and callbacks pointed to by 'TCallback' and 'TObj'
+  -- are not recurred into.)
   substTVar :: String -> Type -> a -> a
 
+  -- | Applies a series of substitutions.  The default implementation uses a
+  -- right fold.
   substTVars :: [(String, Type)] -> a -> a
   substTVars vs x = foldr (uncurry substTVar) x vs
 
 -- | A C++ enum declaration.
 data CppEnum = CppEnum
   { enumIdentifier :: Identifier
+    -- ^ The identifier used to refer to the enum.
   , enumExtName :: ExtName
+    -- ^ The enum's external name.
   , enumValueNames :: [(Int, [String])]
     -- ^ The numeric values and names of the enum values.  A single value's name
     -- is broken up into words.  How the words and ext name get combined to make
     -- a name in a particular foreign language depends on the language.
   , enumUseReqs :: Reqs
+    -- ^ Requirements for a 'Type' to reference this enum.
   }
 
 instance Eq CppEnum where
@@ -763,6 +838,7 @@ instance HasUseReqs CppEnum where
   getUseReqs = enumUseReqs
   setUseReqs reqs e = e { enumUseReqs = reqs }
 
+-- | Creates a binding for a C++ enum.
 makeEnum :: Identifier  -- ^ 'enumIdentifier'
          -> Maybe ExtName
          -- ^ An optional external name; will be automatically derived from
@@ -787,10 +863,15 @@ data Purity = Nonpure  -- ^ Side-affects are possible.
 -- | A C++ function declaration.
 data Function = Function
   { fnCName :: FnName Identifier
+    -- ^ The identifier used to call the function.
   , fnExtName :: ExtName
+    -- ^ The function's external name.
   , fnPurity :: Purity
+    -- ^ Whether the function is pure.
   , fnParams :: [Type]
+    -- ^ The function's parameter types.
   , fnReturn :: Type
+    -- ^ The function's return type.
   , fnUseReqs :: Reqs
     -- ^ Requirements for a binding to call the function.
   }
@@ -814,6 +895,7 @@ instance HasTVars Function where
        }
     where subst = substTVar var val
 
+-- | Creates a binding for a C++ function.
 makeFn :: IsFnName Identifier name
        => name
        -> Maybe ExtName
@@ -834,14 +916,21 @@ makeFn cName maybeExtName purity paramTypes retType =
 -- 'HasClassyExtName'.
 data Class = Class
   { classIdentifier :: Identifier
+    -- ^ The identifier used to refer to the class.
   , classExtName :: ExtName
+    -- ^ The class's external name.
   , classSuperclasses :: [Class]
+    -- ^ The class's public superclasses.
   , classCtors :: [Ctor]
+    -- ^ The class's constructors.
   , classMethods :: [Method]
+    -- ^ The class's methods.
   , classConversions :: ClassConversions
+    -- ^ Behaviour for converting objects to and from foriegn values.
   , classUseReqs :: Reqs
     -- ^ Requirements for a 'Type' to reference this class.
   , classInstantiationInfo :: Maybe ClassInstantiationInfo
+    -- ^ Internal information about a class instantiated from a template.
   }
 
 instance Eq Class where
@@ -869,6 +958,7 @@ instance HasTVars Class where
                    }
           subst = substTVar var val
 
+-- | Creates a binding for a C++ class and its contents.
 makeClass :: Identifier
           -> Maybe ExtName
           -- ^ An optional external name; will be automatically derived from the
@@ -911,6 +1001,7 @@ makeClass identifier maybeExtName supers ctors methods = Class
 -- values, via special functions generated for the class.
 data ClassConversions = ClassConversions
   { classHaskellConversion :: Maybe ClassHaskellConversion
+    -- ^ Conversions to and from Haskell.
   }
 
 -- | Encoding parameters for a class that is not encodable or decodable.
@@ -957,7 +1048,9 @@ class HasClassyExtName a where
 -- | A C++ class constructor declaration.
 data Ctor = Ctor
   { ctorExtName :: ExtName
+    -- ^ The constructor's external name.
   , ctorParams :: [Type]
+    -- ^ The constructor's parameter types.
   }
 
 instance Show Ctor where
@@ -985,11 +1078,17 @@ mkCtor = makeCtor . toExtName
 -- independently of how the function is declared in C++.
 data Method = Method
   { methodImpl :: MethodImpl
+    -- ^ The underlying code that the binding calls.
   , methodExtName :: ExtName
+    -- ^ The method's external name.
   , methodApplicability :: MethodApplicability
+    -- ^ How the method is associated to its class.
   , methodPurity :: Purity
+    -- ^ Whether the method is pure.
   , methodParams :: [Type]
+    -- ^ The method's parameter types.
   , methodReturn :: Type
+    -- ^ The method's return type.
   }
 
 instance Show Method where
@@ -1011,23 +1110,32 @@ data MethodImpl =
   RealMethod (FnName String)
   -- ^ The 'Method' is bound to an actual class method.
   | FnMethod (FnName Identifier)
-    -- ^ The 'Method' is bound to a wrapper function.
+    -- ^ The 'Method' is bound to a wrapper function.  When wrapping a method
+    -- with another function, this is preferrable to just using a 'Function'
+    -- binding because a method will still appear to be part of the class in
+    -- foreign bindings.
   deriving (Eq, Show)
 
+-- | How a method is associated to its class.  A method may be static, const, or
+-- neither (a regular method).
 data MethodApplicability = MNormal | MStatic | MConst
                          deriving (Eq, Show)
 
+-- | Whether or not a method is const.
 data Constness = Nonconst | Const
                deriving (Eq, Show)
 
+-- | Whether or not a method is static.
 data Staticness = Nonstatic | Static
                deriving (Eq, Show)
 
+-- | Returns the constness of a method, based on its 'methodApplicability'.
 methodConst :: Method -> Constness
 methodConst method = case methodApplicability method of
   MConst -> Const
   _ -> Nonconst
 
+-- | Returns the staticness of a method, based on its 'methodApplicability'.
 methodStatic :: Method -> Staticness
 methodStatic method = case methodApplicability method of
   MStatic -> Static
@@ -1228,9 +1336,13 @@ mkBoolHasProp name =
 -- | A non-C++ function that can be invoked via a C++ functor.
 data Callback = Callback
   { callbackExtName :: ExtName
+    -- ^ The callback's external name.
   , callbackParams :: [Type]
+    -- ^ The callback's parameter types.
   , callbackReturn :: Type
+    -- ^ The callback's return type.
   , callbackUseReqs :: Reqs
+    -- ^ Requirements for the callback.
   }
 
 instance Eq Callback where
@@ -1245,6 +1357,7 @@ instance HasUseReqs Callback where
   getUseReqs = callbackUseReqs
   setUseReqs reqs cb = cb { callbackUseReqs = reqs }
 
+-- | Creates a binding for constructing callbacks into foreign code.
 makeCallback :: ExtName
              -> [Type]  -- ^ Parameter types.
              -> Type  -- ^ Return type.
@@ -1264,8 +1377,11 @@ callbackToTFn = TFn <$> callbackParams <*> callbackReturn
 -- Imports with @as@ but without @qualified@, and @qualified@ imports with a
 -- spec list, are not supported.  This satisfies the needs of the code
 -- generator, and keeps the merging logic simple.
-newtype HsImportSet = HsImportSet { getHsImportSet :: M.Map HsImportKey HsImportSpecs }
-                    deriving (Show)
+newtype HsImportSet = HsImportSet
+  { getHsImportSet :: M.Map HsImportKey HsImportSpecs
+    -- ^ Returns the import set's internal map from module names to imported
+    -- bindings.
+  } deriving (Show)
 
 instance Monoid HsImportSet where
   mempty = HsImportSet M.empty
@@ -1276,6 +1392,7 @@ instance Monoid HsImportSet where
   mconcat sets =
     HsImportSet $ M.unionsWith mergeImportSpecs $ map getHsImportSet sets
 
+-- | Constructor for an import set.
 makeHsImportSet :: M.Map HsImportKey HsImportSpecs -> HsImportSet
 makeHsImportSet = HsImportSet
 
@@ -1297,6 +1414,8 @@ data HsImportSpecs = HsImportSpecs
   , hsImportSource :: Bool
   } deriving (Show)
 
+-- | Combines two 'HsImportSpecs's into one that imports everything that the two
+-- did separately.
 mergeImportSpecs :: HsImportSpecs -> HsImportSpecs -> HsImportSpecs
 mergeImportSpecs (HsImportSpecs mm s) (HsImportSpecs mm' s') =
   HsImportSpecs (liftM2 mergeMaps mm mm') (s || s')
@@ -1358,26 +1477,32 @@ hsImports' moduleName values =
   HsImportSet $ M.singleton (HsImportKey moduleName Nothing) $
   HsImportSpecs (Just $ M.fromList values) False
 
+-- | Imports "Foreign" qualified as @CppopF@.
 hsImportForForeign :: HsImportSet
 hsImportForForeign = hsQualifiedImport "Foreign" "CppopF"
 
+-- | Imports "Foreign.C" qualified as @CppopFC@.
 hsImportForForeignC :: HsImportSet
 hsImportForForeignC = hsQualifiedImport "Foreign.C" "CppopFC"
 
+-- | Imports "Prelude" qualified as @CppopP@.
 hsImportForPrelude :: HsImportSet
 hsImportForPrelude = hsQualifiedImport "Prelude" "CppopP"
 
+-- | Imports "Foreign.Cppop.Runtime.Support" qualified as @CppopFCRS@.
 hsImportForSupport :: HsImportSet
 hsImportForSupport = hsQualifiedImport "Foreign.Cppop.Runtime.Support" "CppopFCRS"
 
+-- | Imports "System.Posix.Types" qualified as @CppopSPT@.
 hsImportForSystemPosixTypes :: HsImportSet
 hsImportForSystemPosixTypes = hsQualifiedImport "System.Posix.Types" "CppopSPT"
 
+-- | Imports "System.IO.Unsafe" qualified as @CppopSIU@.
 hsImportForUnsafeIO :: HsImportSet
 hsImportForUnsafeIO = hsQualifiedImport "System.IO.Unsafe" "CppopSIU"
 
--- | Returns an error message that indicates that @caller@ received a 'TVar'
--- where one is not accepted.
+-- | Returns an error message indicating that @caller@ received a 'TVar' where
+-- one is not accepted.
 freeVarErrorMsg :: Maybe String -> Type -> String
 freeVarErrorMsg maybeCaller t = concat $ case t of
   TVar v -> [maybe "" (++ ": ") maybeCaller,
@@ -1386,6 +1511,8 @@ freeVarErrorMsg maybeCaller t = concat $ case t of
   _ -> ["freeVarErrorMsg: Expected a TVar from caller ", show maybeCaller,
         " but instead received ", show t, "."]
 
+-- | Returns an error message indicating that 'TObjToHeap' is used where data is
+-- going from a foreign langauge into C++.
 tObjToHeapWrongDirectionErrorMsg :: Maybe String -> Class -> String
 tObjToHeapWrongDirectionErrorMsg maybeCaller cls =
   concat [maybe "" (++ ": ") maybeCaller,

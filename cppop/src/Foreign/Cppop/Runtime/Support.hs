@@ -120,6 +120,7 @@ withScopedPtr p = bracket p delete
 -- impl object, specifically).
 newtype CCallback fnHsCType = CCallback (Ptr ())
 
+-- | A global constant function pointer that points to 'freeHaskellFunPtr'.
 freeHaskellFunPtrFunPtr :: FunPtr (FunPtr (IO ()) -> IO ())
 {-# NOINLINE freeHaskellFunPtrFunPtr #-}
 freeHaskellFunPtrFunPtr =

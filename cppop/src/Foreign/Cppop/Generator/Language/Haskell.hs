@@ -1,5 +1,6 @@
 {-# LANGUAGE CPP #-}
 
+-- | Internal portion of the Haskell code generator.
 module Foreign.Cppop.Generator.Language.Haskell (
   Generation,
   generate,
@@ -66,13 +67,15 @@ import Language.Haskell.Syntax (
   )
 import System.FilePath ((<.>), pathSeparator)
 
+-- | The in-memory result of generating Haskell code for an interface.
 data Generation = Generation
   { generatedFiles :: M.Map FilePath String
     -- ^ A map from paths of generated files to the contents of those files.
     -- The file paths are relative paths below the Haskell generation root.
   }
 
-generate :: Interface -> Either String Generation
+-- | Runs the C++ code generator against an interface.
+generate :: Interface -> Either ErrorMsg Generation
 generate iface = do
   -- Build the partial generation of each module.
   modPartials <- forM (M.elems $ interfaceModules iface) $ \m ->
@@ -767,3 +770,7 @@ getMethodEffectiveParams cls method =
      MConst -> (TPtr (TConst $ TObj cls):)
      MStatic -> id) $
   methodParams method
+
+-- | Imports bindings for the given class into the Haskell module.
+addImportForClass :: Class -> Generator ()
+addImportForClass = importHsModuleForExtName . classExtName

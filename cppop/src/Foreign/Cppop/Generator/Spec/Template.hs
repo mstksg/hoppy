@@ -1,3 +1,7 @@
+-- | Binding declarations for C++ templates.
+--
+-- These templates cannot be exported directly; instead they must be
+-- instantiated, and the resulting objects can be exported.
 module Foreign.Cppop.Generator.Spec.Template (
   -- * Function templates
   FnTemplate, makeFnTemplate, instantiateFnTemplate, instantiateFnTemplate',
@@ -21,19 +25,31 @@ import Data.Function (on)
 import Foreign.Cppop.Common
 import Foreign.Cppop.Common.Consume
 import Foreign.Cppop.Generator.Spec
+import Foreign.Cppop.Generator.Language.Haskell.General (toHsFnName)
 import Foreign.Cppop.Generator.Spec.ClassFeature (
   ClassFeature,
   classAddFeatures,
   )
 
+-- | A C++ function template declaration.
 data FnTemplate = FnTemplate
   { fnTemplateIdentifier :: Identifier
+    -- ^ The C++ name of the function template.
   , fnTemplateExtNamePrefix :: String
+    -- ^ The template's external name.  When instantiated, a provided string
+    -- will be appended to this name.
   , fnTemplateVars :: [String]
+    -- ^ Template parameter names.  Within the template, these can be referenced
+    -- with 'TVar'.
   , fnTemplatePurity :: Purity
+    -- ^ Whether the function is pure.
   , fnTemplateParams :: [Type]
+    -- ^ The function's parameter types.
   , fnTemplateReturn :: Type
+    -- ^ The function's return type.
   , fnTemplateUseReqs :: Reqs
+    -- ^ Requirements for a binding to use the template, ignoring requirements
+    -- for template arguments (which will be handled at instantiation time).
   }
 
 instance Show FnTemplate where
@@ -44,6 +60,7 @@ instance HasUseReqs FnTemplate where
   getUseReqs = fnTemplateUseReqs
   setUseReqs reqs fnTemplate = fnTemplate { fnTemplateUseReqs = reqs }
 
+-- | Creates a function template.
 makeFnTemplate ::
   Identifier
   -> Maybe String
@@ -58,6 +75,8 @@ makeFnTemplate ident maybeExtNamePrefix vars purity paramTypes retType =
   FnTemplate ident (stringOrIdentifier ident maybeExtNamePrefix)
              vars purity paramTypes retType mempty
 
+-- | Instantiates a function template, giving a function.  Returns an error
+-- message if the wrong number of type arguments is given.
 instantiateFnTemplate
   :: FnTemplate  -- ^ The template to instantiate.
   -> String
@@ -65,7 +84,7 @@ instantiateFnTemplate
   -- complete 'ExtName' for the function.
   -> [Type]  -- ^ Types to substitute for the type variables in the template.
   -> Reqs  -- ^ Requirements for the type variables.
-  -> Either String Function
+  -> Either ErrorMsg Function
 instantiateFnTemplate tmpl extNameSuffix typeArgs typeArgUseReqs = do
   -- Ensure that the right number of type arguments are passed in.
   let ident = fnTemplateIdentifier tmpl
@@ -86,21 +105,37 @@ instantiateFnTemplate tmpl extNameSuffix typeArgs typeArgUseReqs = do
            (fnTemplateParams tmpl)
            (fnTemplateReturn tmpl)
 
+-- | Instantiates a function template, calling 'error' on failure.
 instantiateFnTemplate' :: FnTemplate -> String -> [Type] -> Reqs -> Function
 instantiateFnTemplate' tmpl extNameSuffix typeArgs typeArgUseReqs =
-  either error id $
+  either (\e -> error $ concat
+                ["instantiateFnTemplate': Failed to instantiate ", show tmpl, ": ", e])
+         id $
   instantiateFnTemplate tmpl extNameSuffix typeArgs typeArgUseReqs
 
+-- | A C++ class template declaration.
 data ClassTemplate = ClassTemplate
   { classTemplateIdentifier :: Identifier
+    -- ^ The C++ name of the class template.
   , classTemplateExtNamePrefix :: String
+    -- ^ The template's external name.  When instantiated, a provided string
+    -- will be appended to this name.
   , classTemplateVars :: [String]
+    -- ^ Template parameter names.  Within the template, these can be referenced
+    -- with 'TVar'.
   , classTemplateSuperclasses :: [ClassTemplateSuper]
+    -- ^ Template public superclasses.
   , classTemplateCtors :: [Ctor]
+    -- ^ Template constructors.
   , classTemplateMethods :: [Method]
+    -- ^ Template methods.
   , classTemplateFeatures :: [ClassFeature]
+    -- ^ Template class features.
   , classTemplateConversions :: Maybe ClassTemplateConversionsGen
+    -- ^ Conversions for instantiated classes.
   , classTemplateUseReqs :: Reqs
+    -- ^ Requirements to use the template, ignoring requirements of type
+    -- arguments when instantiating the template.
   }
 
 instance Eq ClassTemplate where
@@ -114,14 +149,19 @@ instance HasUseReqs ClassTemplate where
   getUseReqs = classTemplateUseReqs
   setUseReqs reqs classTemplate = classTemplate { classTemplateUseReqs = reqs }
 
+-- | A superclass of a class template.
 data ClassTemplateSuper =
   ClassTemplateSuperClass Class
   -- ^ A non-templated superclass for a templated class.
   | ClassTemplateSuperTemplate ClassTemplate [Type]
-    -- ^ A templated superclass for a templated class.
+    -- ^ A templated superclass for a templated class.  A type argument should
+    -- be given for each type parameter of the super template.
 
+-- | A monad for generating 'ClassConversions' for a class template
+-- instantiation.
 type ClassTemplateConversionsGen = Reader ClassTemplateConversionsEnv ClassConversions
 
+-- | Readable environment during class template instantiation.
 data ClassTemplateConversionsEnv = ClassTemplateConversionsEnv
   { classTemplateConversionsEnvTypeArgs :: [Type]
   , classTemplateConversionsEnvMethodPrefix :: String
@@ -131,15 +171,22 @@ makeClassTemplateConversionsEnv :: Class -> [Type] -> ClassTemplateConversionsEn
 makeClassTemplateConversionsEnv cls typeArgs =
   ClassTemplateConversionsEnv
   { classTemplateConversionsEnvTypeArgs = typeArgs
-  , classTemplateConversionsEnvMethodPrefix = internalToHsFnName (classExtName cls) ++ "_"
+  , classTemplateConversionsEnvMethodPrefix = toHsFnName (classExtName cls) ++ "_"
   }
 
+-- | Extracts the type arguments given to the current class template
+-- instantiation.
 askTypeArgs :: Reader ClassTemplateConversionsEnv [Type]
 askTypeArgs = asks classTemplateConversionsEnvTypeArgs
 
+-- | Extracts the method prefix for the current class template instantiation.
+-- This is the @className_@ prefix on external names for things within the
+-- class, everything up to the part of the name specified by methods
+-- (constructors, etc.) themselves.
 askMethodPrefix :: Reader ClassTemplateConversionsEnv String
 askMethodPrefix = asks classTemplateConversionsEnvMethodPrefix
 
+-- | Creates a class template.
 makeClassTemplate ::
   Identifier
   -- ^ Identifier for the class template.  Should include 'TVar's for all type
@@ -156,10 +203,12 @@ makeClassTemplate ident maybeExtNamePrefix vars supers ctors methods =
   ClassTemplate ident (stringOrIdentifier ident maybeExtNamePrefix)
                 vars supers ctors methods [] Nothing mempty
 
+-- | Adds 'ClassFeature's to classes instantiated from the given template.
 addClassTemplateFeatures :: [ClassFeature] -> ClassTemplate -> ClassTemplate
 addClassTemplateFeatures features tmpl =
   tmpl { classTemplateFeatures = features ++ classTemplateFeatures tmpl }
 
+-- | Adds conversions to classes instantiated from the given template.
 addClassTemplateConversions :: ClassTemplateConversionsGen -> ClassTemplate -> ClassTemplate
 addClassTemplateConversions convs tmpl = case classTemplateConversions tmpl of
   Nothing -> tmpl { classTemplateConversions = Just convs }
@@ -167,6 +216,8 @@ addClassTemplateConversions convs tmpl = case classTemplateConversions tmpl of
     error $ concat
     ["addClassTemplateEncoding: ", show tmpl, " already has conversions, trying to add again."]
 
+-- | Instantiates a class template, giving a class.  Returns an error message if
+-- the instantiation fails, e.g. because the wrong number of type arguments is given.
 instantiateClassTemplate ::
   ClassTemplate  -- ^ The template to instantiate.
   -> String
@@ -263,6 +314,7 @@ instantiateClassTemplate tmpl extNameSuffix typeArgs instantiatedSupers typeArgU
 
   return result
 
+-- | Instantiates a class template, calling 'error' on failure.
 instantiateClassTemplate' :: ClassTemplate -> String -> [Type] -> [Class] -> Reqs -> Class
 instantiateClassTemplate' tmpl extNameSuffix typeArgs instantiatedSupers typeArgUseReqs =
   either (error $ concat ["instantiateClassTemplate': Couldn't instantiate ", show tmpl,
@@ -270,6 +322,7 @@ instantiateClassTemplate' tmpl extNameSuffix typeArgs instantiatedSupers typeArg
          id $
   instantiateClassTemplate tmpl extNameSuffix typeArgs instantiatedSupers typeArgUseReqs
 
+-- | Information about the template from which a class was instantiated.
 data ClassInstantiationInfo = ClassInstantiationInfo
   { classInstantiationTemplate :: ClassTemplate
   , classInstantiationTypeArgs :: [Type]

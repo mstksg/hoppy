@@ -1,5 +1,5 @@
+-- | Shared portion of the C++ code generator.  Usable by binding definitions.
 module Foreign.Cppop.Generator.Language.Cpp.General (
-  makeCppName,
   externalNameToCpp,
   classDeleteFnCppName,
   callbackClassName,
@@ -19,7 +19,6 @@ module Foreign.Cppop.Generator.Language.Cpp.General (
   sayIdentifier,
   sayVar,
   sayType,
-  sayType',
   ) where
 
 import Control.Monad (liftM)
@@ -34,10 +33,11 @@ cppNameSeparator = "__"
 makeCppName :: [String] -> String
 makeCppName = intercalate cppNameSeparator
 
--- | "genpop" is used for individually exported functions.
+-- | \"genpop\" is the prefix used for individually exported functions.
 externalNamePrefix :: String
 externalNamePrefix = "genpop"
 
+-- | Returns the C++ binding function name for an external name.
 externalNameToCpp :: ExtName -> String
 externalNameToCpp extName =
   makeCppName [externalNamePrefix, fromExtName extName]
@@ -45,24 +45,35 @@ externalNameToCpp extName =
 makeClassCppName :: String -> Class -> String
 makeClassCppName prefix cls = makeCppName [prefix, fromExtName $ classExtName cls]
 
+-- | \"gendel\" is the prefix used for wrappers for @delete@ calls.
 classDeleteFnPrefix :: String
 classDeleteFnPrefix = "gendel"
 
+-- | Returns the C++ binding function name of the wrapper for the delete method
+-- for a class.
 classDeleteFnCppName :: Class -> String
 classDeleteFnCppName = makeClassCppName classDeleteFnPrefix
 
+-- | Returns the name of the outer, copyable class for a callback.
 callbackClassName :: Callback -> String
 callbackClassName = fromExtName . callbackExtName
 
+-- | Returns the name of the internal, non-copyable implementation class for a
+-- callback.
 callbackImplClassName :: Callback -> String
 callbackImplClassName = (++ "_impl") . fromExtName . callbackExtName
 
+-- | Returns the name of the C++ binding function that creates a C++ callback
+-- wrapper object from a function pointer to foreign code.
 callbackFnName :: Callback -> String
 callbackFnName = externalNameToCpp . callbackExtName
 
+-- | Returns a distinct argument variable name for each nonnegative number.
 toArgName :: Int -> String
 toArgName = ("arg" ++) . show
 
+-- | Same as 'toArgName', but with distinct names, with with similarity between
+-- @toArgName n@ and @toArgNameAlt n@.
 toArgNameAlt :: Int -> String
 toArgNameAlt n = "arg" ++ show n ++ "_"
 
@@ -81,21 +92,29 @@ identifierChars = ['A'..'Z'] ++ ['a'..'z'] ++ ['0'..'9'] ++ "_"
 -- between chunk boundaries where necessary.
 newtype Chunk = Chunk { chunkContents :: String }
 
+-- | Runs a 'Chunk' writer, combining them with 'combineChunks' to form a single
+-- string.
 runChunkWriter :: Writer [Chunk] a -> (a, String)
 runChunkWriter = fmap combineChunks . runWriter
 
+-- | Runs a 'Chunk' writer and returns the monad's value.
 evalChunkWriter :: Writer [Chunk] a -> a
 evalChunkWriter = fst . runChunkWriter
 
+-- | Runs a 'Chunk' writer and returns the written log.
 execChunkWriter :: Writer [Chunk] a -> String
 execChunkWriter = snd . runChunkWriter
 
+-- | Runs a 'Chunk' writer transformer, combining them with 'combineChunks' to
+-- form a single string.
 runChunkWriterT :: Monad m => WriterT [Chunk] m a -> m (a, String)
 runChunkWriterT = liftM (fmap combineChunks) . runWriterT
 
+-- | Runs a 'Chunk' writer transformer and returns the monad's value.
 evalChunkWriterT :: Monad m => WriterT [Chunk] m a -> m a
 evalChunkWriterT = liftM fst . runChunkWriterT
 
+-- | Runs a 'Chunk' writer transformer and returns the written log.
 execChunkWriterT :: Monad m => WriterT [Chunk] m a -> m String
 execChunkWriterT = liftM snd . runChunkWriterT
 
@@ -124,6 +143,7 @@ say = tell . (:[]) . Chunk
 says :: MonadWriter [Chunk] m => [String] -> m ()
 says = tell . map Chunk
 
+-- | Emits an 'Identifier'.
 sayIdentifier :: MonadWriter [Chunk] m => Identifier -> m ()
 sayIdentifier =
   sequence_ . intersperse (say "::") . map renderPart . identifierParts
@@ -136,12 +156,23 @@ sayIdentifier =
               sequence_ $ intersperse (say ", ") $ map (sayType Nothing) args
               say ">"
 
+-- | @sayVar name maybeParamNames t@ speaks a variable declaration of the form
+-- @\<type\> \<name\>@, where @\<name\>@ is the given name, and @\<type\>@ is
+-- rendered by giving @maybeParamNames@ and @t@ to 'sayType'.
+--
+-- This function is useful for generating variable declarations, declarations
+-- with assignments, and function prototypes and definitions.
 sayVar :: MonadWriter [Chunk] m => String -> Maybe [String] -> Type -> m ()
 sayVar name maybeParamNames t = sayType' t maybeParamNames topPrecedence $ say name
 
+-- | @sayType maybeParamNames t@ renders @t@ in C++ syntax.  If @t@ is a 'TFn',
+-- then @maybeParamNames@ will provide variable names for parameters, if
+-- present.
 sayType :: MonadWriter [Chunk] m => Maybe [String] -> Type -> m ()
 sayType maybeParamNames t = sayType' t maybeParamNames topPrecedence $ return ()
 
+-- | Implementation of 'sayType', deals with recursion, precedence, and the
+-- inside-out style of C++ type syntax.
 sayType' :: MonadWriter [Chunk] m => Type -> Maybe [String] -> Int -> m () -> m ()
 sayType' t maybeParamNames outerPrec unwrappedOuter =
   let prec = typePrecedence t

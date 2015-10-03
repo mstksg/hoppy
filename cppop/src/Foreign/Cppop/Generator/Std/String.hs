@@ -1,3 +1,4 @@
+-- | Bindings for @std::string@.
 module Foreign.Cppop.Generator.Std.String (c_string) where
 
 import Foreign.Cppop.Generator.Language.Haskell.General (addImports, sayLn)

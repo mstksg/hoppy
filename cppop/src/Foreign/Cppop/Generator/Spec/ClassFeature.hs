@@ -36,6 +36,7 @@ data ClassFeature =
     -- ^ An STL random-access iterator.  Includes 'BidirectionalIterator' and
     -- provides arithmetic and array access.
 
+-- | Whether an iterator may be used to modify the underlying collection.
 data IteratorMutability = Constant | Mutable
 
 instance HasTVars ClassFeature where
