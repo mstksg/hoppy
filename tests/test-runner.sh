@@ -9,7 +9,7 @@ set -euo pipefail
 
 declare -r suiteRoot=$PWD
 declare -r suite=$(basename "$suiteRoot")
-declare -r doClean=true
+declare -r doClean=${doClean:-true}
 
 echo "Running tests in $suite."
 
