@@ -45,13 +45,13 @@ import Control.Monad.Writer (execWriterT, tell)
 import Data.Foldable (forM_)
 import Data.Graph (SCC (AcyclicSCC, CyclicSCC), stronglyConnComp)
 import Data.List (intersperse)
-import Data.Tree (flatten, unfoldTree)
 import qualified Data.Map as M
-import Data.Maybe (isJust, mapMaybe)
+import Data.Maybe (catMaybes, isJust, mapMaybe)
 import qualified Data.Set as S
 import Foreign.Cppop.Common
 import Foreign.Cppop.Generator.Spec
 import Foreign.Cppop.Generator.Language.Cpp.General (
+  classCastFnCppName,
   classDeleteFnCppName,
   externalNameToCpp,
   )
@@ -189,6 +189,7 @@ sayExportEnum mode enum =
 
       -- Print out the data declaration.
       ln
+      addExport' hsTypeName
       saysLn ["data ", hsTypeName, " ="]
       indent $ do
         forM_ (zip (False:repeat True) values) $ \(cont, (_, hsCtorName)) ->
@@ -213,6 +214,7 @@ sayExportEnum mode enum =
       let hsTypeName = toHsEnumTypeName enum
       addImports hsImportForPrelude
       ln
+      addExport hsTypeName
       saysLn ["data ", hsTypeName]
       saysLn ["instance CppopP.Bounded ", hsTypeName]
       saysLn ["instance CppopP.Enum ", hsTypeName]
@@ -234,6 +236,7 @@ sayExportFn mode name methodInfo purity paramTypes retType =
     SayExportDecls -> withErrorContext ("generating function " ++ show name) $ do
       -- Print the type signature.
       ln
+      addExport hsFnName
       hsHsType <- fnToHsTypeAndUse HsHsSide methodInfo purity paramTypes retType
       saysLn [hsFnName, " :: ", prettyPrint hsHsType]
 
@@ -337,6 +340,7 @@ sayExportCallback mode cb =
                 prettyPrint hsCallbackCtorImportType]
 
       SayExportDecls -> do
+        addExport hsFnName
         wholeFnType <- getWholeFnType
         let paramCount = length paramTypes
             argNames = map toArgName [1..paramCount]
@@ -358,6 +362,7 @@ sayExportCallback mode cb =
           saysLn [hsFnName'newCallback, " f'p CppopFCRS.freeHaskellFunPtrFunPtr CppopP.False"]
 
       SayExportBoot -> do
+        addExport hsFnName
         wholeFnType <- getWholeFnType
         ln
         saysLn [hsFnName, " :: ", prettyPrint wholeFnType]
@@ -374,7 +379,8 @@ sayArgProcessing dir t fromVar toVar =
     TVoid -> throwError $ "TVoid is not a valid argument type"
     TBool -> case dir of
       ToCpp -> saysLn ["let ", toVar, " = if ", fromVar, " then 1 else 0 in"]
-      FromCpp -> saysLn ["let ", toVar, " = ", fromVar, " /= 0 in"]
+      FromCpp -> do addImports $ hsImport1 "Prelude" "(/=)"
+                    saysLn ["let ", toVar, " = ", fromVar, " /= 0 in"]
     TChar -> noConversion
     TUChar -> noConversion
     TShort -> noConversion
@@ -527,6 +533,7 @@ sayExportClass mode cls = do
       sayExportClassHsType False cls Const
       sayExportClassHsType False cls Nonconst
 
+  sayExportClassCastPrimitives mode cls
   sayExportClassHsSpecialFns mode cls
 
 sayExportClassHsClass :: Bool -> Class -> Constness -> Generator ()
@@ -553,6 +560,7 @@ sayExportClassHsClass doDecls cls cst = do
   -- we emit for the const case only.
   when (cst == Const) $ do
     addImports hsImportForPrelude
+    addExport' hsValueClassName
     ln
     saysLn ["class ", hsValueClassName, " a where"]
     indent $
@@ -578,18 +586,13 @@ sayExportClassHsClass doDecls cls cst = do
         indent $ saysLn [hsWithValuePtrName, " = CppopFCRS.withCppObj"]
 
   -- Print the pointer class definition.
+  addExport' hsPtrClassName
   ln
   saysLn $
     "class (" :
     intersperse ", " (map (++ " this") hsSupers) ++
-    [") => ", hsPtrClassName, " this"]
-
-  -- Print the up-cast function.
-  ln
-  saysLn [hsCastMethodName, " :: ", hsPtrClassName, " this => this -> ", hsTypeName]
-  when doDecls $ do
-    addImports $ mconcat [hsImport1 "Prelude" "(.)", hsImportForForeign, hsImportForSupport]
-    saysLn [hsCastMethodName, " = ", hsTypeName, " . CppopF.castPtr . CppopFCRS.toPtr"]
+    [") => ", hsPtrClassName, " this where"]
+  indent $ saysLn [hsCastMethodName, " :: this -> ", hsTypeName]
 
   -- Print the non-static methods.
   when doDecls $ do
@@ -609,10 +612,25 @@ sayExportClassHsStaticMethods cls =
 
 sayExportClassHsType :: Bool -> Class -> Constness -> Generator ()
 sayExportClassHsType doDecls cls cst = do
-  let hsTypeName = toHsDataTypeName cst cls
   addImports $ mconcat [hsImportForForeign, hsImportForSupport]
+  -- Unfortunately, we must export the data constructor, so that GHC can marshal
+  -- it in foreign calls in other modules.
+  addExport' hsTypeName
   ln
   saysLn ["newtype ", hsTypeName, " = ", hsTypeName, " (CppopF.Ptr ", hsTypeName, ")"]
+
+  -- Generate const_cast functions:
+  --   castFooToConst :: Foo -> FooConst
+  --   castFooToNonconst :: FooConst -> Foo
+  ln
+  let constCastFnName = toHsConstCastFn cst cls
+  addExport constCastFnName
+  saysLn [constCastFnName, " :: ", toHsDataTypeName (constNegate cst) cls, " -> ", hsTypeName]
+  when doDecls $ do
+    addImports $ hsImport1 "Prelude" "(.)"
+    saysLn [constCastFnName, " = ", hsTypeName, " . CppopF.castPtr . CppopFCRS.toPtr"]
+
+  -- Generate an instance of CppPtr.
   ln
   if doDecls
     then do saysLn ["instance CppopFCRS.CppPtr ", hsTypeName, " where"]
@@ -622,19 +640,72 @@ sayExportClassHsType doDecls cls cst = do
               Nonconst -> do addImports $ hsImport1 "Prelude" "(.)"
                              return [" . ", toHsCastMethodName Const cls]
             saysLn $ "  delete = " : toHsClassDeleteFnName cls : deleteTail
-            ln
     else saysLn ["instance CppopFCRS.CppPtr ", hsTypeName]
-  let neededInstances = flatten $ unfoldTree (id &&& classSuperclasses) cls
-  forM_ neededInstances $ \cls' -> do
-    addImportForClass cls'
-    saysLn ["instance ", toHsPtrClassName Const cls', " ", hsTypeName]
-    when (cst == Nonconst) $
-      saysLn ["instance ", toHsPtrClassName Nonconst cls', " ", hsTypeName]
+
+  -- Generate instances for all superclasses' typeclasses.
+  genInstances [] cls
+
+  where hsTypeName :: String
+        hsTypeName = toHsDataTypeName cst cls
+
+        genInstances :: [Class] -> Class -> Generator ()
+        genInstances path ancestorCls = do
+          let path' = ancestorCls : path
+
+          -- Unconditionally generate an instance of the const typeclass.
+          when (null path) $ addImports $ hsImportForPrelude
+          addImportForClass ancestorCls
+          -- Use the fact that we've imported all of the classes from cls to
+          -- ancestorCls.
+          saysLn ["instance ", toHsPtrClassName Const ancestorCls, " ", hsTypeName,
+                  if doDecls then " where" else ""]
+          when doDecls $ indent $ do
+            let convertToConst = cst == Nonconst
+                castToSelf = null path
+            fns <- (\x -> if null x
+                          then do addImports $ hsImportForPrelude
+                                  return ["CppopP.id"]
+                          else return x) $
+                   catMaybes
+                   [ if castToSelf then Nothing else Just $ toHsCastPrimitiveName cls ancestorCls
+                   , if convertToConst then Just $ toHsConstCastFn Const cls else Nothing
+                   ]
+            case fns of
+              _:_:_ -> addImports $ hsImport1 "Prelude" "(.)"
+              _ -> return ()
+            saysLn $ toHsCastMethodName Const ancestorCls : " = " :
+                     intersperse " . " fns
+
+          -- Generate an instance of the nonconst typeclass if we're working on
+          -- a nonconst pointer type.
+          when (cst == Nonconst) $ do
+            saysLn ["instance ", toHsPtrClassName Nonconst ancestorCls, " ", hsTypeName,
+                    if doDecls then " where" else ""]
+            let name = toHsCastMethodName Nonconst ancestorCls
+            when doDecls $ indent $
+              if null path
+              then do addImports hsImportForPrelude
+                      saysLn [name, " = CppopP.id"]
+              else do addImports $ hsImport1 "Prelude" "(.)"
+                      saysLn [name, " = ",
+                              toHsConstCastFn Nonconst ancestorCls, " . ",
+                              toHsCastPrimitiveName cls ancestorCls, " . ",
+                              toHsConstCastFn Const cls]
+
+          forM_ (classSuperclasses ancestorCls) $ genInstances path'
+
+        toHsConstCastFn :: Constness -> Class -> String
+        toHsConstCastFn cst' cls' =
+          concat ["cast", toHsDataTypeName Nonconst cls',
+                  case cst' of
+                    Const -> "ToConst"
+                    Nonconst -> "ToNonconst"]
 
 sayExportClassHsNull :: Class -> Generator ()
 sayExportClassHsNull cls = do
   let clsHsNullName = toHsClassNullName cls
   addImports hsImportForForeign
+  addExport clsHsNullName
   ln
   saysLn [clsHsNullName, " :: ", toHsDataTypeName Nonconst cls]
   saysLn [clsHsNullName, " = ", toHsDataTypeName Nonconst cls, " CppopF.nullPtr"]
@@ -702,6 +773,33 @@ sayExportClassHsSpecialFns mode cls = do
         saysLn ["instance CppopFCRS.Encodable ", typeNameConst, " (", hsTypeStr, ")"]
         saysLn ["instance CppopFCRS.Decodable ", typeName, " (", hsTypeStr, ")"]
         saysLn ["instance CppopFCRS.Decodable ", typeNameConst, " (", hsTypeStr, ")"]
+
+sayExportClassCastPrimitives :: SayExportMode -> Class -> Generator ()
+sayExportClassCastPrimitives mode cls = do
+  let fromType = toHsDataTypeName Const cls
+  case mode of
+    SayExportForeignImports -> do
+      forAncestors cls $ \super -> do
+        let hsCastFnName = toHsCastPrimitiveName cls super
+            toType = toHsDataTypeName Const super
+        addExport hsCastFnName
+        saysLn [ "foreign import ccall \"", classCastFnCppName cls super
+               , "\" ", hsCastFnName, " :: ", fromType, " -> ", toType
+               ]
+
+    SayExportDecls -> return ()
+
+    SayExportBoot -> do
+      forAncestors cls $ \super -> do
+        let hsCastFnName = toHsCastPrimitiveName cls super
+            toType = toHsDataTypeName Const super
+        addExport hsCastFnName
+        saysLn [hsCastFnName, " :: ", fromType, " -> ", toType]
+
+  where forAncestors :: Class -> (Class -> Generator ()) -> Generator ()
+        forAncestors cls' f = forM_ (classSuperclasses cls') $ \super -> do
+          f super
+          forAncestors super f
 
 fnToHsTypeAndUse :: HsTypeSide
                  -> Maybe (Constness, Class)

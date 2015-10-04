@@ -2,6 +2,7 @@
 module Foreign.Cppop.Generator.Language.Cpp.General (
   externalNameToCpp,
   classDeleteFnCppName,
+  classCastFnCppName,
   callbackClassName,
   callbackImplClassName,
   callbackFnName,
@@ -53,6 +54,16 @@ classDeleteFnPrefix = "gendel"
 -- for a class.
 classDeleteFnCppName :: Class -> String
 classDeleteFnCppName = makeClassCppName classDeleteFnPrefix
+
+-- | @classCastFnCppName fromCls toCls@ returns the name of the generated C++
+-- function that casts a pointer from @fromCls@ to @toCls@.
+classCastFnCppName :: Class -> Class -> String
+classCastFnCppName from to =
+  concat [ "gencast__"
+         , fromExtName $ classExtName from
+         , "__"
+         , fromExtName $ classExtName to
+         ]
 
 -- | Returns the name of the outer, copyable class for a callback.
 callbackClassName :: Callback -> String

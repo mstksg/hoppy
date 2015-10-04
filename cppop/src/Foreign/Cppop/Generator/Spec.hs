@@ -80,6 +80,7 @@ module Foreign.Cppop.Generator.Spec (
   MethodImpl (..),
   MethodApplicability (..),
   Constness (..),
+  constNegate,
   Staticness (..),
   makeMethod, makeFnMethod, mkMethod, mkMethod', mkConstMethod, mkConstMethod',
   mkStaticMethod, mkStaticMethod',
@@ -1124,6 +1125,11 @@ data MethodApplicability = MNormal | MStatic | MConst
 -- | Whether or not a method is const.
 data Constness = Nonconst | Const
                deriving (Eq, Show)
+
+-- | Returns the opposite constness value.
+constNegate :: Constness -> Constness
+constNegate Nonconst = Const
+constNegate Const = Nonconst
 
 -- | Whether or not a method is static.
 data Staticness = Nonstatic | Static

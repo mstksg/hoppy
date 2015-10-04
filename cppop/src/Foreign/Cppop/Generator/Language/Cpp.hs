@@ -204,6 +204,7 @@ sayExport sayBody export = case export of
     let clsPtr = TPtr $ TObj cls
         justClsPtr = Just clsPtr
     addReqs $ classUseReqs cls  -- This is needed at least for the delete function.
+
     -- Export each of the class's constructors.
     forM_ (classCtors cls) $ \ctor ->
       sayExportFn (getClassyExtName cls ctor)
@@ -212,11 +213,13 @@ sayExport sayBody export = case export of
                   (ctorParams ctor)
                   clsPtr
                   sayBody
+
     -- Export a delete function for the class.
     sayFunction (classDeleteFnCppName cls)
                 ["self"]
                 (TFn [TPtr $ TConst $ TObj cls] TVoid) $
       Just $ say "delete self;\n"
+
     -- Export each of the class's methods.
     forM_ (classMethods cls) $ \method -> do
       let nonMemberCall =
@@ -242,10 +245,21 @@ sayExport sayBody export = case export of
                   (methodReturn method)
                   sayBody
 
+    -- Export upcast functions for the class to its direct superclasses.
+    forM_ (classSuperclasses cls) $ genUpcastFns cls
+
   ExportCallback cb -> do
     -- Need <memory> for std::shared_ptr.
     addReqs $ callbackUseReqs cb `mappend` reqInclude (includeStd "memory")
     sayExportCallback sayBody cb
+
+  where genUpcastFns :: Class -> Class -> Generator ()
+        genUpcastFns cls ancestorCls = do
+          sayFunction (classCastFnCppName cls ancestorCls)
+                      ["self"]
+                      (TFn [TPtr $ TConst $ TObj cls] $ TPtr $ TConst $ TObj ancestorCls)
+                      (Just $ say "return self;\n")
+          forM_ (classSuperclasses ancestorCls) $ genUpcastFns cls
 
 sayExportFn :: ExtName
             -> Either Operator (Generator ())

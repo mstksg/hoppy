@@ -18,6 +18,7 @@ module Foreign.Cppop.Generator.Language.Haskell.General (
   -- * Exports
   HsExport,
   addExport,
+  addExport',
   addExports,
   -- * Imports
   addImports,
@@ -34,6 +35,7 @@ module Foreign.Cppop.Generator.Language.Haskell.General (
   toHsWithValuePtrName,
   toHsPtrClassName,
   toHsCastMethodName,
+  toHsCastPrimitiveName,
   toHsDataTypeName,
   toHsClassNullName,
   toHsClassDeleteFnName,
@@ -316,6 +318,11 @@ type HsExport = String
 addExport :: HsExport -> Generator ()
 addExport = addExports . (:[])
 
+-- | @addExport' \"x\"@ adds an export of the form @x (..)@ to the current
+-- module.
+addExport' :: HsExport -> Generator ()
+addExport' x = addExports [x ++ " (..)"]
+
 -- | Adds multiple exports to the current module.
 addExports :: [HsExport] -> Generator ()
 addExports exports = tell $ mempty { outputExports = exports }
@@ -435,6 +442,12 @@ toHsPtrClassName cst cls = toHsDataTypeName cst cls ++ "Ptr"
 -- and constness.
 toHsCastMethodName :: Constness -> Class -> String
 toHsCastMethodName cst cls = "to" ++ toHsDataTypeName cst cls
+
+-- | The import name for the foreign function that casts between two specific
+-- pointer types.
+toHsCastPrimitiveName :: Class -> Class -> String
+toHsCastPrimitiveName from to =
+  concat ["cast", toHsDataTypeName Nonconst from, "To", toHsDataTypeName Nonconst to]
 
 -- | The name of the data type that represents a pointer to an object of the
 -- given class and constness.
