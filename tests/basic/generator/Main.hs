@@ -89,6 +89,9 @@ testModule =
   , ExportFn f_sizeOfPtrdiff
   , ExportFn f_sizeOfSize
   , ExportFn f_sizeOfSSize
+  , ExportClass c_InheritanceA
+  , ExportClass c_InheritanceB
+  , ExportClass c_InheritanceC
   ]
 
 c_IntBox :: Class
@@ -394,3 +397,26 @@ f_sizeOfSSize :: Function
 f_sizeOfSSize =
   addReqIncludes [includeLocal "functions.hpp"] $
   makeFn (ident "sizeOfSSize") Nothing Pure [] TSize
+
+c_InheritanceA :: Class
+c_InheritanceA =
+  addReqIncludes [includeLocal "inheritance.hpp"] $
+  makeClass (ident "InheritanceA") Nothing []
+  [ mkCtor "new" [] ]
+  [ mkConstMethod "aFoo" [] TInt
+  , mkConstMethod "aBar" [] TInt
+  ]
+
+c_InheritanceB :: Class
+c_InheritanceB =
+  addReqIncludes [includeLocal "inheritance.hpp"] $
+  makeClass (ident "InheritanceB") Nothing [] []
+  [ mkConstMethod "bFoo" [] TInt
+  ]
+
+c_InheritanceC :: Class
+c_InheritanceC =
+  addReqIncludes [includeLocal "inheritance.hpp"] $
+  makeClass (ident "InheritanceC") Nothing [c_InheritanceA, c_InheritanceB]
+  [ mkCtor "new" [] ]
+  []

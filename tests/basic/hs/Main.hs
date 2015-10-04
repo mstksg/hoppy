@@ -55,6 +55,7 @@ tests =
   , tObjToHeapTests
   , classConversionTests
   , primitiveTypeSizeTests
+  , inheritanceTests
   ]
 
 functionTests :: Test
@@ -220,4 +221,14 @@ primitiveTypeSizeTests =
   , "TPtrdiff" ~: fromIntegral sizeOfPtrdiff @?= sizeOf (undefined :: CPtrdiff)
   , "TSize" ~: fromIntegral sizeOfSize @?= sizeOf (undefined :: CSize)
   , "TSSize" ~: fromIntegral sizeOfSSize @?= sizeOf (undefined :: CSsize)
+  ]
+
+inheritanceTests :: Test
+inheritanceTests =
+  "inheritance tests" ~: TestList
+  [ "multiple inheritance" ~: do
+    c <- inheritanceC_new
+    inheritanceA_aFoo c >>= (@?= 1)  -- From the first superclass.
+    inheritanceA_aBar c >>= (@?= 20)  -- From the first superclass, overridden.
+    inheritanceB_bFoo c >>= (@?= 30)  -- From the second superclass, overridden.
   ]
