@@ -11,4 +11,6 @@ myDir=$(readlink -f "$0")
 myDir=$(dirname "$myDir")
 cd "$myDir"
 
+filesToClean="lib/std.?pp"
+
 . ../test-runner.sh
