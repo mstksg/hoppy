@@ -1,4 +1,4 @@
-name: cppop-tests-basic-generator
+name: cppop-tests-circular-generator
 version: 0.1.0
 license: AGPL-3
 author: Bryan Gardiner <bog@khumba.net>
@@ -9,6 +9,9 @@ cabal-version: >=1.10
 
 executable generator
   main-is: Main.hs
+  other-modules:
+      Foreign.Cppop.Generator.Test.Circular.Flob
+    , Foreign.Cppop.Generator.Test.Circular.Flub
   build-depends:
       base >=4.8 && <4.9
     , cppop

@@ -212,6 +212,7 @@ sayType' t maybeParamNames outerPrec unwrappedOuter =
     TSize -> say "size_t" >> outer
     TSSize -> say "ssize_t" >> outer
     TEnum e -> sayIdentifier (enumIdentifier e) >> outer
+    TBitspace b -> sayType' (bitspaceType b) maybeParamNames outerPrec unwrappedOuter
     TPtr t' -> sayType' t' Nothing prec $ say "*" >> outer
     TRef t' -> sayType' t' Nothing prec $ say "&" >> outer
     TFn paramTypes retType -> sayType' retType Nothing prec $ do

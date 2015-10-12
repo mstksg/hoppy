@@ -1,4 +1,4 @@
-name: cppop-tests-basic
+name: cppop-tests-circular
 version: 0.1.0
 license: AGPL-3
 author: Bryan Gardiner <bog@khumba.net>
@@ -19,9 +19,9 @@ library
     , cppop
   default-language: Haskell2010
   ghc-options: -W -fwarn-incomplete-patterns -fwarn-unused-do-bind
-  extra-libraries: cppop-tests-basic
+  extra-libraries: cppop-tests-circular
 
-test-suite tests-basic
+test-suite tests-circular
   type: exitcode-stdio-1.0
   main-is: Main.hs
   default-language: Haskell2010
@@ -29,5 +29,5 @@ test-suite tests-basic
   build-depends:
       base >= 4.8 && < 4.9
     , cppop
-    , cppop-tests-basic
+    , cppop-tests-circular
     , HUnit

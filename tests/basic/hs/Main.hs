@@ -2,7 +2,7 @@
 
 module Main where
 
-import Control.Monad ((>=>), forM_, when)
+import Control.Monad (when)
 import Foreign.C (
   CChar,
   CDouble,
@@ -30,7 +30,7 @@ import System.Exit (exitFailure)
 import System.Posix.Types (CSsize)
 import Test.HUnit (
   Assertion,
-  Test (TestCase, TestList),
+  Test (TestList),
   (~:),
   (@?=),
   errors,
@@ -122,7 +122,7 @@ tObjToHeapTests =
 
   , "returning from C++ by value" ~: do
     ptrCtr_resetCounters
-    withScopedPtr givePtrCtrByValue $ \p -> do
+    withScopedPtr givePtrCtrByValue $ \_ -> do
       (ctors, dtors) <- getCounts
       dtors @?= ctors - 1
     (ctors, dtors) <- getCounts

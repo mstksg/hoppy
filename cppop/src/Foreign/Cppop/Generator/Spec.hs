@@ -68,8 +68,11 @@ module Foreign.Cppop.Generator.Spec (
   HasTVars (..),
   -- ** Enums
   CppEnum, makeEnum, enumIdentifier, enumExtName, enumValueNames, enumUseReqs,
-  Purity (..),
+  -- ** Bitspaces
+  Bitspace, makeBitspace, bitspaceExtName, bitspaceType, bitspaceValueNames, bitspaceEnum,
+  bitspaceAddEnum,
   -- ** Functions
+  Purity (..),
   Function, makeFn, fnCName, fnExtName, fnPurity, fnParams, fnReturn, fnUseReqs,
   -- ** Classes
   Class, makeClass, classIdentifier, classExtName, classSuperclasses, classCtors, classMethods,
@@ -105,6 +108,7 @@ module Foreign.Cppop.Generator.Spec (
   -- ** Haskell imports
   makeHsImportSet,
   getHsImportSet,
+  hsImportForBits,
   hsImportForForeign,
   hsImportForForeignC,
   hsImportForPrelude,
@@ -240,9 +244,11 @@ includeLocal path = Include $ "#include \"" ++ path ++ "\"\n"
 -- multiple modules.  A module will generate a single compilation unit
 -- containing bindings for all of the module's exports.  The C++ code for a
 -- generated module will @#include@ everything necessary for what is written to
--- the header and source files separately, but you may also declare module-level
--- requirements to avoid having to declare requirements on every export in a
--- module.
+-- the header and source files separately.  You can declare include dependencies
+-- with e.g. 'addReqIncludes', either for individual exports or at the module
+-- level.  Dependencies between modules are handled automatically, and
+-- circularity is supported to a certain extent.  See the documentation for the
+-- individual language modules for further details.
 data Module = Module
   { moduleName :: String
     -- ^ The module's name.  A module name must identify a unique module within
@@ -592,6 +598,7 @@ operatorInfo =
 -- | Specifies some C++ object (function or class) to give access to.
 data Export =
   ExportEnum CppEnum  -- ^ Exports an enum.
+  | ExportBitspace Bitspace  -- ^ Exports a bitspace.
   | ExportFn Function  -- ^ Exports a function.
   | ExportClass Class  -- ^ Exports a class with all of its contents.
   | ExportCallback Callback  -- ^ Exports a callback.
@@ -601,6 +608,7 @@ data Export =
 exportExtName :: Export -> ExtName
 exportExtName export = case export of
   ExportEnum e -> enumExtName e
+  ExportBitspace b -> bitspaceExtName b
   ExportFn f -> fnExtName f
   ExportClass c -> classExtName c
   ExportCallback cb -> callbackExtName cb
@@ -724,7 +732,8 @@ data Type =
   | TPtrdiff  -- ^ @ptrdiff_t@
   | TSize  -- ^ @size_t@
   | TSSize  -- ^ @ssize_t@
-  | TEnum CppEnum  -- ^ A C++ @enum@.
+  | TEnum CppEnum  -- ^ A C++ @enum@ value.
+  | TBitspace Bitspace  -- ^ A C++ bitspace value.
   | TPtr Type  -- ^ A poiner to another type.
   | TRef Type  -- ^ A reference to another type.
   | TFn [Type] Type
@@ -764,6 +773,7 @@ instance HasTVars Type where
     TSize -> t
     TSSize -> t
     TEnum _ -> t
+    TBitspace _ -> t
     TPtr t' -> recur t'
     TRef t' -> recur t'
     TFn paramTypes retType -> TFn (map recur paramTypes) $ recur retType
@@ -795,6 +805,7 @@ typeIsConcrete t = case t of
   TSize -> True
   TSSize -> True
   TEnum _ -> True
+  TBitspace _ -> True
   TPtr t' -> typeIsConcrete t'
   TRef t' -> typeIsConcrete t'
   TFn paramTypes retType -> all typeIsConcrete paramTypes && typeIsConcrete retType
@@ -815,7 +826,8 @@ class HasTVars a where
   substTVars :: [(String, Type)] -> a -> a
   substTVars vs x = foldr (uncurry substTVar) x vs
 
--- | A C++ enum declaration.
+-- | A C++ enum declaration.  An enum should actually be enumerable (in the
+-- sense of Haskell's 'Enum'); if it's not, consider using a 'Bitspace' instead.
 data CppEnum = CppEnum
   { enumIdentifier :: Identifier
     -- ^ The identifier used to refer to the enum.
@@ -849,9 +861,54 @@ makeEnum :: Identifier  -- ^ 'enumIdentifier'
 makeEnum identifier maybeExtName valueNames =
   CppEnum identifier (extNameOrIdentifier identifier maybeExtName) valueNames mempty
 
+-- | A C++ numeric space with bitwise operations.  This is similar to a
+-- 'CppEnum', but in addition to the extra operations, this differs in that
+-- these values aren't enumerable.
+data Bitspace = Bitspace
+  { bitspaceExtName :: ExtName
+    -- ^ The bitspace's external name.
+  , bitspaceType :: Type
+    -- ^ The C++ type used for bits values.  This should be a primitive numeric
+    -- type.
+  , bitspaceValueNames :: [(Int, [String])]
+    -- ^ The numeric values and names of the bitspace values.  See
+    -- 'enumValueNames'.
+  , bitspaceEnum :: Maybe CppEnum
+    -- ^ An associated enum, whose values may be converted to values in the
+    -- bitspace.
+  }
+
+instance Eq Bitspace where
+  (==) = (==) `on` bitspaceExtName
+
+instance Show Bitspace where
+  show e = concat ["<Bitspace ", show (bitspaceExtName e), " ", show (bitspaceType e), ">"]
+
+-- | Creates a binding for a C++ bitspace.
+makeBitspace :: ExtName  -- ^ 'bitspaceExtName'
+             -> Type  -- ^ 'bitspaceType'
+             -> [(Int, [String])]  -- ^ 'bitspaceValueNames'
+             -> Bitspace
+makeBitspace extName t valueNames = Bitspace extName t valueNames Nothing
+
+-- | Associates an enum with the bitspace.  See 'bitspaceEnum'.
+bitspaceAddEnum :: CppEnum -> Bitspace -> Bitspace
+bitspaceAddEnum enum bitspace = case bitspaceEnum bitspace of
+  Just enum' ->
+    error $ concat
+    ["bitspaceAddEnum: Adding ", show enum, " to ", show bitspace,
+     ", but it already has ", show enum', "."]
+  Nothing ->
+    if bitspaceValueNames bitspace /= enumValueNames enum
+    then error $ concat
+         ["bitspaceAddEnum: Trying to add ", show enum, " to ", show bitspace,
+          ", but the values aren't equal.\nBitspace values: ", show $ bitspaceValueNames bitspace,
+          "\n    Enum values: ", show $ enumValueNames enum]
+    else bitspace { bitspaceEnum = Just enum }
+
 -- | Whether or not a function may cause side-effects.
 --
--- Haskell bindings for pure functions will not be in 'IO', calls to pure
+-- Haskell bindings for pure functions will not be in 'IO', and calls to pure
 -- functions will be executed non-strictly.  Calls to impure functions will
 -- execute in the IO monad.
 --
@@ -1482,6 +1539,10 @@ hsImports' :: HsModuleName -> [(HsImportName, HsImportVal)] -> HsImportSet
 hsImports' moduleName values =
   HsImportSet $ M.singleton (HsImportKey moduleName Nothing) $
   HsImportSpecs (Just $ M.fromList values) False
+
+-- | Imports "Data.Bits" qualified as @CppopDB@.
+hsImportForBits :: HsImportSet
+hsImportForBits = hsQualifiedImport "Data.Bits" "CppopDB"
 
 -- | Imports "Foreign" qualified as @CppopF@.
 hsImportForForeign :: HsImportSet

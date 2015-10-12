@@ -23,6 +23,11 @@ let
       cppop-tests-basic =
         self.callPackage (cppopDir + /tests/basic/hs) {};
 
+      cppop-tests-circular-generator =
+        self.callPackage (cppopDir + /tests/circular/generator) {};
+      cppop-tests-circular =
+        self.callPackage (cppopDir + /tests/circular/hs) {};
+
       cppop-tests-stl-generator =
         self.callPackage (cppopDir + /tests/stl/generator) {};
       cppop-tests-stl =
@@ -37,6 +42,10 @@ let
 
     cppop-tests-basic-lib = pkgs.callPackage (cppopDir + /tests/basic/lib) {
       inherit (haskellPackages) cppop cppop-tests-basic-generator;
+    };
+
+    cppop-tests-circular-lib = pkgs.callPackage (cppopDir + /tests/circular/lib) {
+      inherit (haskellPackages) cppop cppop-tests-circular-generator;
     };
 
     cppop-tests-stl-lib = pkgs.callPackage (cppopDir + /tests/stl/lib) {

@@ -31,6 +31,11 @@ module Foreign.Cppop.Generator.Language.Haskell.General (
   sayLet,
   toHsEnumTypeName,
   toHsEnumCtorName,
+  toHsBitspaceTypeName,
+  toHsBitspaceValueName,
+  toHsBitspaceToNumName,
+  toHsBitspaceClassName,
+  toHsBitspaceFromValueName,
   toHsValueClassName,
   toHsWithValuePtrName,
   toHsPtrClassName,
@@ -420,8 +425,31 @@ toHsEnumTypeName = toHsTypeName Nonconst . enumExtName
 toHsEnumCtorName :: CppEnum -> [String] -> String
 toHsEnumCtorName enum words =
   concat $ toHsEnumTypeName enum : "_" : map capitalize words
-  where capitalize "" = ""
-        capitalize (c:cs) = toUpper c : map toLower cs
+
+-- | Returns the Haskell name for a bitspace.  See 'toHsEnumTypeName'.
+toHsBitspaceTypeName :: Bitspace -> String
+toHsBitspaceTypeName = toHsTypeName Nonconst . bitspaceExtName
+
+-- | Constructs the data constructor name for a value in a bitspace.  See
+-- 'toHsEnumCtorName'.
+toHsBitspaceValueName :: Bitspace -> [String] -> String
+toHsBitspaceValueName bitspace words =
+  lowerFirst $ concat $ toHsBitspaceTypeName bitspace : "_" : map capitalize words
+
+-- | Returns the name of the function that will convert a bitspace value into a
+-- raw numeric value.
+toHsBitspaceToNumName :: Bitspace -> String
+toHsBitspaceToNumName = ("from" ++) . toHsBitspaceTypeName
+
+-- | The name of the Haskell typeclass that contains a method for converting to
+-- a bitspace value.
+toHsBitspaceClassName :: Bitspace -> String
+toHsBitspaceClassName bitspace = 'I':'s':toHsBitspaceTypeName bitspace
+
+-- | The name of the method in the 'toHsBitspaceClassName' typeclass that
+-- constructs bitspace values.
+toHsBitspaceFromValueName :: Bitspace -> String
+toHsBitspaceFromValueName = ("to" ++) . toHsBitspaceTypeName
 
 -- | The name for the typeclass of types that can be represented as values of
 -- the given C++ class.
@@ -474,9 +502,7 @@ toHsCallbackCtorName = toHsFnName . callbackExtName
 -- | Converts an external name into a name suitable for a Haskell function or
 -- variable.
 toHsFnName :: ExtName -> String
-toHsFnName extName = case fromExtName extName of
-  x:xs -> toLower x:xs
-  [] -> []
+toHsFnName = lowerFirst . fromExtName
 
 -- | Returns a distinct argument variable name for each nonnegative number.
 toArgName :: Int -> String
@@ -520,6 +546,10 @@ cppTypeToHsTypeAndUse side t =
     TEnum e -> HsTyCon . UnQual . HsIdent <$> case side of
       HsCSide -> addImports hsImportForForeignC $> "CppopFC.CInt"
       HsHsSide -> importHsModuleForExtName (enumExtName e) $> toHsEnumTypeName e
+    TBitspace b -> case side of
+      HsCSide -> cppTypeToHsTypeAndUse side $ bitspaceType b
+      HsHsSide -> importHsModuleForExtName (bitspaceExtName b) $>
+                  HsTyCon (UnQual $ HsIdent $ toHsBitspaceTypeName b)
     TPtr (TObj cls) ->
       importHsModuleForExtName (classExtName cls) $>
       HsTyCon (UnQual $ HsIdent $ toHsTypeName Nonconst $ classExtName cls)
@@ -570,3 +600,14 @@ cppTypeToHsTypeAndUse side t =
 -- could go badly.
 prettyPrint :: P.Pretty a => a -> String
 prettyPrint = filter (/= '\n') . P.prettyPrint
+
+-- | Uppercases the first character of a string, and lowercases the rest of it.
+-- Does nothing to an empty string.
+capitalize :: String -> String
+capitalize "" = ""
+capitalize (c:cs) = toUpper c : map toLower cs
+
+-- | Lowercases the first character of a string, if nonempty.
+lowerFirst :: String -> String
+lowerFirst "" = ""
+lowerFirst (c:cs) = toLower c : cs

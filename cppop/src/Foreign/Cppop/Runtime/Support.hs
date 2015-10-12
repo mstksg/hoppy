@@ -43,8 +43,7 @@ class CppPtr this where
   -- | Deletes the object with the C++ @delete@ operator.
   delete :: this -> IO ()
 
-  -- | Internal function to convert to a pointer.  Used in generated bindings;
-  -- do not use otherwise.
+  -- | Converts to a regular pointer.
   toPtr :: this -> Ptr this
 
 -- | For a C++ class that also has a native Haskell representation (e.g. value

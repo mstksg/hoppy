@@ -7,6 +7,22 @@ module Foreign.Cppop.Generator.Language.Haskell (
   generatedFiles,
   ) where
 
+-- Module structure:
+--
+-- The result of generating a Cppop module is a single Haskell module that
+-- contains bindings for everything exported from the Cppop module.  While
+-- generated C++ modules get their objects from #includes of underlying headers
+-- and only depend on each other in the case of callbacks, Haskell modules
+-- depend on each other any time something in one references something in
+-- another (somewhat mirroring the dependency graph of the binding definitions),
+-- so cycles are much more common (for example, when a C++ interface uses a
+-- forward class declaration to break an #include cycle).  Fortunately, GHC
+-- supports dependency cycles, so Cppop automatically detects and breaks cycles
+-- with the use of .hs-boot files.  The boot files contain everything that could
+-- be used from another generated module, for example class casting functions
+-- needed to coerce pointers to the right type for a foreign call, or enum data
+-- declarations.
+
 -- How object passing works:
 --
 -- All of the comments about argument passing in Cpp.hs apply here.  The
@@ -152,8 +168,11 @@ prependExtensionsPrefix =
   -- a => SomeClassValue a", and overlapping instances are used for the overlap
   -- between these instances and instances of SomeClassValue for the class's
   -- native Haskell type, when it's convertible.
-  "{-# LANGUAGE FlexibleContexts, FlexibleInstances, MultiParamTypeClasses, " ++
-  "TypeSynonymInstances, UndecidableInstances #-}\n\n"
+  --
+  -- GeneralizedNewtypeDeriving is to enable automatic deriving of
+  -- Data.Bits.Bits instances for bitspace newtypes.
+  "{-# LANGUAGE FlexibleContexts, FlexibleInstances, GeneralizedNewtypeDeriving, " ++
+  "MultiParamTypeClasses, TypeSynonymInstances, UndecidableInstances #-}\n\n"
 
 generateSource :: Module -> Generator ()
 generateSource m = do
@@ -169,6 +188,7 @@ data SayExportMode = SayExportForeignImports | SayExportDecls | SayExportBoot
 sayExport :: SayExportMode -> Export -> Generator ()
 sayExport mode export = case export of
   ExportEnum enum -> sayExportEnum mode enum
+  ExportBitspace bitspace -> sayExportBitspace mode bitspace
   ExportFn fn ->
     (sayExportFn mode <$> fnExtName <*> pure Nothing <*> fnPurity <*> fnParams <*> fnReturn) fn
   ExportClass cls -> sayExportClass mode cls
@@ -213,14 +233,93 @@ sayExportEnum mode enum =
     SayExportBoot -> do
       let hsTypeName = toHsEnumTypeName enum
       addImports hsImportForPrelude
-      ln
       addExport hsTypeName
+      ln
       saysLn ["data ", hsTypeName]
       saysLn ["instance CppopP.Bounded ", hsTypeName]
       saysLn ["instance CppopP.Enum ", hsTypeName]
       saysLn ["instance CppopP.Eq ", hsTypeName]
       saysLn ["instance CppopP.Ord ", hsTypeName]
       saysLn ["instance CppopP.Show ", hsTypeName]
+
+sayExportBitspace :: SayExportMode -> Bitspace -> Generator ()
+sayExportBitspace mode bitspace =
+  withErrorContext ("generating bitspace " ++ show (bitspaceExtName bitspace)) $
+  let hsTypeName = toHsBitspaceTypeName bitspace
+      fromFnName = toHsBitspaceToNumName bitspace
+      className = toHsBitspaceClassName bitspace
+      toFnName = toHsBitspaceFromValueName bitspace
+      hsType = HsTyCon $ UnQual $ HsIdent hsTypeName
+  in case mode of
+    -- Nothing to import from the C++ side of a bitspace.
+    SayExportForeignImports -> return ()
+
+    SayExportDecls -> do
+      let values :: [(Int, String)]
+          values = map (second $ toHsBitspaceValueName bitspace) $ bitspaceValueNames bitspace
+
+      hsNumType <- cppTypeToHsTypeAndUse HsHsSide $ bitspaceType bitspace
+
+      -- Print out the data declaration and conversion functions.
+      addImports $ mconcat [hsImportForBits, hsImportForPrelude]
+      addExport' hsTypeName
+      addExport' className
+      ln
+      saysLn ["newtype ", hsTypeName, " = ", hsTypeName, " { ",
+              fromFnName, " :: ", prettyPrint hsNumType, " }"]
+      indent $ sayLn "deriving (CppopDB.Bits, CppopP.Bounded, CppopP.Eq, CppopP.Ord, CppopP.Show)"
+      ln
+      saysLn ["class ", className, " a where"]
+      indent $ do
+        let tyVar = HsTyVar $ HsIdent "a"
+        saysLn [toFnName, " :: ", prettyPrint $ HsTyFun tyVar hsType]
+      ln
+      saysLn ["instance ", className, " (", prettyPrint hsNumType, ") where"]
+      indent $ saysLn [toFnName, " = ", hsTypeName]
+
+      -- If the bitspace has an associated enum, then print out a conversion
+      -- instance for it as well.
+      forM_ (bitspaceEnum bitspace) $ \enum -> do
+        let enumTypeName = toHsEnumTypeName enum
+        importHsModuleForExtName $ enumExtName enum
+        addImports $ mconcat [hsImport1 "Prelude" "(.)", hsImportForPrelude, hsImportForSupport]
+        ln
+        saysLn ["instance ", className, " ", enumTypeName, " where"]
+        indent $
+          saysLn [toFnName, " = ", hsTypeName, " . CppopFCRS.coerceIntegral . CppopP.fromEnum"]
+
+      -- Print out the constants.
+      ln
+      forM_ values $ \(num, valueName) -> do
+        addExport valueName
+        saysLn [valueName, " = ", hsTypeName, " ", show num]
+
+    SayExportBoot -> do
+      hsNumType <- cppTypeToHsTypeAndUse HsHsSide $ bitspaceType bitspace
+
+      addImports $ mconcat [hsImportForBits, hsImportForPrelude]
+      addExport' hsTypeName
+      addExport' className
+      ln
+      saysLn ["newtype ", hsTypeName, " = ", hsTypeName, " { ",
+              fromFnName, " :: ", prettyPrint hsNumType, " }"]
+      ln
+      saysLn ["instance CppopDB.Bits ", hsTypeName]
+      saysLn ["instance CppopP.Bounded ", hsTypeName]
+      saysLn ["instance CppopP.Eq ", hsTypeName]
+      saysLn ["instance CppopP.Ord ", hsTypeName]
+      saysLn ["instance CppopP.Show ", hsTypeName]
+      ln
+      saysLn ["class ", className, " a where"]
+      indent $ do
+        let tyVar = HsTyVar $ HsIdent "a"
+        saysLn [toFnName, " :: ", prettyPrint $ HsTyFun tyVar hsType]
+      ln
+      saysLn ["instance ", className, " (", prettyPrint hsNumType, ")"]
+      forM_ (bitspaceEnum bitspace) $ \enum -> do
+        let enumTypeName = toHsEnumTypeName enum
+        importHsModuleForExtName $ enumExtName enum
+        saysLn ["instance ", className, " ", enumTypeName]
 
 sayExportFn :: SayExportMode -> ExtName -> Maybe (Constness, Class) -> Purity -> [Type] -> Type -> Generator ()
 sayExportFn mode name methodInfo purity paramTypes retType =
@@ -352,7 +451,6 @@ sayExportCallback mode cb =
           sayLet
             [do saysLn ["f'c ", unwords argNames, " ="]
                 indent $ do
-                  addImports $ hsImport1 "Prelude" "(>>=)"
                   forM_ (zip3 paramTypes argNames argNames') $ \(t, argName, argName') ->
                     sayArgProcessing FromCpp t argName argName'
                   sayCallAndProcessReturn FromCpp retType $
@@ -406,6 +504,9 @@ sayArgProcessing dir t fromVar toVar =
                 ToCpp -> " = CppopFCRS.coerceIntegral $ CppopP.fromEnum "
                 FromCpp -> " = CppopP.toEnum $ CppopFCRS.coerceIntegral ",
               fromVar, " in"]
+    TBitspace b -> do
+      importHsModuleForExtName $ bitspaceExtName b
+      saysLn ["let ", toVar, " = ", bitspaceConvFn dir b, " ", fromVar, " in"]
     -- References and pointers are handled equivalently.
     TPtr (TObj cls) -> do
       addImportForClass cls
@@ -441,6 +542,9 @@ sayArgProcessing dir t fromVar toVar =
       FromCpp -> noConversion
     TConst t' -> sayArgProcessing dir t' fromVar toVar
   where noConversion = saysLn ["let ", toVar, " = ", fromVar, " in"]
+        bitspaceConvFn dir = case dir of
+          ToCpp -> toHsBitspaceToNumName
+          FromCpp -> toHsBitspaceFromValueName
 
 -- | Note that the 'CallDirection' is the direction of the call, not the
 -- direction of the return.  'ToCpp' means we're returning to the foreign
@@ -480,6 +584,11 @@ sayCallAndProcessReturn dir t callWords =
         ToCpp -> saysLn ["CppopP.fmap (CppopP.toEnum . CppopFCRS.coerceIntegral)"]
         FromCpp -> saysLn ["CppopP.fmap (CppopFCRS.coerceIntegral . CppopP.fromEnum)"]
       sayCall
+    TBitspace b -> do
+      addImports hsImportForPrelude
+      importHsModuleForExtName $ bitspaceExtName b
+      saysLn ["CppopP.fmap ", bitspaceConvFn dir b]
+      sayCall
     TPtr _ -> sayCall
     TRef _ -> sayCall
     TFn {} -> throwError "TFn unimplemented"
@@ -501,6 +610,9 @@ sayCallAndProcessReturn dir t callWords =
       FromCpp -> throwError $ tObjToHeapWrongDirectionErrorMsg Nothing cls
     TConst t' -> sayCallAndProcessReturn dir t' callWords
   where sayCall = saysLn $ "(" : callWords ++ [")"]
+        bitspaceConvFn dir = case dir of
+          ToCpp -> toHsBitspaceFromValueName
+          FromCpp -> toHsBitspaceToNumName
 
 sayExportClass :: SayExportMode -> Class -> Generator ()
 sayExportClass mode cls = do

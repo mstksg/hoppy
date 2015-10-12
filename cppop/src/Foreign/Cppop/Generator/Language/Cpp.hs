@@ -5,6 +5,16 @@ module Foreign.Cppop.Generator.Language.Cpp (
   generatedFiles,
   ) where
 
+-- Module structure:
+--
+-- Generated modules consist of a source and a header file.  The source file
+-- contains all of the bindings for foreign languages to make use of.  The
+-- header file contains things that may be depended on from other generated
+-- modules.  Currently this consists only of generated callback classes.
+--
+-- Cycles between generated C++ modules (i.e. @#include@ cycles involving
+-- callbacks) are not supported.
+
 -- How object passing works:
 --
 -- data Type = ... | TPtr Type | TRef Type | TObj Class | TConst
@@ -184,8 +194,9 @@ sayModuleSource = do
 
 sayExport :: Bool -> Export -> Generator ()
 sayExport sayBody export = case export of
-  -- Nothing to do C++ side for an enum.
+  -- Nothing to do C++ side for an enum or bitspace.
   ExportEnum _ -> return ()
+  ExportBitspace _ -> return ()
 
   ExportFn fn ->
     -- Export a single function.
@@ -525,6 +536,7 @@ typeUseReqs t = case t of
   TSize -> return cstddefReqs
   TSSize -> return cstddefReqs
   TEnum e -> return $ enumUseReqs e
+  TBitspace b -> typeUseReqs $ bitspaceType b
   TPtr t' -> typeUseReqs t'
   TRef t' -> typeUseReqs t'
   TFn paramTypes retType ->

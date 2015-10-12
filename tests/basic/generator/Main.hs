@@ -1,11 +1,8 @@
 module Main where
 
-import Data.Monoid (mempty)
 import Foreign.Cppop.Generator.Main (run)
 import Foreign.Cppop.Generator.Language.Haskell.General (addImports, sayLn)
 import Foreign.Cppop.Generator.Spec
-import Foreign.Cppop.Generator.Std (mod_std)
-import Foreign.Cppop.Generator.Std.String (c_string)
 import Language.Haskell.Syntax (
   HsName (HsIdent),
   HsQName (UnQual),
@@ -23,7 +20,7 @@ main = case interfaceResult of
     exitFailure
   Right iface -> do
     args <- getArgs
-    run [iface] args
+    _ <- run [iface] args
     return ()
 
 interfaceResult :: Either String Interface

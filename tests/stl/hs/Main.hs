@@ -2,22 +2,12 @@
 
 module Main where
 
-import Control.Monad ((>=>), forM_, when)
-import Foreign.C (CInt)
-import Foreign.Cppop.Runtime.Support (
-  decode,
-  decodeAndDelete,
-  delete,
-  encode,
-  encodeAs,
-  withCppObj,
-  withScopedPtr,
-  )
+import Control.Monad (when)
+import Foreign.Cppop.Runtime.Support (withScopedPtr)
 import Foreign.Cppop.Test.Stl
 import System.Exit (exitFailure)
 import Test.HUnit (
-  Assertion,
-  Test (TestCase, TestList),
+  Test (TestList),
   (~:),
   (@?=),
   errors,

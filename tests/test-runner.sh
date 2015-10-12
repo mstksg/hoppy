@@ -27,9 +27,13 @@ declare -r filesToClean=${filesToClean:-}
 if $doBuild; then
     echo "Running tests in $suite."
 
-    # Build the generator.
+    # Build the generator and its dependencies.
     set -x
-    cd hs
+    cd "$suiteRoot/../../cppop"
+    cabal build
+    cd "$suiteRoot/generator"
+    cabal build
+    cd ../hs
     cabal sandbox delete
     cabal sandbox init
     cabal install ../../../cppop
@@ -57,7 +61,7 @@ if $doClean; then
     set +e
     cabal sandbox delete
     cabal clean
-    rm -fv Foreign/Cppop/Test/*.hs
+    rm -fv Foreign/Cppop/Test/*.hs{,-boot}
     cd ../generator
     cabal clean
     cd ..
