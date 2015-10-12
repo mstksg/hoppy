@@ -50,7 +50,7 @@ module Foreign.Cppop.Generator.Language.Haskell (
 -- the HsHsSide column is not provided.
 
 import Control.Arrow ((&&&), second)
-import Control.Monad (forM, when)
+import Control.Monad (forM, unless, when)
 #if MIN_VERSION_mtl(2,2,1)
 import Control.Monad.Except (throwError)
 #else
@@ -187,12 +187,23 @@ data SayExportMode = SayExportForeignImports | SayExportDecls | SayExportBoot
 
 sayExport :: SayExportMode -> Export -> Generator ()
 sayExport mode export = case export of
+  ExportVariable v -> sayExportVar mode v
   ExportEnum enum -> sayExportEnum mode enum
   ExportBitspace bitspace -> sayExportBitspace mode bitspace
   ExportFn fn ->
     (sayExportFn mode <$> fnExtName <*> pure Nothing <*> fnPurity <*> fnParams <*> fnReturn) fn
   ExportClass cls -> sayExportClass mode cls
   ExportCallback cb -> sayExportCallback mode cb
+
+sayExportVar :: SayExportMode -> Variable -> Generator ()
+sayExportVar mode v = do
+  withErrorContext ("generating variable " ++ show (varExtName v)) $ do
+    let (isConst, deconstType) = case varType v of
+          TConst t -> (True, t)
+          t -> (False, t)
+    sayExportFn mode (varGetterExtName v) Nothing Nonpure [] deconstType
+    unless isConst $
+      sayExportFn mode (varSetterExtName v) Nothing Nonpure [deconstType] TVoid
 
 sayExportEnum :: SayExportMode -> CppEnum -> Generator ()
 sayExportEnum mode enum =
@@ -321,16 +332,23 @@ sayExportBitspace mode bitspace =
         importHsModuleForExtName $ enumExtName enum
         saysLn ["instance ", className, " ", enumTypeName]
 
-sayExportFn :: SayExportMode -> ExtName -> Maybe (Constness, Class) -> Purity -> [Type] -> Type -> Generator ()
+sayExportFn :: SayExportMode
+            -> ExtName
+            -> Maybe (Constness, Class)
+            -> Purity
+            -> [Type]
+            -> Type
+            -> Generator ()
 sayExportFn mode name methodInfo purity paramTypes retType =
   let hsFnName = toHsFnName name
       hsFnImportedName = hsFnName ++ "'"
   in case mode of
-    SayExportForeignImports -> withErrorContext ("generating imports for function " ++ show name) $ do
-      -- Print a "foreign import" statement.
-      hsCType <- fnToHsTypeAndUse HsCSide methodInfo purity paramTypes retType
-      saysLn ["foreign import ccall \"", externalNameToCpp name, "\" ", hsFnImportedName, " :: ",
-              prettyPrint hsCType]
+    SayExportForeignImports ->
+      withErrorContext ("generating imports for function " ++ show name) $ do
+        -- Print a "foreign import" statement.
+        hsCType <- fnToHsTypeAndUse HsCSide methodInfo purity paramTypes retType
+        saysLn ["foreign import ccall \"", externalNameToCpp name, "\" ", hsFnImportedName, " :: ",
+                prettyPrint hsCType]
 
     SayExportDecls -> withErrorContext ("generating function " ++ show name) $ do
       -- Print the type signature.

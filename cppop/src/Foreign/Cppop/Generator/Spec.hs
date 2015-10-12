@@ -66,6 +66,9 @@ module Foreign.Cppop.Generator.Spec (
   -- * Basic types
   Type (..),
   HasTVars (..),
+  -- ** Variables
+  Variable, makeVariable, varIdentifier, varExtName, varType, varUseReqs,
+  varIsConst, varGetterExtName, varSetterExtName,
   -- ** Enums
   CppEnum, makeEnum, enumIdentifier, enumExtName, enumValueNames, enumUseReqs,
   -- ** Bitspaces
@@ -366,6 +369,8 @@ reqInclude include = mempty { reqsIncludes = S.singleton include }
 -- | C++ types that have requirements in order to use them in generated
 -- bindings.
 class HasUseReqs a where
+  {-# MINIMAL getUseReqs, (setUseReqs | modifyUseReqs) #-}
+
   -- | Returns an object's requirements.
   getUseReqs :: a -> Reqs
 
@@ -597,7 +602,8 @@ operatorInfo =
 
 -- | Specifies some C++ object (function or class) to give access to.
 data Export =
-  ExportEnum CppEnum  -- ^ Exports an enum.
+  ExportVariable Variable  -- ^ Exports a variable.
+  | ExportEnum CppEnum  -- ^ Exports an enum.
   | ExportBitspace Bitspace  -- ^ Exports a bitspace.
   | ExportFn Function  -- ^ Exports a function.
   | ExportClass Class  -- ^ Exports a class with all of its contents.
@@ -607,6 +613,7 @@ data Export =
 -- | Returns the external name of an export.
 exportExtName :: Export -> ExtName
 exportExtName export = case export of
+  ExportVariable v -> varExtName v
   ExportEnum e -> enumExtName e
   ExportBitspace b -> bitspaceExtName b
   ExportFn f -> fnExtName f
@@ -825,6 +832,49 @@ class HasTVars a where
   -- right fold.
   substTVars :: [(String, Type)] -> a -> a
   substTVars vs x = foldr (uncurry substTVar) x vs
+
+-- | A C++ variable.
+data Variable = Variable
+  { varIdentifier :: Identifier
+    -- ^ The identifier used to refer to the variable.
+  , varExtName :: ExtName
+    -- ^ The variable's external name.
+  , varType :: Type
+    -- ^ The type of the variable.  This may be 'TConst' to indicate that the
+    -- variable is read-only.
+  , varUseReqs :: Reqs
+    -- ^ Requirements for bindings to use this variable.
+  }
+
+instance Eq Variable where
+  (==) = (==) `on` varIdentifier
+
+instance Show Variable where
+  show v = concat ["<Variable ", show (varExtName v), " ", show (varType v), ">"]
+
+instance HasUseReqs Variable where
+  getUseReqs = varUseReqs
+  setUseReqs reqs v = v { varUseReqs = reqs }
+
+-- | Creates a binding for a C++ variable.
+makeVariable :: Identifier -> Maybe ExtName -> Type -> Variable
+makeVariable identifier maybeExtName t =
+  Variable identifier (extNameOrIdentifier identifier maybeExtName) t mempty
+
+-- | Returns whether the variable is constant, i.e. whether its type is
+-- @'TConst' ...@.
+varIsConst :: Variable -> Bool
+varIsConst v = case varType v of
+  TConst _ -> True
+  _ -> False
+
+-- | Returns the external name of the getter function for the variable.
+varGetterExtName :: Variable -> ExtName
+varGetterExtName = toExtName . (++ "_get") . fromExtName . varExtName
+
+-- | Returns the external name of the setter function for the variable.
+varSetterExtName :: Variable -> ExtName
+varSetterExtName = toExtName . (++ "_set") . fromExtName . varExtName
 
 -- | A C++ enum declaration.  An enum should actually be enumerable (in the
 -- sense of Haskell's 'Enum'); if it's not, consider using a 'Bitspace' instead.

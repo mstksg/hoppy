@@ -194,6 +194,8 @@ sayModuleSource = do
 
 sayExport :: Bool -> Export -> Generator ()
 sayExport sayBody export = case export of
+  ExportVariable v -> when sayBody $ sayExportVariable v
+
   -- Nothing to do C++ side for an enum or bitspace.
   ExportEnum _ -> return ()
   ExportBitspace _ -> return ()
@@ -204,8 +206,8 @@ sayExport sayBody export = case export of
       addReqs $ fnUseReqs fn
       sayExportFn (fnExtName fn)
                   (case fnCName fn of
-                     FnName identifier -> Right $ sayIdentifier identifier
-                     FnOp op -> Left op)
+                     FnName identifier -> CallFn $ sayIdentifier identifier
+                     FnOp op -> CallOp op)
                   Nothing
                   (fnParams fn)
                   (fnReturn fn)
@@ -219,7 +221,7 @@ sayExport sayBody export = case export of
     -- Export each of the class's constructors.
     forM_ (classCtors cls) $ \ctor ->
       sayExportFn (getClassyExtName cls ctor)
-                  (Right $ say "new" >> sayIdentifier (classIdentifier cls))
+                  (CallFn $ say "new" >> sayIdentifier (classIdentifier cls))
                   Nothing
                   (ctorParams ctor)
                   clsPtr
@@ -242,15 +244,15 @@ sayExport sayBody export = case export of
       sayExportFn (getClassyExtName cls method)
                   (case methodImpl method of
                      RealMethod name -> case name of
-                       FnName cName -> Right $ do
+                       FnName cName -> CallFn $ do
                          when static $ do
                            sayIdentifier (classIdentifier cls)
                            say "::"
                          say cName
-                       FnOp op -> Left op
+                       FnOp op -> CallOp op
                      FnMethod name -> case name of
-                       FnName cName -> Right $ sayIdentifier cName
-                       FnOp op -> Left op)
+                       FnName cName -> CallFn $ sayIdentifier cName
+                       FnOp op -> CallOp op)
                   (if nonMemberCall then Nothing else justClsPtr)
                   (methodParams method)
                   (methodReturn method)
@@ -272,14 +274,43 @@ sayExport sayBody export = case export of
                       (Just $ say "return self;\n")
           forM_ (classSuperclasses ancestorCls) $ genUpcastFns cls
 
+sayExportVariable :: Variable -> Generator ()
+sayExportVariable v = do
+  let (isConst, deconstType) = case varType v of
+        TConst t -> (True, t)
+        t -> (False, t)
+
+  -- Say a getter function.
+  sayExportFn (varGetterExtName v)
+              (VarRead $ varIdentifier v)
+              Nothing
+              []
+              deconstType
+              True
+
+  -- Say a setter function.
+  unless isConst $
+    sayExportFn (varSetterExtName v)
+                (VarWrite $ varIdentifier v)
+                Nothing
+                [deconstType]
+                TVoid
+                True
+
+data CallType =
+    CallOp Operator
+  | CallFn (Generator ())
+  | VarRead Identifier
+  | VarWrite Identifier
+
 sayExportFn :: ExtName
-            -> Either Operator (Generator ())
+            -> CallType
             -> Maybe Type
             -> [Type]
             -> Type
             -> Bool
             -> Generator ()
-sayExportFn extName opOrCppName maybeThisType paramTypes retType sayBody = do
+sayExportFn extName callType maybeThisType paramTypes retType sayBody = do
   let paramCount = length paramTypes
       paramCTypeMaybes = map typeToCType paramTypes
       paramCTypes = zipWith fromMaybe paramTypes paramCTypeMaybes
@@ -302,8 +333,8 @@ sayExportFn extName opOrCppName maybeThisType paramTypes retType sayBody = do
       mapM_ (sayArgRead DoDecode) $ zip3 [1..] paramTypes paramCTypeMaybes
 
       -- Determine how to call the exported function or method.
-      let sayCall = case opOrCppName of
-            Left op -> do
+      let sayCall = case callType of
+            CallOp op -> do
               say "("
               let effectiveParamCount = paramCount + if isJust maybeThisType then 1 else 0
                   paramNames@(p1:p2:_) = (if isJust maybeThisType then ("(*self)":) else id) $
@@ -321,12 +352,14 @@ sayExportFn extName opOrCppName maybeThisType paramTypes retType sayBody = do
                   says $ p1 : "(" : take (effectiveParamCount - 1) (drop 1 paramNames) ++ [")"]
                 ArrayOperator -> assertParamCount 2 >> says [p1, "[", p2, "]"]
               say ")"
-            Right sayCppName -> do
+            CallFn sayCppName -> do
               when (isJust maybeThisType) $ say "self->"
               sayCppName
               say "("
               sayArgNames paramCount
               say ")"
+            VarRead identifier -> sayIdentifier identifier
+            VarWrite identifier -> sayIdentifier identifier >> says [" = ", toArgName 1]
 
       -- Write the call, transforming the return value if necessary.
       case (retType, retCTypeMaybe) of

@@ -31,9 +31,7 @@ if $doBuild; then
     set -x
     cd "$suiteRoot/../../cppop"
     cabal build
-    cd "$suiteRoot/generator"
-    cabal build
-    cd ../hs
+    cd "$suiteRoot/hs"
     cabal sandbox delete
     cabal sandbox init
     cabal install ../../../cppop

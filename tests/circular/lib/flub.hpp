@@ -1,6 +1,9 @@
 #ifndef CPPOP_FLUB_HPP
 #define CPPOP_FLUB_HPP
 
+extern char flubVar;
+extern const char flubVarConst;
+
 enum FlubEnum {
     OPTION_A = 0x1,
     OPTION_B = 0x2,

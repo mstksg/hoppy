@@ -2,6 +2,7 @@ module Main where
 
 import Control.Monad (when)
 import Data.Bits ((.|.))
+import Foreign.C (castCCharToChar, castCharToCChar)
 import Foreign.Cppop.Runtime.Support (toPtr)
 import Foreign.Cppop.Test.Flob
 import Foreign.Cppop.Test.Flub
@@ -27,6 +28,9 @@ tests :: Test
 tests =
   TestList
   [ "circular modules execute" ~: do
+    flubVar_set $ castCharToCChar 'A'
+    fmap castCCharToChar flubVar_get >>= (@?= 'A')
+    fmap castCCharToChar flubVarConst_get >>= (@?= 'Z')
     flobObj <- flobClass_new
     flubObj <- flubClass_new
     takesFlobValues flobObj

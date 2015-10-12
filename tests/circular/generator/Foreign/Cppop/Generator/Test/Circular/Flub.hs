@@ -14,12 +14,20 @@ flubModule =
   addReqIncludes [includeLocal "flub.hpp"] $
   modifyModule' (makeModule "flub" "flubm.hpp" "flubm.cpp") $
   addModuleExports
-  [ ExportEnum e_FlubEnum
+  [ ExportVariable v_FlubVar
+  , ExportVariable v_FlubVarConst
+  , ExportEnum e_FlubEnum
   , ExportBitspace bs_FlubBitspace
   , ExportClass c_FlubClass
   , ExportFn f_takesFlobValues
   , ExportCallback cb_FlubCallback
   ]
+
+v_FlubVar :: Variable
+v_FlubVar = makeVariable (ident "flubVar") Nothing TChar
+
+v_FlubVarConst :: Variable
+v_FlubVarConst = makeVariable (ident "flubVarConst") Nothing $ TConst TChar
 
 e_FlubEnum :: CppEnum
 e_FlubEnum = makeEnum (ident "FlubEnum") Nothing enumValues
