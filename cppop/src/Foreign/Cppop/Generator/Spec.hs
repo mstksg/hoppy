@@ -73,7 +73,8 @@ module Foreign.Cppop.Generator.Spec (
   CppEnum, makeEnum, enumIdentifier, enumExtName, enumValueNames, enumUseReqs,
   -- ** Bitspaces
   Bitspace, makeBitspace, bitspaceExtName, bitspaceType, bitspaceValueNames, bitspaceEnum,
-  bitspaceAddEnum,
+  bitspaceAddEnum, bitspaceCppTypeIdentifier, bitspaceFromCppValueFn, bitspaceToCppValueFn,
+  bitspaceAddCppType, bitspaceUseReqs,
   -- ** Functions
   Purity (..),
   Function, makeFn, fnCName, fnExtName, fnPurity, fnParams, fnReturn, fnUseReqs,
@@ -914,6 +915,18 @@ makeEnum identifier maybeExtName valueNames =
 -- | A C++ numeric space with bitwise operations.  This is similar to a
 -- 'CppEnum', but in addition to the extra operations, this differs in that
 -- these values aren't enumerable.
+--
+-- Additionally, as a kludge for Qtah, a bitspace may have a C++ type
+-- ('bitspaceCppTypeIdentifier') separate from its numeric type
+-- ('bitspaceType').  Qt bitspaces aren't raw numbers but are instead type-safe
+-- @QFlags@ objects that don't implicitly convert from integers, so we need a
+-- means to do so manually.  Barring general ad-hoc argument and return value
+-- conversion support, we allow this as follows: when given a C++ type, then a
+-- bitspace may also have a conversion function between the numeric and C++
+-- type, in each direction.  If a conversion function is present, it will be
+-- used for conversions in its respective direction.  The C++ type is not a full
+-- 'Type', but only an 'Identifier', since additional information is not needed.
+-- See 'bitspaceAddCppType'.
 data Bitspace = Bitspace
   { bitspaceExtName :: ExtName
     -- ^ The bitspace's external name.
@@ -926,6 +939,20 @@ data Bitspace = Bitspace
   , bitspaceEnum :: Maybe CppEnum
     -- ^ An associated enum, whose values may be converted to values in the
     -- bitspace.
+  , bitspaceCppTypeIdentifier :: Maybe Identifier
+    -- ^ The optional C++ type for a bitspace.
+  , bitspaceToCppValueFn :: Maybe String
+    -- ^ The name of a C++ function to convert from 'bitspaceType' to the
+    -- bitspace's C++ type.
+  , bitspaceFromCppValueFn :: Maybe String
+    -- ^ The name of a C++ function to convert from the bitspace's C++ type to
+    -- 'bitspaceType'.
+  , bitspaceUseReqs :: Reqs
+    -- ^ Requirements for emitting the bindings for a bitspace, i.e. what's
+    -- necessary to reference 'bitspaceCppTypeIdentifier',
+    -- 'bitspaceFromCppValueFn', and 'bitspaceToCppValueFn'.  'bitspaceType' can
+    -- take some numeric types that require includes as well, but you don't need
+    -- to list these here.
   }
 
 instance Eq Bitspace where
@@ -934,12 +961,17 @@ instance Eq Bitspace where
 instance Show Bitspace where
   show e = concat ["<Bitspace ", show (bitspaceExtName e), " ", show (bitspaceType e), ">"]
 
+instance HasUseReqs Bitspace where
+  getUseReqs = bitspaceUseReqs
+  setUseReqs reqs b = b { bitspaceUseReqs = reqs }
+
 -- | Creates a binding for a C++ bitspace.
 makeBitspace :: ExtName  -- ^ 'bitspaceExtName'
              -> Type  -- ^ 'bitspaceType'
              -> [(Int, [String])]  -- ^ 'bitspaceValueNames'
              -> Bitspace
-makeBitspace extName t valueNames = Bitspace extName t valueNames Nothing
+makeBitspace extName t valueNames =
+  Bitspace extName t valueNames Nothing Nothing Nothing Nothing mempty
 
 -- | Associates an enum with the bitspace.  See 'bitspaceEnum'.
 bitspaceAddEnum :: CppEnum -> Bitspace -> Bitspace
@@ -955,6 +987,24 @@ bitspaceAddEnum enum bitspace = case bitspaceEnum bitspace of
           ", but the values aren't equal.\nBitspace values: ", show $ bitspaceValueNames bitspace,
           "\n    Enum values: ", show $ enumValueNames enum]
     else bitspace { bitspaceEnum = Just enum }
+
+-- | @bitspaceAddCppType cppTypeIdentifier toCppValueFn fromCppValueFn@
+-- associates a C++ type (plus optional conversion functions) with a bitspace.
+-- At least one conversion should be specified, otherwise adding the C++ type
+-- will mean nothing.  You should also add use requirements to the bitspace for
+-- all of these arguments; see 'HasUseReqs'.
+bitspaceAddCppType :: Identifier -> Maybe String -> Maybe String -> Bitspace -> Bitspace
+bitspaceAddCppType cppTypeId toCppValueFnMaybe fromCppValueFnMaybe b =
+  case bitspaceCppTypeIdentifier b of
+    Just cppTypeId' ->
+      error $ concat
+      ["bitspaceAddCppType: Adding C++ type ", show cppTypeId,
+       " to ", show b, ", but it already has ", show cppTypeId', "."]
+    Nothing ->
+      b { bitspaceCppTypeIdentifier = Just cppTypeId
+        , bitspaceToCppValueFn = toCppValueFnMaybe
+        , bitspaceFromCppValueFn = fromCppValueFnMaybe
+        }
 
 -- | Whether or not a function may cause side-effects.
 --

@@ -365,6 +365,14 @@ sayExportFn extName callType maybeThisType paramTypes retType sayBody = do
       case (retType, retCTypeMaybe) of
         (TVoid, Nothing) -> sayCall >> say ";\n"
         (_, Nothing) -> say "return " >> sayCall >> say ";\n"
+        (TBitspace b, Just _) -> do
+          addReqs $ bitspaceUseReqs b
+          let convFn = bitspaceFromCppValueFn b
+          say "return "
+          forM_ convFn $ \f -> says [f, "("]
+          sayCall
+          when (isJust convFn) $ say ")"
+          say ";\n";
         (TRef cls, Just (TPtr cls')) | cls == cls' -> say "return &(" >> sayCall >> say ");\n"
         (TObj cls, Just (TPtr (TConst (TObj cls')))) | cls == cls' -> sayReturnNewCopy cls sayCall
         (TObjToHeap cls, Just (TPtr (TObj cls'))) | cls == cls' -> sayReturnNewCopy cls sayCall
@@ -380,6 +388,27 @@ sayExportFn extName callType maybeThisType paramTypes retType sayBody = do
 -- callback.
 sayArgRead :: CoderDirection -> (Int, Type, Maybe Type) -> Generator ()
 sayArgRead dir (n, cppType, maybeCType) = case cppType of
+  TBitspace b -> case maybeCType of
+    Just cType -> do
+      let cppTypeId = fromMaybe (error $ concat
+                                 ["sayArgRead: Expected ", show b,
+                                  " to have a C++ type, but it doesn't."]) $
+                      bitspaceCppTypeIdentifier b
+      addReqs $ bitspaceUseReqs b
+      case dir of
+        -- Convert from cType to cppType.
+        DoDecode -> do
+          sayIdentifier cppTypeId
+          says [" ", toArgName n, " = ", fromMaybe "" $ bitspaceToCppValueFn b,
+                "(", toArgNameAlt n, ");\n"]
+        -- Convert from cppType to cType.
+        DoEncode -> do
+          sayVar (toArgName n) Nothing cType
+          says [" = ", fromMaybe "" $ bitspaceFromCppValueFn b,
+                "(", toArgNameAlt n, ");\n"]
+    Nothing ->
+      return ()
+
   TCallback cb -> do
     case dir of
       DoDecode -> return ()
@@ -506,6 +535,14 @@ sayExportCallback sayBody cb = do
         case (retType, retCTypeMaybe) of
           (TVoid, Nothing) -> sayCall >> say ";\n"
           (_, Nothing) -> say "return " >> sayCall >> say ";\n"
+          (TBitspace b, Just _) -> do
+            addReqs $ bitspaceUseReqs b
+            let convFn = bitspaceToCppValueFn b
+            say "return "
+            forM_ convFn $ \f -> says [f, "("]
+            sayCall
+            when (isJust convFn) $ say ")"
+            say ";\n";
           (TObj cls1, Just retCType@(TPtr (TConst (TObj cls2)))) | cls1 == cls2 -> do
             sayVar "resultPtr" Nothing retCType >> say " = " >> sayCall >> say ";\n"
             sayVar "result" Nothing retType >> say " = *resultPtr;\n"
@@ -542,6 +579,13 @@ sayExportCallback sayBody cb = do
 -- that should be used for conversion.
 typeToCType :: Type -> Maybe Type
 typeToCType t = case t of
+  -- Because we don't know (although we could...) the direction in which we're
+  -- converting the bitspace value, when the bitspace has a C++ type we have to
+  -- assume that it needs to be converted.  The caller will sort out whether a
+  -- conversion is actually requested.
+  TBitspace b -> case bitspaceCppTypeIdentifier b of
+    Just _ -> Just $ bitspaceType b
+    Nothing -> Nothing
   TRef t' -> Just $ TPtr t'
   TObj _ -> Just $ TPtr $ TConst t
   TObjToHeap cls -> Just $ TPtr $ TObj cls
