@@ -1,7 +1,7 @@
-{ stdenv, cppop-example-templates-generator }:
+{ stdenv, hoppy-example-templates-generator }:
 
-let gen = cppop-example-templates-generator;
-    name = "cppop-example-templates";
+let gen = hoppy-example-templates-generator;
+    name = "hoppy-example-templates";
     libName = "lib${name}.so";
 in
 

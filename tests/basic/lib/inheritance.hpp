@@ -1,5 +1,5 @@
-#ifndef CPPOP_INHERITANCE_HPP
-#define CPPOP_INHERITANCE_HPP
+#ifndef HOPPY_INHERITANCE_HPP
+#define HOPPY_INHERITANCE_HPP
 
 class InheritanceA {
 public:

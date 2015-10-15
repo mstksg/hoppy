@@ -1,5 +1,5 @@
-#ifndef CPPOP_FLOB_HPP
-#define CPPOP_FLOB_HPP
+#ifndef HOPPY_FLOB_HPP
+#define HOPPY_FLOB_HPP
 
 #include "flub.hpp"
 #include "flubm.hpp"

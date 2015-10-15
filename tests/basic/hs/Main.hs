@@ -14,7 +14,7 @@ import Foreign.C (
   CShort,
   CSize,
   )
-import Foreign.Cppop.Runtime.Support (
+import Foreign.Hoppy.Runtime.Support (
   decode,
   decodeAndDelete,
   delete,
@@ -23,8 +23,8 @@ import Foreign.Cppop.Runtime.Support (
   withCppObj,
   withScopedPtr,
   )
-import Foreign.Cppop.Test.Basic
-import Foreign.Cppop.Test.Basic.HsBox
+import Foreign.Hoppy.Test.Basic
+import Foreign.Hoppy.Test.Basic.HsBox
 import Foreign.Storable (sizeOf)
 import System.Exit (exitFailure)
 import System.Posix.Types (CSsize)

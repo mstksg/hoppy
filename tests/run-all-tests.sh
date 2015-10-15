@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# Runs all of Cppop's unit test suites.  Aborts if any one of them fails.
+# Runs all of Hoppy's unit test suites.  Aborts if any one of them fails.
 
 # Bash strict mode.
 set -euo pipefail

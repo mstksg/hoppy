@@ -3,9 +3,9 @@ module Main where
 import Control.Monad (when)
 import Data.Bits ((.|.))
 import Foreign.C (castCCharToChar, castCharToCChar)
-import Foreign.Cppop.Runtime.Support (toPtr)
-import Foreign.Cppop.Test.Flob
-import Foreign.Cppop.Test.Flub
+import Foreign.Hoppy.Runtime.Support (toPtr)
+import Foreign.Hoppy.Test.Flob
+import Foreign.Hoppy.Test.Flub
 import System.Exit (exitFailure)
 import Test.HUnit (
   Test (TestList),

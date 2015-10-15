@@ -29,12 +29,12 @@ if $doBuild; then
 
     # Build the generator and its dependencies.
     set -x
-    cd "$suiteRoot/../../cppop"
+    cd "$suiteRoot/../../hoppy"
     cabal build
     cd "$suiteRoot/hs"
     cabal sandbox delete
     cabal sandbox init
-    cabal install ../../../cppop
+    cabal install ../../../hoppy
     cabal install ../generator
 
     # Build the C++ library.
@@ -59,7 +59,7 @@ if $doClean; then
     set +e
     cabal sandbox delete
     cabal clean
-    rm -fv Foreign/Cppop/Test/*.hs{,-boot}
+    rm -fv Foreign/Hoppy/Test/*.hs{,-boot}
     cd ../generator
     cabal clean
     cd ..

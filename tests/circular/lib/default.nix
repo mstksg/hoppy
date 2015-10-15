@@ -1,7 +1,7 @@
-{ stdenv, cppop, cppop-tests-circular-generator }:
+{ stdenv, hoppy, hoppy-tests-circular-generator }:
 
-let gen = cppop-tests-circular-generator;
-    name = "cppop-tests-circular";
+let gen = hoppy-tests-circular-generator;
+    name = "hoppy-tests-circular";
     libName = "lib${name}.so";
 in
 
@@ -14,7 +14,7 @@ stdenv.mkDerivation {
   prePatch = ''
     ${gen}/bin/generator --gen-cpp .
     substituteInPlace Makefile \
-        --replace -I../../../cppop/include "-I${cppop}/include"
+        --replace -I../../../hoppy/include "-I${hoppy}/include"
   '';
 
   installPhase = ''

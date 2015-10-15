@@ -1,10 +1,10 @@
 module Main where
 
-import Foreign.Cppop.Generator.Main (run)
-import Foreign.Cppop.Generator.Spec
-import Foreign.Cppop.Generator.Std (mod_std)
-import Foreign.Cppop.Generator.Std.String (c_string)
-import qualified Foreign.Cppop.Generator.Std.Vector as Vector
+import Foreign.Hoppy.Generator.Main (run)
+import Foreign.Hoppy.Generator.Spec
+import Foreign.Hoppy.Generator.Std (mod_std)
+import Foreign.Hoppy.Generator.Std.String (c_string)
+import qualified Foreign.Hoppy.Generator.Std.Vector as Vector
 import System.Environment (getArgs)
 import System.Exit (exitFailure)
 
@@ -22,7 +22,7 @@ main = case interfaceResult of
 
 interfaceResult :: Either String Interface
 interfaceResult =
-  interfaceAddHaskellModuleBase ["Foreign", "Cppop", "Test"] =<<
+  interfaceAddHaskellModuleBase ["Foreign", "Hoppy", "Test"] =<<
   interface "test" modules
 
 modules :: [Module]

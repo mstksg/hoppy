@@ -1,9 +1,9 @@
 module Main where
 
-import Foreign.Cppop.Generator.Main (run)
-import Foreign.Cppop.Generator.Spec
-import Foreign.Cppop.Generator.Test.Circular.Flob (flobModule)
-import Foreign.Cppop.Generator.Test.Circular.Flub (flubModule)
+import Foreign.Hoppy.Generator.Main (run)
+import Foreign.Hoppy.Generator.Spec
+import Foreign.Hoppy.Generator.Test.Circular.Flob (flobModule)
+import Foreign.Hoppy.Generator.Test.Circular.Flub (flubModule)
 import System.Environment (getArgs)
 import System.Exit (exitFailure)
 
@@ -21,7 +21,7 @@ main = case interfaceResult of
 
 interfaceResult :: Either String Interface
 interfaceResult =
-  interfaceAddHaskellModuleBase ["Foreign", "Cppop", "Test"] =<<
+  interfaceAddHaskellModuleBase ["Foreign", "Hoppy", "Test"] =<<
   interface "test" modules
 
 modules :: [Module]

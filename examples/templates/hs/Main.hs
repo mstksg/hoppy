@@ -1,9 +1,9 @@
 module Main where
 
 import Control.Monad ((>=>), forM_)
-import Foreign.Cppop.Runtime.Support (delete, encodeAs, withCppObj)
-import Foreign.Cppop.Example.Instances
-import Foreign.Cppop.Example.Std
+import Foreign.Hoppy.Example.Instances
+import Foreign.Hoppy.Example.Std
+import Foreign.Hoppy.Runtime.Support (delete, encodeAs, withCppObj)
 
 main :: IO ()
 main = do

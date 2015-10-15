@@ -1,10 +1,10 @@
 let pkgs = import ../pkgs.nix {}; in
 pkgs.stdenv.mkDerivation {
-  name = "cppop-tests-0.1.0";
+  name = "hoppy-tests-0.1.0";
   builder = ./builder.sh;
   buildInputs = let h = pkgs.haskellPackages; in [
-    pkgs.cppop-tests-basic-lib h.cppop-tests-basic
-    pkgs.cppop-tests-circular-lib h.cppop-tests-circular
-    pkgs.cppop-tests-stl-lib h.cppop-tests-stl
+    pkgs.hoppy-tests-basic-lib h.hoppy-tests-basic
+    pkgs.hoppy-tests-circular-lib h.hoppy-tests-circular
+    pkgs.hoppy-tests-stl-lib h.hoppy-tests-stl
   ];
 }

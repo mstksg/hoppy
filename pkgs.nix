@@ -1,4 +1,4 @@
-# This is a modified Nixpkgs that contains all of the individual Cppop packages.
+# This is a modified Nixpkgs that contains all of the individual Hoppy packages.
 
 { haskellOptions ? if builtins.pathExists ./config.nix
                    then import ./config.nix
@@ -7,49 +7,49 @@
 
 let
 
-  cppopDir = ./.;
+  hoppyDir = ./.;
 
   haskellOverrides = haskellOptions: {
     overrides = self: super: {
-      cppop = self.callPackage (cppopDir + /cppop) haskellOptions;
+      hoppy = self.callPackage (hoppyDir + /hoppy) haskellOptions;
 
-      cppop-example-templates-generator =
-        self.callPackage (cppopDir + /examples/templates/generator) {};
-      cppop-example-templates =
-        self.callPackage (cppopDir + /examples/templates/hs) {};
+      hoppy-example-templates-generator =
+        self.callPackage (hoppyDir + /examples/templates/generator) {};
+      hoppy-example-templates =
+        self.callPackage (hoppyDir + /examples/templates/hs) {};
 
-      cppop-tests-basic-generator =
-        self.callPackage (cppopDir + /tests/basic/generator) {};
-      cppop-tests-basic =
-        self.callPackage (cppopDir + /tests/basic/hs) {};
+      hoppy-tests-basic-generator =
+        self.callPackage (hoppyDir + /tests/basic/generator) {};
+      hoppy-tests-basic =
+        self.callPackage (hoppyDir + /tests/basic/hs) {};
 
-      cppop-tests-circular-generator =
-        self.callPackage (cppopDir + /tests/circular/generator) {};
-      cppop-tests-circular =
-        self.callPackage (cppopDir + /tests/circular/hs) {};
+      hoppy-tests-circular-generator =
+        self.callPackage (hoppyDir + /tests/circular/generator) {};
+      hoppy-tests-circular =
+        self.callPackage (hoppyDir + /tests/circular/hs) {};
 
-      cppop-tests-stl-generator =
-        self.callPackage (cppopDir + /tests/stl/generator) {};
-      cppop-tests-stl =
-        self.callPackage (cppopDir + /tests/stl/hs) {};
+      hoppy-tests-stl-generator =
+        self.callPackage (hoppyDir + /tests/stl/generator) {};
+      hoppy-tests-stl =
+        self.callPackage (hoppyDir + /tests/stl/hs) {};
     };
   };
 
   packageOverrides = pkgs: rec {
-    cppop-example-templates-lib = pkgs.callPackage (cppopDir + /examples/templates/lib) {
-      inherit (haskellPackages) cppop-example-templates-generator;
+    hoppy-example-templates-lib = pkgs.callPackage (hoppyDir + /examples/templates/lib) {
+      inherit (haskellPackages) hoppy-example-templates-generator;
     };
 
-    cppop-tests-basic-lib = pkgs.callPackage (cppopDir + /tests/basic/lib) {
-      inherit (haskellPackages) cppop cppop-tests-basic-generator;
+    hoppy-tests-basic-lib = pkgs.callPackage (hoppyDir + /tests/basic/lib) {
+      inherit (haskellPackages) hoppy hoppy-tests-basic-generator;
     };
 
-    cppop-tests-circular-lib = pkgs.callPackage (cppopDir + /tests/circular/lib) {
-      inherit (haskellPackages) cppop cppop-tests-circular-generator;
+    hoppy-tests-circular-lib = pkgs.callPackage (hoppyDir + /tests/circular/lib) {
+      inherit (haskellPackages) hoppy hoppy-tests-circular-generator;
     };
 
-    cppop-tests-stl-lib = pkgs.callPackage (cppopDir + /tests/stl/lib) {
-      inherit (haskellPackages) cppop cppop-tests-stl-generator;
+    hoppy-tests-stl-lib = pkgs.callPackage (hoppyDir + /tests/stl/lib) {
+      inherit (haskellPackages) hoppy hoppy-tests-stl-generator;
     };
 
     haskellPackages = pkgs.haskellPackages.override (haskellOverrides haskellOptions);

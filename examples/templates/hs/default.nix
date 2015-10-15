@@ -1,17 +1,17 @@
-{ mkDerivation, base, cppop, stdenv
-, cppop-example-templates-generator, cppop-example-templates-lib
+{ mkDerivation, base, hoppy, stdenv
+, hoppy-example-templates-generator, hoppy-example-templates-lib
 }:
 
-let gen = cppop-example-templates-generator; in
+let gen = hoppy-example-templates-generator; in
 
 mkDerivation {
-  pname = "cppop-example-templates";
+  pname = "hoppy-example-templates";
   version = "0.1.0";
   src = ./.;
   isLibrary = false;
   isExecutable = true;
-  executableHaskellDepends = [ base cppop ];
-  executableSystemDepends = [ cppop-example-templates-lib ];
+  executableHaskellDepends = [ base hoppy ];
+  executableSystemDepends = [ hoppy-example-templates-lib ];
   license = stdenv.lib.licenses.agpl3;
 
   prePatch = ''

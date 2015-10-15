@@ -1,17 +1,17 @@
 module Main where
 
 import Data.Monoid (mempty)
-import Foreign.Cppop.Generator.Main (run)
-import Foreign.Cppop.Generator.Spec
-import Foreign.Cppop.Generator.Spec.Template
-import Foreign.Cppop.Generator.Std (mod_std)
-import Foreign.Cppop.Generator.Std.String (c_string)
-import Foreign.Cppop.Generator.Std.Vector (tc_vector)
+import Foreign.Hoppy.Generator.Main (run)
+import Foreign.Hoppy.Generator.Spec
+import Foreign.Hoppy.Generator.Spec.Template
+import Foreign.Hoppy.Generator.Std (mod_std)
+import Foreign.Hoppy.Generator.Std.String (c_string)
+import Foreign.Hoppy.Generator.Std.Vector (tc_vector)
 import System.Environment (getArgs)
 import System.Exit (exitFailure)
 
 -- | Our @main@ (a) ensures that creating an 'Interface' didn't cause any
--- errors, and (b) calls the Cppop generator main function, 'run'.
+-- errors, and (b) calls the Hoppy generator main function, 'run'.
 main :: IO ()
 main = case interfaceResult of
   Left errorMsg -> do
@@ -22,12 +22,12 @@ main = case interfaceResult of
     run [iface] args
     return ()
 
--- | An interface that contains two modules (the @std@ one provided by Cppop,
+-- | An interface that contains two modules (the @std@ one provided by Hoppy,
 -- and a custom module that instantiates some templates), and will generate
--- Haskell code in @Foreign.Cppop.Example@.
+-- Haskell code in @Foreign.Hoppy.Example@.
 interfaceResult :: Either String Interface
 interfaceResult =
-  addInterfaceHaskellModuleBase ["Foreign", "Cppop", "Example"] =<<
+  addInterfaceHaskellModuleBase ["Foreign", "Hoppy", "Example"] =<<
   interface "example" modules
 
 modules :: [Module]

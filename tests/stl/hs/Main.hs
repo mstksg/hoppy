@@ -3,8 +3,8 @@
 module Main where
 
 import Control.Monad (when)
-import Foreign.Cppop.Runtime.Support (withScopedPtr)
-import Foreign.Cppop.Test.Stl
+import Foreign.Hoppy.Runtime.Support (withScopedPtr)
+import Foreign.Hoppy.Test.Stl
 import System.Exit (exitFailure)
 import Test.HUnit (
   Test (TestList),

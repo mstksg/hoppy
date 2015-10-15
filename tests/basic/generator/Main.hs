@@ -1,8 +1,8 @@
 module Main where
 
-import Foreign.Cppop.Generator.Main (run)
-import Foreign.Cppop.Generator.Language.Haskell.General (addImports, sayLn)
-import Foreign.Cppop.Generator.Spec
+import Foreign.Hoppy.Generator.Main (run)
+import Foreign.Hoppy.Generator.Language.Haskell.General (addImports, sayLn)
+import Foreign.Hoppy.Generator.Spec
 import Language.Haskell.Syntax (
   HsName (HsIdent),
   HsQName (UnQual),
@@ -25,7 +25,7 @@ main = case interfaceResult of
 
 interfaceResult :: Either String Interface
 interfaceResult =
-  interfaceAddHaskellModuleBase ["Foreign", "Cppop", "Test"] =<<
+  interfaceAddHaskellModuleBase ["Foreign", "Hoppy", "Test"] =<<
   interface "test" modules
 
 modules :: [Module]
@@ -97,7 +97,7 @@ c_IntBox =
   classModifyConversions
   (\c -> c { classHaskellConversion = Just ClassHaskellConversion
              { classHaskellConversionType = do
-               addImports $ hsWholeModuleImport "Foreign.Cppop.Test.Basic.HsBox"
+               addImports $ hsWholeModuleImport "Foreign.Hoppy.Test.Basic.HsBox"
                return $ HsTyCon $ UnQual $ HsIdent "HsBox"
              , classHaskellConversionToCppFn = sayLn "intBox_newWithValue . getHsBox"
              , classHaskellConversionFromCppFn = do

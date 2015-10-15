@@ -1,5 +1,5 @@
-#ifndef CPPOP_INTBOX_HPP
-#define CPPOP_INTBOX_HPP
+#ifndef HOPPY_INTBOX_HPP
+#define HOPPY_INTBOX_HPP
 
 class IntBox {
 public:

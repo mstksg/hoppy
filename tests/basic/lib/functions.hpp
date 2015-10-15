@@ -1,5 +1,5 @@
-#ifndef CPPOP_FUNCTIONS_HPP
-#define CPPOP_FUNCTIONS_HPP
+#ifndef HOPPY_FUNCTIONS_HPP
+#define HOPPY_FUNCTIONS_HPP
 
 #include "basic.hpp"
 #include "intbox.hpp"

@@ -1,10 +1,10 @@
-{ mkDerivation, base, cppop, stdenv }:
+{ mkDerivation, base, hoppy, stdenv }:
 mkDerivation {
-  pname = "cppop-example-templates-generator";
+  pname = "hoppy-example-templates-generator";
   version = "0.1.0";
   src = ./.;
   isLibrary = false;
   isExecutable = true;
-  executableHaskellDepends = [ base cppop ];
+  executableHaskellDepends = [ base hoppy ];
   license = stdenv.lib.licenses.agpl3;
 }

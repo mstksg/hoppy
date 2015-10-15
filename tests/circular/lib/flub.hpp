@@ -1,5 +1,5 @@
-#ifndef CPPOP_FLUB_HPP
-#define CPPOP_FLUB_HPP
+#ifndef HOPPY_FLUB_HPP
+#define HOPPY_FLUB_HPP
 
 extern char flubVar;
 extern const char flubVarConst;

@@ -1,15 +1,15 @@
-{ mkDerivation, base, cppop, stdenv, HUnit
-, cppop-tests-stl-generator, cppop-tests-stl-lib
+{ mkDerivation, base, hoppy, stdenv, HUnit
+, hoppy-tests-stl-generator, hoppy-tests-stl-lib
 }:
 
-let gen = cppop-tests-stl-generator; in
+let gen = hoppy-tests-stl-generator; in
 
 mkDerivation {
-  pname = "cppop-tests-stl";
+  pname = "hoppy-tests-stl";
   version = "0.1.0";
   src = ./.;
-  executableHaskellDepends = [ base cppop ];
-  executableSystemDepends = [ cppop-tests-stl-lib ];
+  executableHaskellDepends = [ base hoppy ];
+  executableSystemDepends = [ hoppy-tests-stl-lib ];
   testHaskellDepends = [ base HUnit ];
   license = stdenv.lib.licenses.agpl3;
   doCheck = true;

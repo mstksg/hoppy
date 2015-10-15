@@ -1,5 +1,5 @@
-#ifndef CPPOP_CONSTANTS_HPP
-#define CPPOP_CONSTANTS_HPP
+#ifndef HOPPY_CONSTANTS_HPP
+#define HOPPY_CONSTANTS_HPP
 
 extern const bool constantlyTrue;
 extern const bool constantlyFalse;

@@ -1,5 +1,5 @@
-#ifndef CPPOP_PTRCTR_HPP
-#define CPPOP_PTRCTR_HPP
+#ifndef HOPPY_PTRCTR_HPP
+#define HOPPY_PTRCTR_HPP
 
 // Counts the number of constructions and destructions objects of this class
 // undergo.
