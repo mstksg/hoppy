@@ -15,6 +15,7 @@ cabal-version: >=1.10
 library
   exposed-modules:
       Foreign.Hoppy.Common
+    , Foreign.Hoppy.Documentation
     , Foreign.Hoppy.Generator.Language.Cpp.General
     , Foreign.Hoppy.Generator.Language.Haskell.General
     , Foreign.Hoppy.Generator.Main

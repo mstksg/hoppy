@@ -1,4 +1,25 @@
 -- | A driver for a command-line interface to a generator.
+--
+-- A simple @Main.hs@ for a generator can be:
+--
+-- > import Foreign.Hoppy.Generator.Main (run)
+-- > import Foreign.Hoppy.Generator.Spec (ErrorMsg, Interface, interface, interfaceResult)
+-- > import System.Environment (getArgs)
+-- > import System.Exit (exitFailure)
+-- > import System.IO (hPutStrLn, stderr)
+-- >
+-- > iface :: Either ErrorMsg Interface
+-- > iface = interface ...
+-- >
+-- > main :: IO ()
+-- > main = case interfaceResult of
+-- >   Left errorMsg -> do
+-- >     hPutStrLn stderr $ "Error initializing interface: " ++ errorMsg
+-- >     exitFailure
+-- >   Right iface -> do
+-- >     args <- getArgs
+-- >     _ <- run [iface] args
+-- >     return ()
 module Foreign.Hoppy.Generator.Main (
   Action (..),
   run,
@@ -68,7 +89,20 @@ getGeneratedHaskell cache = case generatedHaskell cache of
     r@(Right gen) -> return (cache { generatedHaskell = Just gen }, r)
 
 -- | @run interfaces args@ runs the driver with the command-line arguments from
--- @args@ against the listed interfaces.
+-- @args@ against the listed interfaces, and returns the list of actions
+-- performed.
+--
+-- The recognized arguments are listed below.  Note that the exact forms shown
+-- are required; the @--long-arg=value@ syntax is not supported.
+--
+-- - __@--help@:__ Displays a menu listing the valid commands.
+--
+-- - __@--list-interfaces@:__ Lists the interfaces compiled into the generator.
+--
+-- - __@--gen-cpp \<outdir\>@:__ Generates C++ bindings in the given directory.
+--
+-- - __@--gen-hs \<outdir\>@:__ Generates Haskell bindings under the given
+--   top-level source directory.
 run :: [Interface] -> [String] -> IO [Action]
 run interfaces args = do
   stateVar <- newMVar $ initialAppState interfaces

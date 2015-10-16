@@ -7,48 +7,6 @@ module Foreign.Hoppy.Generator.Language.Haskell (
   generatedFiles,
   ) where
 
--- Module structure:
---
--- The result of generating a Hoppy module is a single Haskell module that
--- contains bindings for everything exported from the Hoppy module.  While
--- generated C++ modules get their objects from #includes of underlying headers
--- and only depend on each other in the case of callbacks, Haskell modules
--- depend on each other any time something in one references something in
--- another (somewhat mirroring the dependency graph of the binding definitions),
--- so cycles are much more common (for example, when a C++ interface uses a
--- forward class declaration to break an #include cycle).  Fortunately, GHC
--- supports dependency cycles, so Hoppy automatically detects and breaks cycles
--- with the use of .hs-boot files.  The boot files contain everything that could
--- be used from another generated module, for example class casting functions
--- needed to coerce pointers to the right type for a foreign call, or enum data
--- declarations.
-
--- How object passing works:
---
--- All of the comments about argument passing in Cpp.hs apply here.  The
--- following types are used for passing arguments from Haskell to C++:
---
---  C++ type   | Pass over FFI | HsCSide  | HsHsSide
--- ------------+---------------+----------+-----------------
---  Foo        | Foo const*    | FooConst | FooValue a => a
---  Foo const& | Foo const*    | FooConst | FooValue a => a
---  Foo&       | Foo*          | Foo      | FooPtr a => a
---  Foo const* | Foo const*    | FooConst | FooValue a => a
---  Foo*       | Foo*          | Foo      | FooPtr a => a
---
--- FooPtr contains pointers to nonconst Foo (and all subclasses).  FooValue
--- contains pointers to const and nonconst Foo (and all subclasses), as well as
--- the convertible Haskell type, if there is one.  The rationale is that
--- FooValue is used where the callee will not modify the argument, so both a
--- const pointer to an existing object, and a fresh const pointer to a temporary
--- on the case of passing a Foo, is fine.  Because functions taking Foo& and
--- Foo* may modify their argument, we disallow passing a temporary converted
--- from a Haskell value implicitly; 'withCppObj' can be used for this.
---
--- For values returned from C++, and for arguments and return values in
--- callbacks, the HsCSide column above is the exposed type; polymorphism as in
--- the HsHsSide column is not provided.
-
 import Control.Arrow ((&&&), second)
 import Control.Monad (forM, unless, when)
 #if MIN_VERSION_mtl(2,2,1)
