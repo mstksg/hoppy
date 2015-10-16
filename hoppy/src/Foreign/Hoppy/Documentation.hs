@@ -66,6 +66,7 @@ import Foreign.Hoppy.Generator.Language.Haskell.General
 import Foreign.Hoppy.Generator.Main
 import Foreign.Hoppy.Generator.Spec
 import Foreign.Hoppy.Runtime.Support
+import Foreign.Ptr (castPtr)
 import Language.Haskell.Syntax (HsType)
 import System.IO.Unsafe (unsafePerformIO)
 
@@ -156,11 +157,28 @@ much as possible in generated code, although case conversions are sometimes
 necessary (e.g. Haskell requiring identifiers to begin with upper or lower case
 characters).
 
+C++ bindings for exportable things usually need @#include@s in order to access
+those things.  This is done with 'Include' and 'Reqs'.  Identifiers are
+represented by the 'Identifier' data type.
+
+All C++ types are represented with the 'Type' data type, which includes
+primitive numeric types, object types, function types, @void@, the const
+qualifier, etc.  When passing values back and forth between C++ and Haskell,
+generally, primitive types are converted to equivalent types on both ends, and
+pointer types in C++ are represented by corresponding pointer types in Haskell.
+
+This is not true for raw object types (not pointers or references, just the
+by-value object).  When an object is taken or returned by value, this typically
+indicates a lightweight object that is easy to copy, so Hoppy will convert the
+object to a native Haskell object specified in the class's binding definition.
+Using an object type directly is only allowed if a native Haskell type is
+defined.  See 'ClassConversions' for more on object conversions.
+
 -}
 {- $generators
 
 This section describes the behaviour of the code generators.  The code
-generators live at @Foreign.Hoppy.Generator.Language.\<language\>@.  The
+generators live at @Foreign.Hoppy.Generator.Language.\<language>@.  The
 top-level module for a language is internal to Hoppy and contains the bulk of
 the generator.  @General@ submodules expose functionality that can control
 generator behaviour.
@@ -239,7 +257,7 @@ the pointer.  In the event that the function pointer is dynamically allocated
 to the lifetime of the class.  But this would cause problems for passing this
 object around by value, so instead we make G non-copyable and non-assignable,
 allocate our G instance on the heap, and create a second class F that holds a
-@shared_ptr\<G\>@ and whose @operator()@ calls through to G.
+@shared_ptr\<G>@ and whose @operator()@ calls through to G.
 
 This way, the existance of the F and G objects are invisible to the foreign
 language, and (for now) passing these callbacks back to the foreign language is
@@ -328,12 +346,12 @@ with instances for 'Bounded', 'Enum', 'Eq', 'Ord', and 'Show'.
 
 'Bitspace's, unlike enums, materialize in Haskell using a single data
 constructor and bindings for values, rather than multiple data constructors.  A
-bitspace declaration such as:
+bitspace declaration such as
 
 @
 formatFlags :: 'Bitspace'
 formatFlags =
-  'makeBitspace' ('toExtName' \"Format\") TInt
+  'makeBitspace' ('toExtName' \"Format\") 'TInt'
   [ (1, [\"format\", \"letter\"])
   , (2, [\"format\", \"jpeg\"])
   , (4, [\"format\", \"c\"])
@@ -351,10 +369,10 @@ instance 'Eq' Format
 instance 'Ord' Format
 instance 'Show' Format
 
-fromFormat :: Format -\> 'CInt'
+fromFormat :: Format -> 'CInt'
 
 class IsFormat a where
-  toFormat :: a -\> Format
+  toFormat :: a -> Format
 
 instance IsFormat 'CInt'
 
@@ -392,8 +410,8 @@ zipper :: 'Class'
 zipper =
   'makeClass' ('ident' \"Zipper\") Nothing [compressor]
   [ 'mkCtor' \"new\" [] ]
-  [ 'mkConstMethod' \"canZip\" [] 'TBool'
-  , 'mkStaticMethod' \"hasZipped\" [] 'TVoid'
+  [ 'mkStaticMethod' \"canZip\" [] 'TBool'
+  , 'mkConstMethod' \"hasZipped\" [] 'TVoid'
   , 'mkMethod' \"zip\" [] 'TVoid'
   ]
 @
@@ -422,6 +440,10 @@ class CompressorPtrConst a => ZipperPtrConst a where
 
 class (ZipperPtrConst a, CompressorPtr a) => ZipperPtr a where
   toZipper :: a -> Zipper
+
+instance ZipperPtrConst ZipperConst
+instance ZipperPtr Zipper
+... instances required by superclasses ...
 @
 
 Ignoring the first typeclass and instance for a moment, the two @Ptr@
@@ -431,18 +453,38 @@ typeclasses for all of the C++ class's superclasses (or just 'CppPtr' if this
 list is empty).  The non-const typeclass has as superclasses the non-const
 typeclasses for all of the C++ class's superclasses, plus the current const
 typeclass.  Instances will be generated for all of the appropriate typeclasses
-all the way up to 'CppPtr'.
+for 'Zipper' and 'ZipperConst', all the way up to 'CppPtr'.
 
 The @ZipperValue@ class represents general @Zipper@ values, of which pointers
-are one type (hence the @instance@ above).  Values of these types can be
+are one type (hence the first @instance@ above).  Values of these types can be
 converted to a temporary const pointer.  If @Zipper@ were to have a native
 Haskell type (see 'classHaskellConversion'), then an additional instance would
 be generated for that type.  This second instance in this case is overlapping,
-and the above instance is overlappable.
+and the above instance is overlappable.  These typeclasses allow for mixing
+pointer, reference, and object types when calling C++ functions.
 
-Finally, Haskell functions are generated for all of the class's constructors
-and methods.  These take the @this@ object as the first argument, and function
-much the same as function exports.
+Finally, Haskell functions are generated for all of the class's constructors and
+methods.  These function much the same as function exports, but non-static
+methods take a @this@ object as the first argument.  No specialized deletion
+method is needed; 'delete' is generic.
+
+@
+zipper_new :: 'IO' Zipper
+zipper_canZip :: 'IO' 'Bool'
+zipper_hasZipped :: ZipperValue this => this -> 'IO' 'Bool'
+zipper_zip :: ZipperPtr this => this -> 'IO' 'Bool'
+@
+
+Downcasting pointers is not currently supported.  Beware that the obvious
+approach of
+
+@
+compressorToZipper :: Compressor -> Zipper
+compressorToZipper = Zipper . 'castPtr' . 'toPtr'
+@
+
+doesn't work in the presence of multiple inheritance, where casting requires
+pointer arithmetic.
 
 -}
 {- $generators-hs-module-dependencies
@@ -477,13 +519,13 @@ The following types are used for passing arguments from Haskell to C++:
 >  Foo*       | Foo*          | Foo      | FooPtr a => a
 
 @FooPtr@ contains pointers to nonconst @Foo@ (and all subclasses).  @FooValue@
-contains pointers to const and nonconst @Foo@ (and all subclasses), as well as the
-convertible Haskell type, if there is one.  The rationale is that @FooValue@ is
-used where the callee will not modify the argument, so both a const pointer to
-an existing object, and a fresh const pointer to a temporary on the case of
-passing a @Foo@, is fine.  Because functions taking @Foo&@ and @Foo*@ may modify
-their argument, we disallow passing a temporary converted from a Haskell value
-implicitly; 'withCppObj' can be used for this.
+contains pointers to const and nonconst @Foo@ (and all subclasses), as well as
+the convertible Haskell type, if there is one.  The rationale is that @FooValue@
+is used where the callee will not modify the argument, so both a const pointer
+to an existing object, and a fresh const pointer to a temporary on the case of
+passing a @Foo@, are fine.  Because functions taking @Foo&@ and @Foo*@ may
+modify their argument, we disallow passing a temporary converted from a Haskell
+value implicitly; 'withCppObj' can be used for this.
 
 For values returned from C++, and for arguments and return values in callbacks,
 the 'HsCSide' column above is the exposed type; polymorphism as in the
