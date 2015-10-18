@@ -12,6 +12,9 @@ category: Language
 build-type: Simple
 cabal-version: >=1.10
 
+data-files:
+    include/hoppy/iterator.hpp
+
 library
   exposed-modules:
       Foreign.Hoppy.Common
@@ -26,11 +29,13 @@ library
     , Foreign.Hoppy.Generator.Std.List
     , Foreign.Hoppy.Generator.Std.String
     , Foreign.Hoppy.Generator.Std.Vector
+    , Foreign.Hoppy.Paths
     , Foreign.Hoppy.Runtime.Support
   other-modules:
       Foreign.Hoppy.Common.Consume
     , Foreign.Hoppy.Generator.Language.Cpp
     , Foreign.Hoppy.Generator.Language.Haskell
+    , Paths_hoppy
   default-extensions:
       ExistentialQuantification
     , FlexibleContexts

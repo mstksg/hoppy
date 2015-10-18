@@ -36,6 +36,7 @@ import Foreign.Hoppy.Common (writeFileIfDifferent)
 import qualified Foreign.Hoppy.Generator.Language.Cpp as Cpp
 import qualified Foreign.Hoppy.Generator.Language.Haskell as Haskell
 import Foreign.Hoppy.Generator.Spec
+import Foreign.Hoppy.Paths (includeDir)
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist)
 import System.Exit (exitFailure, exitSuccess)
 import System.FilePath ((</>), takeDirectory)
@@ -43,12 +44,14 @@ import System.IO (hPutStrLn, stderr)
 
 -- | Actions that can be requested of the program.
 data Action =
-  ListInterfaces
-  -- ^ Lists the interfaces compiled into the generator.
+    ListInterfaces
+    -- ^ Lists the interfaces compiled into the generator.
   | GenCpp FilePath
     -- ^ Generates C++ wrappers for an interface in the given location.
   | GenHaskell FilePath
     -- ^ Generates Haskell bindings for an interface in the given location.
+  | GetIncludeDir
+    -- ^ Prints out the directory containing C++ includes provided by Hoppy.
 
 data AppState = AppState
   { appInterfaces :: [Interface]
@@ -103,6 +106,9 @@ getGeneratedHaskell cache = case generatedHaskell cache of
 --
 -- - __@--gen-hs \<outdir\>@:__ Generates Haskell bindings under the given
 --   top-level source directory.
+--
+-- - __@--get-include-dir@:__ Prints the directory holding C++ header files
+-- provided by Hoppy.
 run :: [Interface] -> [String] -> IO [Action]
 run interfaces args = do
   stateVar <- newMVar $ initialAppState interfaces
@@ -126,6 +132,8 @@ usage stateVar = do
     , "  --gen-cpp <outdir>          Generate C++ bindings in a directory."
     , "  --gen-hs <outdir>           Generate Haskell bindings under the given"
     , "                              top-level source directory."
+    , "  --get-include-dir           Prints the directory holding C++ header files"
+    , "                              provided by Hoppy."
     ]
 
 processArgs :: MVar AppState -> [String] -> IO [Action]
@@ -170,6 +178,10 @@ processArgs stateVar args =
           forM_ (M.toList $ Haskell.generatedFiles gen) $
             uncurry $ writeGeneratedFile baseDir
           (GenHaskell baseDir:) <$> processArgs stateVar rest
+
+    "--get-include-dir":rest -> do
+      putStrLn =<< includeDir
+      (GetIncludeDir:) <$> processArgs stateVar rest
 
     arg:_ -> do
       putStrLn $ "Invalid option or missing argument for " ++ arg ++ "."

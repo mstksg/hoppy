@@ -1,5 +1,5 @@
 # Keep the -I... in sync with default.nix.
-CXXFLAGS += -std=c++11 -fPIC -I../../../hoppy/include
+CXXFLAGS += -std=c++11 -fPIC
 
 .PHONY: clean
 

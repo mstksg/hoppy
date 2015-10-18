@@ -41,7 +41,8 @@ if $doBuild; then
     cd ../lib
     make clean
     ../hs/.cabal-sandbox/bin/generator --gen-cpp .
-    make
+    CXXFLAGS=-I$(../hs/.cabal-sandbox/bin/generator --get-include-dir) \
+        make
     cd ../hs
 
     # Build and run the Haskell test program.
