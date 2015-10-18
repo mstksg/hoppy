@@ -1,3 +1,19 @@
+-- This file is part of Hoppy.
+--
+-- Copyright 2015 Bryan Gardiner <bog@khumba.net>
+--
+-- This program is free software: you can redistribute it and/or modify
+-- it under the terms of the GNU Affero General Public License version 3
+-- as published by the Free Software Foundation.
+--
+-- This program is distributed in the hope that it will be useful,
+-- but WITHOUT ANY WARRANTY; without even the implied warranty of
+-- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+-- GNU Affero General Public License for more details.
+--
+-- You should have received a copy of the GNU Affero General Public License
+-- along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 -- | Shared portion of the C++ code generator.  Usable by binding definitions.
 module Foreign.Hoppy.Generator.Language.Cpp.General (
   externalNameToCpp,
@@ -221,7 +237,8 @@ sayType' t maybeParamNames outerPrec unwrappedOuter =
       outer
       say "("
       sequence_ $ intersperse (say ", ") $
-        flip map (zip paramTypes $ maybe (repeat Nothing) (map Just) maybeParamNames) $ \(ptype, pname) ->
+        flip map (zip paramTypes $ maybe (repeat Nothing) (map Just) maybeParamNames) $
+        \(ptype, pname) ->
         sayType' ptype Nothing topPrecedence $ forM_ pname say
       say ")"
     TCallback cb -> says [callbackImplClassName cb, "*"] >> outer

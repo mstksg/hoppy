@@ -1,3 +1,19 @@
+-- This file is part of Hoppy.
+--
+-- Copyright 2015 Bryan Gardiner <bog@khumba.net>
+--
+-- This program is free software: you can redistribute it and/or modify
+-- it under the terms of the GNU Affero General Public License version 3
+-- as published by the Free Software Foundation.
+--
+-- This program is distributed in the hope that it will be useful,
+-- but WITHOUT ANY WARRANTY; without even the implied warranty of
+-- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+-- GNU Affero General Public License for more details.
+--
+-- You should have received a copy of the GNU Affero General Public License
+-- along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 {-# LANGUAGE CPP #-}
 
 -- | Shared portion of the Haskell code generator.  Usable by binding
@@ -112,7 +128,8 @@ renderImports = map renderModuleImport . M.assocs . getHsImportSet
           in case getHsImportSpecs specs of
             Nothing -> case maybeQualifiedName of
               Nothing -> importPrefix ++ moduleName
-              Just qualifiedName -> concat [importQualifiedPrefix, moduleName, " as ", qualifiedName]
+              Just qualifiedName ->
+                concat [importQualifiedPrefix, moduleName, " as ", qualifiedName]
             Just specMap ->
               let specWords :: [String]
                   specWords = concatWithCommas $ map renderSpecAsWords $ M.assocs specMap
@@ -191,9 +208,8 @@ renderImports = map renderModuleImport . M.assocs . getHsImportSet
 --
 -- > "$problem; $context; $moreContext; $evenMoreContext."
 --
--- For example:
---
--- > "Class Foo is not convertible (use classModifyConversions); generating function bar; in module baz."
+-- For example, "Class Foo is not convertible (use classModifyConversions);
+-- generating function bar; in module baz.".
 --
 -- The main error message given to 'throwError' should be capitalized and should
 -- not end with punctuation.  If there is a suggestion, include it in
