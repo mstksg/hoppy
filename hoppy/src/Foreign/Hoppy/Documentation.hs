@@ -132,10 +132,11 @@ Then, her build process should perform the following steps:
 @\/lib@ and @\/hs\/src@ respectively.  See the documentation for 'run' for how
 to invoke a generator.
 
-3. Compile the C++ side of the bindings into a shared object.  Depending on
-which C++ standard libraries she's binding to, she may need to include
-@hoppy\/include@ (or wherever they are if Hoppy is installed on your system) on
-the compiler's search path.
+3. Compile the C++ side of the bindings into a shared object.  She should add
+Hoppy's header files (at @hoppy\/include@ in the source repository) to the
+compiler's search path.  These files are installed as part of the Hoppy Cabal
+package, and this path can be retrieved by calling the generator with the
+@--get-include-dir@ option.
 
 4. Compile the Haskell side of the bindings, linking with the C++ library.
 

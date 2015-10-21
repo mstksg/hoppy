@@ -525,7 +525,7 @@ toArgName :: Int -> String
 toArgName = ("arg'" ++) . show
 
 -- | The Haskell side of bindings performs conversions between C FFI types and
--- Haskell types.  This denotes which side's type is being requested.
+-- Haskell types.  This denotes which side's type is being used.
 data HsTypeSide =
   HsCSide  -- ^ The C type sent from C++.
   | HsHsSide  -- ^ The Haskell-native type.
