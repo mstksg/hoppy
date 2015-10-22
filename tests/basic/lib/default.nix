@@ -26,12 +26,11 @@ stdenv.mkDerivation {
   src = ./.;
   buildInputs = [ gen ];
 
-  # Keep the -I... in sync with Makefile.
   prePatch = ''
     ${gen}/bin/generator --gen-cpp .
-    substituteInPlace Makefile \
-        --replace -I../../../hoppy/include "-I${hoppy}/include"
   '';
+
+  CXXFLAGS = "-I${hoppy}/include";
 
   installPhase = ''
     mkdir -p $out/src
