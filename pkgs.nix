@@ -19,9 +19,12 @@
 { haskellOptions ? if builtins.pathExists ./config.nix
                    then import ./config.nix
                    else {}
+, compiler ? null
 }:
 
 let
+
+  realCompiler = if compiler == null then "ghc7102" else compiler;
 
   hoppyDir = ./.;
 
@@ -68,7 +71,8 @@ let
       inherit (haskellPackages) hoppy hoppy-tests-stl-generator;
     };
 
-    haskellPackages = pkgs.haskellPackages.override (haskellOverrides haskellOptions);
+    haskellPackages =
+      pkgs.haskell.packages.${realCompiler}.override (haskellOverrides haskellOptions);
   };
 
 in import <nixpkgs> { config = { inherit packageOverrides; }; }

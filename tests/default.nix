@@ -14,7 +14,8 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-let pkgs = import ../pkgs.nix {}; in
+{ compiler ? null }:
+let pkgs = import ../pkgs.nix { inherit compiler; }; in
 pkgs.stdenv.mkDerivation {
   name = "hoppy-tests-0.1.0";
   builder = ./builder.sh;
