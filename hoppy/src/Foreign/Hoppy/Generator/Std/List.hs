@@ -46,24 +46,23 @@ defaultOptions = Options []
 
 -- | A set of instantiated list classes.
 data Contents = Contents
-  { c_list :: Class  -- ^ @std::list\<T\>@
-  , c_iterator :: Class  -- ^ @std::list\<T\>::iterator@
-  , c_constIterator :: Class  -- ^ @std::list\<T\>::const_iterator@
+  { c_list :: Class  -- ^ @std::list\<T>@
+  , c_iterator :: Class  -- ^ @std::list\<T>::iterator@
+  , c_constIterator :: Class  -- ^ @std::list\<T>::const_iterator@
   }
 
--- | @instantiate classSuffix t@ creates a set of bindings for an instantiation
--- of @std::list@ and associated types (e.g. iterators).  In the result, the
--- 'c_list' class has an external name of @\"list\" ++ classSuffix@, and the
+-- | @instantiate className t@ creates a set of bindings for an instantiation of
+-- @std::list@ and associated types (e.g. iterators).  In the result, the
+-- 'c_list' class has an external name of @\"list\" ++ className@, and the
 -- iterator classes are further suffixed with @\"Iterator\"@ and
 -- @\"ConstIterator\"@ respectively.
 instantiate :: String -> Type -> Contents
-instantiate classSuffix t = instantiate' classSuffix t defaultOptions
+instantiate listName t = instantiate' listName t defaultOptions
 
 -- | 'instantiate' with additional options.
 instantiate' :: String -> Type -> Options -> Contents
-instantiate' classSuffix t opts =
+instantiate' listName t opts =
   let reqs = reqInclude $ includeStd "list"
-      listName = "list" ++ classSuffix
       iteratorName = listName ++ "Iterator"
       constIteratorName = listName ++ "ConstIterator"
       features = Assignable : Copyable : optListClassFeatures opts
@@ -117,13 +116,13 @@ instantiate' classSuffix t opts =
 
       iterator =
         addUseReqs reqs $
-        classAddFeatures [BidirectionalIterator Mutable t] $
+        classAddFeatures [BidirectionalIterator Mutable $ Just t] $
         makeClass (identT' [("std", Nothing), ("list", Just [t]), ("iterator", Nothing)])
         (Just $ toExtName iteratorName) [] [] []
 
       constIterator =
         addUseReqs reqs $
-        classAddFeatures [BidirectionalIterator Constant t] $
+        classAddFeatures [BidirectionalIterator Constant $ Just t] $
         makeClass (identT' [("std", Nothing), ("list", Just [t]), ("const_iterator", Nothing)])
         (Just $ toExtName constIteratorName)
         []

@@ -14,6 +14,8 @@
 -- You should have received a copy of the GNU Affero General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+{-# LANGUAGE ViewPatterns #-}
+
 -- | Internal portion of the C++ code generator.
 module Foreign.Hoppy.Generator.Language.Cpp (
   Generation,
@@ -326,7 +328,7 @@ sayExportFn extName callType maybeThisType paramTypes retType sayBody = do
 -- foreign code.  If @dir@ is 'DoEncode', then we are invoking a foreign
 -- callback.
 sayArgRead :: CoderDirection -> (Int, Type, Maybe Type) -> Generator ()
-sayArgRead dir (n, cppType, maybeCType) = case cppType of
+sayArgRead dir (n, stripConst . normalizeType -> cppType, maybeCType) = case cppType of
   TBitspace b -> case maybeCType of
     Just cType -> do
       let cppTypeId = fromMaybe (error $ concat
@@ -374,8 +376,8 @@ sayArgRead dir (n, cppType, maybeCType) = case cppType of
   -- TODO Do we need to handle TConst?
   _ -> forM_ maybeCType $ \cType ->
     abort $ concat
-    ["sayArgRead: Don't know how to ", show dir, " to type ", show cType,
-     " from type ", show cppType, "."]
+    ["sayArgRead: Don't know how to ", show dir, " between C-type ", show cType,
+     " and C++-type ", show cppType, "."]
 
   where convertObj cppType' = case dir of
           DoDecode -> do

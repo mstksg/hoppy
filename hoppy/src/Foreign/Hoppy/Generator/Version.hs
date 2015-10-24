@@ -52,6 +52,10 @@ type Filtered = Maybe
 collect :: [Filtered a] -> [a]
 collect = catMaybes
 
+-- | A 'Filtered' value that is always absent.
+none :: Filtered a
+none = Nothing
+
 -- | Returns a 'Filtered' value that is always present.
 just :: a -> Filtered a
 just = Just

@@ -82,6 +82,8 @@ module Foreign.Hoppy.Generator.Spec (
   -- * Basic types
   Type (..),
   HasTVars (..),
+  normalizeType,
+  stripConst,
   -- ** Variables
   Variable, makeVariable, varIdentifier, varExtName, varType, varUseReqs,
   varIsConst, varGetterExtName, varSetterExtName,
@@ -806,6 +808,45 @@ instance HasTVars Type where
     TObjToHeap _ -> t
     TConst t' -> recur t'
     where recur = substTVar var val
+
+-- | Canonicalizes a 'Type' without changing its meaning.  Multiple nested
+-- 'TConst's are collapsed into a single one.
+normalizeType :: Type -> Type
+normalizeType t = case t of
+  TVar _ -> t
+  TVoid -> t
+  TBool -> t
+  TChar -> t
+  TUChar -> t
+  TShort -> t
+  TUShort -> t
+  TInt -> t
+  TUInt -> t
+  TLong -> t
+  TULong -> t
+  TLLong -> t
+  TULLong -> t
+  TFloat -> t
+  TDouble -> t
+  TPtrdiff -> t
+  TSize -> t
+  TSSize -> t
+  TEnum _ -> t
+  TBitspace _ -> t
+  TPtr t' -> TPtr $ normalizeType t'
+  TRef t' -> TRef $ normalizeType t'
+  TFn paramTypes retType -> TFn (map normalizeType paramTypes) $ normalizeType retType
+  TCallback _ -> t
+  TObj _ -> t
+  TObjToHeap _ -> t
+  TConst (TConst t') -> normalizeType $ TConst t'
+  TConst _ -> t
+
+-- | Strips leading 'TConst's off of a type.
+stripConst :: Type -> Type
+stripConst t = case t of
+  TConst t' -> stripConst t'
+  _ -> t
 
 -- | Returns whether there are no 'TVar' variables in the given type.
 typeIsConcrete :: Type -> Bool

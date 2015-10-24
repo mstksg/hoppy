@@ -46,25 +46,24 @@ defaultOptions = Options []
 
 -- | A set of instantiated set classes.
 data Contents = Contents
-  { c_set :: Class  -- ^ @std::set\<T\>@
-  , c_iterator :: Class  -- ^ @std::set\<T\>::iterator@
+  { c_set :: Class  -- ^ @std::set\<T>@
+  , c_iterator :: Class  -- ^ @std::set\<T>::iterator@
   }
 
--- | @instantiate classSuffix t@ creates a set of bindings for an instantiation
+-- | @instantiate className t@ creates a set of bindings for an instantiation
 -- of @std::set@ and associated types (e.g. iterators).  In the result, the
--- 'c_set' class has an external name of @\"set\" ++ classSuffix@, and the
+-- 'c_set' class has an external name of @className@, and the
 -- iterator class is further suffixed with @\"Iterator\"@.
 instantiate :: String -> Type -> Contents
-instantiate classSuffix t = instantiate' classSuffix t defaultOptions
+instantiate setName t = instantiate' setName t defaultOptions
 
 -- | 'instantiate' with additional options.
 instantiate' :: String -> Type -> Options -> Contents
-instantiate' classSuffix t opts =
+instantiate' setName t opts =
   let reqs = mconcat
              [ reqInclude $ includeStd "hoppy/set.hpp"
              , reqInclude $ includeStd "set"
              ]
-      setName = "set" ++ classSuffix
       iteratorName = setName ++ "Iterator"
 
       set =
@@ -75,10 +74,11 @@ instantiate' classSuffix t opts =
         ]
         [ mkMethod "begin" [] $ TObjToHeap iterator
         , mkMethod "clear" [] TVoid
+        , mkConstMethod "count" [TRef $ TConst t] TSize
           -- TODO count
         , mkConstMethod "empty" [] TBool
         , mkMethod "end" [] $ TObjToHeap iterator
-          -- TODO equalRange
+          -- equalRange: find is good enough.
         , mkMethod' "erase" "erase" [TObj iterator] TVoid
         , mkMethod' "erase" "eraseRange" [TObj iterator, TObj iterator] TVoid
         , mkMethod "find" [TRef $ TConst t] $ TObjToHeap iterator
@@ -86,18 +86,18 @@ instantiate' classSuffix t opts =
           MNormal Nonpure [TRef $ TObj set, t] TBool
         , makeFnMethod (ident2 "hoppy" "set" "insertAndGetIterator") "insertAndGetIterator"
           MNormal Nonpure [TRef $ TObj set, t] $ TObjToHeap iterator
-        , mkMethod' "lower_bound" "lowerBound" [TRef $ TConst t] $ TObjToHeap iterator
+          -- lower_bound: find is good enough.
         , mkConstMethod' "max_size" "maxSize" [] TSize
         , mkConstMethod "size" [] TSize
         , mkMethod "swap" [TRef $ TObj set] TVoid
-        , mkMethod' "upper_bound" "upperBound" [TRef $ TConst t] $ TObjToHeap iterator
+          -- upper_bound: find is good enough.
         ]
 
       -- Set iterators are always constant, because modifying elements in place
       -- will break the internal order of the set.
       iterator =
         addUseReqs reqs $
-        classAddFeatures [BidirectionalIterator Constant t] $
+        classAddFeatures [BidirectionalIterator Constant $ Just t] $
         makeClass (identT' [("std", Nothing), ("set", Just [t]), ("iterator", Nothing)])
         (Just $ toExtName iteratorName) [] [] []
 

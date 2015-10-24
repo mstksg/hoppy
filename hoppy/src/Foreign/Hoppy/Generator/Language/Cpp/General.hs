@@ -14,6 +14,8 @@
 -- You should have received a copy of the GNU Affero General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+{-# LANGUAGE ViewPatterns #-}
+
 -- | Shared portion of the C++ code generator.  Usable by binding definitions.
 module Foreign.Hoppy.Generator.Language.Cpp.General (
   externalNameToCpp,
@@ -201,7 +203,7 @@ sayType maybeParamNames t = sayType' t maybeParamNames topPrecedence $ return ()
 -- | Implementation of 'sayType', deals with recursion, precedence, and the
 -- inside-out style of C++ type syntax.
 sayType' :: MonadWriter [Chunk] m => Type -> Maybe [String] -> Int -> m () -> m ()
-sayType' t maybeParamNames outerPrec unwrappedOuter =
+sayType' (normalizeType -> t) maybeParamNames outerPrec unwrappedOuter =
   let prec = typePrecedence t
       outer = if prec <= outerPrec
               then unwrappedOuter

@@ -48,24 +48,23 @@ defaultOptions = Options []
 
 -- | A set of instantiated vector classes.
 data Contents = Contents
-  { c_vector :: Class  -- ^ @std::vector\<T\>@
-  , c_iterator :: Class  -- ^ @std::vector\<T\>::iterator@
-  , c_constIterator :: Class  -- ^ @std::vector\<T\>::const_iterator@
+  { c_vector :: Class  -- ^ @std::vector\<T>@
+  , c_iterator :: Class  -- ^ @std::vector\<T>::iterator@
+  , c_constIterator :: Class  -- ^ @std::vector\<T>::const_iterator@
   }
 
--- | @instantiate classSuffix t@ creates a set of bindings for an instantiation
+-- | @instantiate className t@ creates a set of bindings for an instantiation
 -- of @std::vector@ and associated types (e.g. iterators).  In the result, the
--- 'c_vector' class has an external name of @\"vector\" ++ classSuffix@, and the
--- iterator classes are further suffixed with @\"Iterator\"@ and
--- @\"ConstIterator\"@ respectively.
+-- 'c_vector' class has an external name of @className@, and the iterator
+-- classes are further suffixed with @\"Iterator\"@ and @\"ConstIterator\"@
+-- respectively.
 instantiate :: String -> Type -> Contents
-instantiate classSuffix t = instantiate' classSuffix t defaultOptions
+instantiate vectorName t = instantiate' vectorName t defaultOptions
 
 -- | 'instantiate' with additional options.
 instantiate' :: String -> Type -> Options -> Contents
-instantiate' classSuffix t opts =
+instantiate' vectorName t opts =
   let reqs = reqInclude $ includeStd "vector"
-      vectorName = "vector" ++ classSuffix
       iteratorName = vectorName ++ "Iterator"
       constIteratorName = vectorName ++ "ConstIterator"
 
@@ -107,13 +106,13 @@ instantiate' classSuffix t opts =
 
       iterator =
         addUseReqs reqs $
-        classAddFeatures [RandomIterator Mutable t TPtrdiff] $
+        classAddFeatures [RandomIterator Mutable (Just t) TPtrdiff] $
         makeClass (identT' [("std", Nothing), ("vector", Just [t]), ("iterator", Nothing)])
         (Just $ toExtName iteratorName) [] [] []
 
       constIterator =
         addUseReqs reqs $
-        classAddFeatures [RandomIterator Constant t TPtrdiff] $
+        classAddFeatures [RandomIterator Constant (Just t) TPtrdiff] $
         makeClass (identT' [("std", Nothing), ("vector", Just [t]), ("const_iterator", Nothing)])
         (Just $ toExtName constIteratorName) []
         [ mkCtor "newFromNonconst" [TObj iterator]

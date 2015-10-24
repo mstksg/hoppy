@@ -23,6 +23,7 @@ module Foreign.Hoppy.Generator.Spec.ClassFeature (
 
 import Data.Maybe (catMaybes)
 import Foreign.Hoppy.Generator.Spec
+import Foreign.Hoppy.Generator.Version (collect, just)
 
 -- | Sets of functionality that can be stamped onto a class with
 -- 'classAddFeatures'.
@@ -38,17 +39,17 @@ data ClassFeature =
   | Equatable
     -- ^ Provides @operator==@ and @operator!=@, for example @bool
     -- Foo::operator==(const Foo&)@.
-  | TrivialIterator IteratorMutability Type
+  | TrivialIterator IteratorMutability (Maybe Type)
     -- ^ An STL trivial iterator.  Includes 'Assignable' and 'Copyable'.
-    -- Provides default construction, dereferencing, and if mutable, then
-    -- assignment.
-  | ForwardIterator IteratorMutability Type
+    -- Provides: default construction; dereferencing if a type is given;
+    -- assignment if mutable.
+  | ForwardIterator IteratorMutability (Maybe Type)
     -- ^ An STL forward iterator.  Includes 'TrivialIterator' and provides
     -- pre-increment.
-  | BidirectionalIterator IteratorMutability Type
+  | BidirectionalIterator IteratorMutability (Maybe Type)
     -- ^ An STL bidirectional iterator.  Includes 'ForwardIterator' and provides
     -- pre-decrement.
-  | RandomIterator IteratorMutability Type Type
+  | RandomIterator IteratorMutability (Maybe Type) Type
     -- ^ An STL random-access iterator.  Includes 'BidirectionalIterator' and
     -- provides arithmetic and array access.
   deriving (Eq, Show)
@@ -63,11 +64,12 @@ instance HasTVars ClassFeature where
     Comparable -> feature
     Copyable -> feature
     Equatable -> feature
-    TrivialIterator mutable valueType -> TrivialIterator mutable $ subst valueType
-    ForwardIterator mutable valueType -> ForwardIterator mutable $ subst valueType
-    BidirectionalIterator mutable valueType -> BidirectionalIterator mutable $ subst valueType
-    RandomIterator mutable valueType distanceType ->
-      RandomIterator mutable (subst valueType) distanceType
+    TrivialIterator mutable valueTypeMaybe -> TrivialIterator mutable $ subst <$> valueTypeMaybe
+    ForwardIterator mutable valueTypeMaybe -> ForwardIterator mutable $ subst <$> valueTypeMaybe
+    BidirectionalIterator mutable valueTypeMaybe ->
+      BidirectionalIterator mutable $ subst <$> valueTypeMaybe
+    RandomIterator mutable valueTypeMaybe distanceType ->
+      RandomIterator mutable (fmap subst valueTypeMaybe) distanceType
     where subst = substTVar var val
 
 featureContents :: ClassFeature -> Class -> ([Ctor], [Method], Reqs)
@@ -76,11 +78,12 @@ featureContents feature cls = case feature of
   Comparable -> comparableContents cls
   Copyable -> copyableContents cls
   Equatable -> equatableContents cls
-  TrivialIterator mutable valueType -> trivialIteratorContents mutable cls valueType
-  ForwardIterator mutable valueType -> forwardIteratorContents mutable cls valueType
-  BidirectionalIterator mutable valueType -> bidirectionalIteratorContents mutable cls valueType
-  RandomIterator mutable valueType distanceType ->
-    randomIteratorContents mutable cls valueType distanceType
+  TrivialIterator mutable valueTypeMaybe -> trivialIteratorContents mutable cls valueTypeMaybe
+  ForwardIterator mutable valueTypeMaybe -> forwardIteratorContents mutable cls valueTypeMaybe
+  BidirectionalIterator mutable valueTypeMaybe ->
+    bidirectionalIteratorContents mutable cls valueTypeMaybe
+  RandomIterator mutable valueTypeMaybe distanceType ->
+    randomIteratorContents mutable cls valueTypeMaybe distanceType
 
 assignableContents :: Class -> ([Ctor], [Method], Reqs)
 assignableContents cls =
@@ -114,48 +117,57 @@ equatableContents cls =
    ],
    mempty)
 
-trivialIteratorContents :: IteratorMutability -> Class -> Type -> ([Ctor], [Method], Reqs)
-trivialIteratorContents mutable cls valueType =
+trivialIteratorContents :: IteratorMutability -> Class -> Maybe Type -> ([Ctor], [Method], Reqs)
+trivialIteratorContents mutable cls valueTypeMaybe =
   mconcat
   [ assignableContents cls
   , copyableContents cls
   , equatableContents cls
   , ([ mkCtor "new" []
      ],
-     catMaybes
-     [ case mutable of
-       Constant -> Nothing
-       Mutable -> Just $ mkMethod' OpDeref "get" [] $ TRef valueType
-     , Just $ mkConstMethod' OpDeref "getConst" [] $ TRef $ TConst valueType
-     , case mutable of
-       Constant -> Nothing
-       Mutable -> Just $ makeFnMethod (ident2 "hoppy" "iterator" "put") "put"
-                  MNormal Nonpure [TPtr $ TObj cls, valueType] TVoid
+     collect
+     [ do valueType <- valueTypeMaybe
+          Mutable <- Just mutable
+          just $ mkMethod' OpDeref "get" [] $ TRef valueType
+     , do valueType <- valueTypeMaybe
+          return $ mkConstMethod' OpDeref "getConst" [] $ TRef $ TConst valueType
+     , do valueType <- valueTypeMaybe
+          Mutable <- Just mutable
+          return $
+            makeFnMethod (ident2 "hoppy" "iterator" "put") "put"
+            MNormal Nonpure [TPtr $ TObj cls, valueType] TVoid
      ],
      case mutable of
        Constant -> mempty
        Mutable -> reqInclude $ includeStd "hoppy/iterator.hpp")
   ]
 
-forwardIteratorContents :: IteratorMutability -> Class -> Type -> ([Ctor], [Method], Reqs)
-forwardIteratorContents mutable cls valueType =
-  trivialIteratorContents mutable cls valueType `mappend`
+forwardIteratorContents :: IteratorMutability -> Class -> Maybe Type -> ([Ctor], [Method], Reqs)
+forwardIteratorContents mutable cls valueTypeMaybe =
+  trivialIteratorContents mutable cls valueTypeMaybe `mappend`
   ([],
    [ mkMethod OpIncPre [] $ TRef $ TObj cls
    ],
    mempty)
 
-bidirectionalIteratorContents :: IteratorMutability -> Class -> Type -> ([Ctor], [Method], Reqs)
-bidirectionalIteratorContents mutable cls valueType =
-  forwardIteratorContents mutable cls valueType `mappend`
+bidirectionalIteratorContents :: IteratorMutability
+                              -> Class
+                              -> Maybe Type
+                              -> ([Ctor], [Method], Reqs)
+bidirectionalIteratorContents mutable cls valueTypeMaybe =
+  forwardIteratorContents mutable cls valueTypeMaybe `mappend`
   ([],
    [ mkMethod OpDecPre [] $ TRef $ TObj cls
    ],
    mempty)
 
-randomIteratorContents :: IteratorMutability -> Class -> Type -> Type -> ([Ctor], [Method], Reqs)
-randomIteratorContents mutable cls valueType distanceType =
-  bidirectionalIteratorContents mutable cls valueType `mappend`
+randomIteratorContents :: IteratorMutability
+                       -> Class
+                       -> Maybe Type
+                       -> Type
+                       -> ([Ctor], [Method], Reqs)
+randomIteratorContents mutable cls valueTypeMaybe distanceType =
+  bidirectionalIteratorContents mutable cls valueTypeMaybe `mappend`
   ([],
    catMaybes
    [ Just $ mkMethod OpAdd [distanceType] $ TObjToHeap cls
@@ -163,10 +175,11 @@ randomIteratorContents mutable cls valueType distanceType =
    , Just $ mkMethod OpSubtract [distanceType] $ TObjToHeap cls
    , Just $ mkMethod' OpSubtract "difference" [TObj cls] distanceType
    , Just $ mkMethod OpSubtractAssign [distanceType] $ TRef $ TObj cls
-   , case mutable of
-      Mutable -> Just $ mkMethod' OpArray "at" [distanceType] $ TRef valueType
-      Constant -> Nothing
-   , Just $ mkConstMethod' OpArray "atConst" [distanceType] $ TRef $ TConst valueType
+   , do valueType <- valueTypeMaybe
+        Mutable <- Just mutable
+        return $ mkMethod' OpArray "at" [distanceType] $ TRef valueType
+   , do valueType <- valueTypeMaybe
+        return $ mkConstMethod' OpArray "atConst" [distanceType] $ TRef $ TConst valueType
    ],
    mempty)
 
