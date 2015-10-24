@@ -14,6 +14,7 @@ cabal-version: >=1.10
 
 data-files:
     include/hoppy/iterator.hpp
+    include/hoppy/set.hpp
 
 library
   exposed-modules:
@@ -27,8 +28,10 @@ library
     , Foreign.Hoppy.Generator.Spec.Template
     , Foreign.Hoppy.Generator.Std
     , Foreign.Hoppy.Generator.Std.List
+    , Foreign.Hoppy.Generator.Std.Set
     , Foreign.Hoppy.Generator.Std.String
     , Foreign.Hoppy.Generator.Std.Vector
+    , Foreign.Hoppy.Generator.Version
     , Foreign.Hoppy.Paths
     , Foreign.Hoppy.Runtime.Support
   other-modules:

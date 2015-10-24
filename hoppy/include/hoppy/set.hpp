@@ -1,5 +1,5 @@
-#ifndef HOPPY_ITERATOR_HPP
-#define HOPPY_ITERATOR_HPP
+#ifndef HOPPY_SET_HPP
+#define HOPPY_SET_HPP
 
 // This file is part of Hoppy.
 //
@@ -17,24 +17,22 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#include <iterator>
+#include <set>
 
 namespace hoppy {
-namespace iterator {
+namespace set {
 
-template <typename Iter, typename T>
-T& put(Iter* self, const T& value) {
-    return (**self = value);
+template <typename T>
+bool insert(std::set<T>& set, const T& value) {
+    return set.insert(value).second;
 }
 
-template <typename Container>
-typename Container::iterator deconst(
-    typename Container::const_iterator iterator,
-    Container& container) {
-    return container.erase(iterator, iterator);
+template <typename T>
+typename std::set<T>::iterator insertAndGetIterator(std::set<T>& set, const T& value) {
+    return set.insert(value).first;
 }
 
-}  // namespace iterator
+}  // namespace set
 }  // namespace hoppy
 
 #endif

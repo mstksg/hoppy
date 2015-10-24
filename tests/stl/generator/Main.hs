@@ -18,8 +18,14 @@ module Main (main) where
 
 import Foreign.Hoppy.Generator.Main (run)
 import Foreign.Hoppy.Generator.Spec
+import Foreign.Hoppy.Generator.Spec.ClassFeature (
+  ClassFeature (Comparable, Equatable),
+  classAddFeatures,
+  )
 import Foreign.Hoppy.Generator.Std (mod_std)
 import Foreign.Hoppy.Generator.Std.String (c_string)
+import qualified Foreign.Hoppy.Generator.Std.List as List
+import qualified Foreign.Hoppy.Generator.Std.Set as Set
 import qualified Foreign.Hoppy.Generator.Std.Vector as Vector
 import System.Environment (getArgs)
 import System.Exit (exitFailure)
@@ -50,9 +56,17 @@ testModule =
   addModuleExports $
   concat
   [ [ ExportClass c_IntBox
+    , ExportClass c_IntBoxComparable
+    , ExportClass c_IntBoxEquatable
     ]
-  , Vector.toExports vectorString
+  , List.toExports listIntBox
+  , List.toExports listIntBoxComparable
+  , List.toExports listIntBoxEquatable
+  , Set.toExports setIntBox
   , Vector.toExports vectorIntBox
+  , Vector.toExports vectorIntBoxComparable
+  , Vector.toExports vectorIntBoxEquatable
+  , Vector.toExports vectorString
   ]
 
 -- | This class is deliberately not encodable, in order to ensure that @vector@
@@ -68,8 +82,38 @@ c_IntBox =
   , mkMethod "set" [TInt] TVoid
   ]
 
-vectorString :: Vector.Contents
-vectorString = Vector.instantiate "String" $ TObj c_string
+c_IntBoxComparable :: Class
+c_IntBoxComparable =
+  addReqIncludes [includeLocal "intbox.hpp"] $
+  classAddFeatures [Comparable] $
+  makeClass (ident "IntBoxComparable") Nothing [c_IntBox] [] []
+
+c_IntBoxEquatable :: Class
+c_IntBoxEquatable =
+  addReqIncludes [includeLocal "intbox.hpp"] $
+  classAddFeatures [Equatable] $
+  makeClass (ident "IntBoxEquatable") Nothing [c_IntBox] [] []
+
+listIntBox :: List.Contents
+listIntBox = List.instantiate "IntBox" $ TObj c_IntBox
+
+listIntBoxComparable :: List.Contents
+listIntBoxComparable = List.instantiate "IntBoxComparable" $ TObj c_IntBoxComparable
+
+listIntBoxEquatable :: List.Contents
+listIntBoxEquatable = List.instantiate "IntBoxEquatable" $ TObj c_IntBoxEquatable
+
+setIntBox :: Set.Contents
+setIntBox = Set.instantiate "IntBox" $ TObj c_IntBoxComparable
 
 vectorIntBox :: Vector.Contents
 vectorIntBox = Vector.instantiate "IntBox" $ TObj c_IntBox
+
+vectorIntBoxComparable :: Vector.Contents
+vectorIntBoxComparable = Vector.instantiate "IntBoxComparable" $ TObj c_IntBox
+
+vectorIntBoxEquatable :: Vector.Contents
+vectorIntBoxEquatable = Vector.instantiate "IntBoxEquatable" $ TObj c_IntBox
+
+vectorString :: Vector.Contents
+vectorString = Vector.instantiate "String" $ TObj c_string

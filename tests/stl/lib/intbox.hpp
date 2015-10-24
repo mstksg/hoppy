@@ -24,8 +24,28 @@ public:
     int get() const { return n_; }
     void set(int n) { n_ = n; }
 
-private:
+protected:
     int n_;
+};
+
+class IntBoxComparable : public IntBox {
+public:
+    IntBoxComparable() {}
+    IntBoxComparable(int n) : IntBox(n) {}
+
+    bool operator<(const IntBoxComparable& other) const { return n_ < other.n_; }
+    bool operator<=(const IntBoxComparable& other) const { return n_ <= other.n_; }
+    bool operator>(const IntBoxComparable& other) const { return n_ > other.n_; }
+    bool operator>=(const IntBoxComparable& other) const { return n_ >= other.n_; }
+};
+
+class IntBoxEquatable : public IntBox {
+public:
+    IntBoxEquatable() {}
+    IntBoxEquatable(int n) : IntBox(n) {}
+
+    bool operator==(const IntBoxEquatable& other) const { return n_ == other.n_; }
+    bool operator!=(const IntBoxEquatable& other) const { return !(*this == other); }
 };
 
 #endif

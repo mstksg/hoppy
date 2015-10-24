@@ -51,9 +51,11 @@ data ClassFeature =
   | RandomIterator IteratorMutability Type Type
     -- ^ An STL random-access iterator.  Includes 'BidirectionalIterator' and
     -- provides arithmetic and array access.
+  deriving (Eq, Show)
 
 -- | Whether an iterator may be used to modify the underlying collection.
 data IteratorMutability = Constant | Mutable
+                        deriving (Eq, Ord, Show)
 
 instance HasTVars ClassFeature where
   substTVar var val feature = case feature of
@@ -124,7 +126,7 @@ trivialIteratorContents mutable cls valueType =
      [ case mutable of
        Constant -> Nothing
        Mutable -> Just $ mkMethod' OpDeref "get" [] $ TRef valueType
-     , Just $ mkMethod' OpDeref "getConst" [] $ TRef $ TConst valueType
+     , Just $ mkConstMethod' OpDeref "getConst" [] $ TRef $ TConst valueType
      , case mutable of
        Constant -> Nothing
        Mutable -> Just $ makeFnMethod (ident2 "hoppy" "iterator" "put") "put"

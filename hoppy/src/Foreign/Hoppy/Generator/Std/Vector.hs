@@ -30,6 +30,7 @@ import Foreign.Hoppy.Generator.Spec.ClassFeature (
   IteratorMutability (Constant, Mutable),
   classAddFeatures,
   )
+import Foreign.Hoppy.Generator.Version (CppVersion (Cpp2011), activeCppVersion, collect, just, test)
 
 -- | Options for instantiating the vector classes.
 data Options = Options
@@ -73,33 +74,35 @@ instantiate' classSuffix t opts =
         classAddFeatures (Assignable : Copyable : optVectorClassFeatures opts) $
         makeClass (ident1T "std" "vector" [t]) (Just $ toExtName vectorName) []
         [ mkCtor "new" []
-        , mkCtor "newSized" [TSize]
-        , mkCtor "newWith" [TSize, TRef $ TConst t]
-        ]
-        [ mkMethod' "at" "at" [TSize] $ TRef t
-        , mkConstMethod' "at" "atConst" [TSize] $ TRef $ TConst t
-        , mkMethod' "back" "back" [] $ TRef t
-        , mkConstMethod' "back" "backConst" [] $ TRef $ TConst t
-        , mkMethod' "begin" "begin" [] $ TObjToHeap iterator
-        , mkConstMethod' "begin" "constBegin" [] $ TObjToHeap constIterator
-        , mkConstMethod "capacity" [] TSize
-        , mkMethod "clear" [] TVoid
-        , mkConstMethod "empty" [] TBool
-        , mkMethod' "end" "end" [] $ TObjToHeap iterator
-        , mkConstMethod' "end" "endConst" [] $ TObjToHeap constIterator
-        , mkMethod' "erase" "erase" [TObj iterator] TVoid
-        , mkMethod' "erase" "eraseRange" [TObj iterator, TObj iterator] TVoid
-        , mkMethod' "front" "front" [] $ TRef t
-        , mkConstMethod' "front" "frontConst" [] $ TRef $ TConst t
-        , mkMethod "insert" [TObj iterator, TRef $ TConst t] $ TObjToHeap iterator
-        , mkConstMethod' "max_size" "maxSize" [] TSize
-        , mkMethod' "pop_back" "popBack" [] TVoid
-        , mkMethod' "push_back" "pushBack" [TRef $ TConst t] TVoid
-        , mkMethod "reserve" [TSize] TVoid
-        , mkMethod' "resize" "resize" [TSize] TVoid
-        , mkMethod' "resize" "resizeWith" [TSize] TVoid
-        , mkConstMethod "size" [] TSize
-        , mkMethod "swap" [TRef $ TObj vector] TVoid
+        ] $
+        collect
+        [ just $ mkMethod' "at" "at" [TSize] $ TRef t
+        , just $ mkConstMethod' "at" "atConst" [TSize] $ TRef $ TConst t
+        , just $ mkMethod' "back" "back" [] $ TRef t
+        , just $ mkConstMethod' "back" "backConst" [] $ TRef $ TConst t
+        , just $ mkMethod' "begin" "begin" [] $ TObjToHeap iterator
+        , just $ mkConstMethod' "begin" "beginConst" [] $ TObjToHeap constIterator
+        , just $ mkConstMethod "capacity" [] TSize
+        , just $ mkMethod "clear" [] TVoid
+        , just $ mkConstMethod "empty" [] TBool
+        , just $ mkMethod' "end" "end" [] $ TObjToHeap iterator
+        , just $ mkConstMethod' "end" "endConst" [] $ TObjToHeap constIterator
+        , just $ mkMethod' "erase" "erase" [TObj iterator] TVoid
+        , just $ mkMethod' "erase" "eraseRange" [TObj iterator, TObj iterator] TVoid
+        , just $ mkMethod' "front" "front" [] $ TRef t
+        , just $ mkConstMethod' "front" "frontConst" [] $ TRef $ TConst t
+        , just $ mkMethod' "insert" "insert" [TObj iterator, TRef $ TConst t] TVoid
+        , just $ mkMethod' "insert" "insertAndGetIterator"
+          [TObj iterator, TRef $ TConst t] $ TObjToHeap iterator
+        , just $ mkConstMethod' "max_size" "maxSize" [] TSize
+        , just $ mkMethod' "pop_back" "popBack" [] TVoid
+        , just $ mkMethod' "push_back" "pushBack" [TRef $ TConst t] TVoid
+        , just $ mkMethod "reserve" [TSize] TVoid
+        , just $ mkMethod' "resize" "resize" [TSize] TVoid
+        , just $ mkMethod' "resize" "resizeWith" [TSize, t] TVoid
+        , test (activeCppVersion >= Cpp2011) $ mkMethod' "shrink_to_fit" "shrinkToFit" [] TVoid
+        , just $ mkConstMethod "size" [] TSize
+        , just $ mkMethod "swap" [TRef $ TObj vector] TVoid
         ]
 
       iterator =
@@ -112,7 +115,12 @@ instantiate' classSuffix t opts =
         addUseReqs reqs $
         classAddFeatures [RandomIterator Constant t TPtrdiff] $
         makeClass (identT' [("std", Nothing), ("vector", Just [t]), ("const_iterator", Nothing)])
-        (Just $ toExtName constIteratorName) [] [] []
+        (Just $ toExtName constIteratorName) []
+        [ mkCtor "newFromNonconst" [TObj iterator]
+        ]
+        [ makeFnMethod (ident2 "hoppy" "iterator" "deconst") "deconst" MConst Nonpure
+          [TRef $ TConst $ TObj constIterator, TRef $ TObj vector] $ TObjToHeap iterator
+        ]
 
   in Contents
      { c_vector = vector
