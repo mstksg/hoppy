@@ -73,11 +73,17 @@ testModule =
   , Vector.toExports vectorString
   ]
 
+intBoxInclude :: Include
+intBoxInclude = includeLocal "intbox.hpp"
+
+intBoxReqs :: Reqs
+intBoxReqs = reqInclude intBoxInclude
+
 -- | This class is deliberately not encodable, in order to ensure that @vector@
 -- isn't relying on its value type being encodable.
 c_IntBox :: Class
 c_IntBox =
-  addReqIncludes [includeLocal "intbox.hpp"] $
+  addUseReqs intBoxReqs $
   makeClass (ident "IntBox") Nothing []
   [ mkCtor "new" []
   , mkCtor "newWithValue" [TInt]
@@ -88,42 +94,42 @@ c_IntBox =
 
 c_IntBoxComparable :: Class
 c_IntBoxComparable =
-  addReqIncludes [includeLocal "intbox.hpp"] $
+  addUseReqs intBoxReqs $
   classAddFeatures [Comparable] $
   makeClass (ident "IntBoxComparable") Nothing [c_IntBox] [] []
 
 c_IntBoxEquatable :: Class
 c_IntBoxEquatable =
-  addReqIncludes [includeLocal "intbox.hpp"] $
+  addUseReqs intBoxReqs $
   classAddFeatures [Equatable] $
   makeClass (ident "IntBoxEquatable") Nothing [c_IntBox] [] []
 
 listIntBox :: List.Contents
-listIntBox = List.instantiate "listIntBox" $ TObj c_IntBox
+listIntBox = List.instantiate "listIntBox" (TObj c_IntBox) intBoxReqs
 
 listIntBoxComparable :: List.Contents
-listIntBoxComparable = List.instantiate "listIntBoxComparable" $ TObj c_IntBoxComparable
+listIntBoxComparable = List.instantiate "listIntBoxComparable" (TObj c_IntBoxComparable) intBoxReqs
 
 listIntBoxEquatable :: List.Contents
-listIntBoxEquatable = List.instantiate "listIntBoxEquatable" $ TObj c_IntBoxEquatable
+listIntBoxEquatable = List.instantiate "listIntBoxEquatable" (TObj c_IntBoxEquatable) intBoxReqs
 
 mapIntBoxes :: Map.Contents
-mapIntBoxes = Map.instantiate "mapIntBoxes" (TObj c_IntBoxComparable) (TObj c_IntBox)
+mapIntBoxes = Map.instantiate "mapIntBoxes" (TObj c_IntBoxComparable) (TObj c_IntBox) intBoxReqs
 
 pairIntBoxes :: Pair.Contents
-pairIntBoxes = Pair.instantiate "pairIntBoxes" (TObj c_IntBox) (TObj c_IntBox)
+pairIntBoxes = Pair.instantiate "pairIntBoxes" (TObj c_IntBox) (TObj c_IntBox) intBoxReqs
 
 setIntBox :: Set.Contents
-setIntBox = Set.instantiate "setIntBox" $ TObj c_IntBoxComparable
+setIntBox = Set.instantiate "setIntBox" (TObj c_IntBoxComparable) intBoxReqs
 
 vectorIntBox :: Vector.Contents
-vectorIntBox = Vector.instantiate "vectorIntBox" $ TObj c_IntBox
+vectorIntBox = Vector.instantiate "vectorIntBox" (TObj c_IntBox) intBoxReqs
 
 vectorIntBoxComparable :: Vector.Contents
-vectorIntBoxComparable = Vector.instantiate "vectorIntBoxComparable" $ TObj c_IntBox
+vectorIntBoxComparable = Vector.instantiate "vectorIntBoxComparable" (TObj c_IntBox) intBoxReqs
 
 vectorIntBoxEquatable :: Vector.Contents
-vectorIntBoxEquatable = Vector.instantiate "vectorIntBoxEquatable" $ TObj c_IntBox
+vectorIntBoxEquatable = Vector.instantiate "vectorIntBoxEquatable" (TObj c_IntBox) intBoxReqs
 
 vectorString :: Vector.Contents
-vectorString = Vector.instantiate "vectorString" $ TObj c_string
+vectorString = Vector.instantiate "vectorString" (TObj c_string) intBoxReqs

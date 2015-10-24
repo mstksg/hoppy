@@ -51,18 +51,18 @@ data Contents = Contents
   , c_constIterator :: Class  -- ^ @std::list\<T>::const_iterator@
   }
 
--- | @instantiate className t@ creates a set of bindings for an instantiation of
--- @std::list@ and associated types (e.g. iterators).  In the result, the
--- 'c_list' class has an external name of @\"list\" ++ className@, and the
--- iterator classes are further suffixed with @\"Iterator\"@ and
+-- | @instantiate className t tReqs@ creates a set of bindings for an
+-- instantiation of @std::list@ and associated types (e.g. iterators).  In the
+-- result, the 'c_list' class has an external name of @\"list\" ++ className@,
+-- and the iterator classes are further suffixed with @\"Iterator\"@ and
 -- @\"ConstIterator\"@ respectively.
-instantiate :: String -> Type -> Contents
-instantiate listName t = instantiate' listName t defaultOptions
+instantiate :: String -> Type -> Reqs -> Contents
+instantiate listName t tReqs = instantiate' listName t tReqs defaultOptions
 
 -- | 'instantiate' with additional options.
-instantiate' :: String -> Type -> Options -> Contents
-instantiate' listName t opts =
-  let reqs = reqInclude $ includeStd "list"
+instantiate' :: String -> Type -> Reqs -> Options -> Contents
+instantiate' listName t tReqs opts =
+  let reqs = mconcat [tReqs, reqInclude $ includeStd "list"]
       iteratorName = listName ++ "Iterator"
       constIteratorName = listName ++ "ConstIterator"
       features = Assignable : Copyable : optListClassFeatures opts

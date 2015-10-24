@@ -47,17 +47,18 @@ data Contents = Contents
   { c_pair :: Class  -- ^ @std::pair\<A, B>@
   }
 
--- | @instantiate className a b@ creates a set of bindings for an instantiation
--- of @std::pair\<a, b\>@.  In the result, the 'c_pair' class has an external
--- name of @className@.
-instantiate :: String -> Type -> Type -> Contents
-instantiate pairName a b = instantiate' pairName a b defaultOptions
+-- | @instantiate className a b reqs@ creates a set of bindings for an
+-- instantiation of @std::pair\<a, b\>@.  In the result, the 'c_pair' class has
+-- an external name of @className@.
+instantiate :: String -> Type -> Type -> Reqs -> Contents
+instantiate pairName a b reqs = instantiate' pairName a b reqs defaultOptions
 
 -- | 'instantiate' with additional options.
-instantiate' :: String -> Type -> Type -> Options -> Contents
-instantiate' pairName a b opts =
+instantiate' :: String -> Type -> Type -> Reqs -> Options -> Contents
+instantiate' pairName a b userReqs opts =
   let reqs = mconcat
-             [ reqInclude $ includeStd "hoppy/utility.hpp"
+             [ userReqs
+             , reqInclude $ includeStd "hoppy/utility.hpp"
              , reqInclude $ includeStd "utility"
              ]
 

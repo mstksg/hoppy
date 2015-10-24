@@ -53,18 +53,18 @@ data Contents = Contents
   , c_constIterator :: Class  -- ^ @std::vector\<T>::const_iterator@
   }
 
--- | @instantiate className t@ creates a set of bindings for an instantiation
--- of @std::vector@ and associated types (e.g. iterators).  In the result, the
--- 'c_vector' class has an external name of @className@, and the iterator
--- classes are further suffixed with @\"Iterator\"@ and @\"ConstIterator\"@
--- respectively.
-instantiate :: String -> Type -> Contents
-instantiate vectorName t = instantiate' vectorName t defaultOptions
+-- | @instantiate className t tReqs@ creates a set of bindings for an
+-- instantiation of @std::vector@ and associated types (e.g. iterators).  In the
+-- result, the 'c_vector' class has an external name of @className@, and the
+-- iterator classes are further suffixed with @\"Iterator\"@ and
+-- @\"ConstIterator\"@ respectively.
+instantiate :: String -> Type -> Reqs -> Contents
+instantiate vectorName t tReqs = instantiate' vectorName t tReqs defaultOptions
 
 -- | 'instantiate' with additional options.
-instantiate' :: String -> Type -> Options -> Contents
-instantiate' vectorName t opts =
-  let reqs = reqInclude $ includeStd "vector"
+instantiate' :: String -> Type -> Reqs -> Options -> Contents
+instantiate' vectorName t tReqs opts =
+  let reqs = mconcat [tReqs, reqInclude $ includeStd "vector"]
       iteratorName = vectorName ++ "Iterator"
       constIteratorName = vectorName ++ "ConstIterator"
 

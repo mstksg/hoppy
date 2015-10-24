@@ -49,19 +49,20 @@ data Contents = Contents
   , c_constIterator :: Class  -- ^ @std::map\<K, V>::const_iterator@
   }
 
--- | @instantiate className k v@ creates a set of bindings for an instantiation
--- of @std::map\<k, v\>@ and associated types (e.g. iterators).  In the result,
--- the 'c_map' class has an external name of @className@, and the iterator
--- classes are further suffixed with @\"Iterator\"@ and @\"ConstIterator\"@
--- respectively.
-instantiate :: String -> Type -> Type -> Contents
-instantiate mapName k v = instantiate' mapName k v defaultOptions
+-- | @instantiate className k v reqs@ creates a set of bindings for an
+-- instantiation of @std::map\<k, v\>@ and associated types (e.g. iterators).
+-- In the result, the 'c_map' class has an external name of @className@, and the
+-- iterator classes are further suffixed with @\"Iterator\"@ and
+-- @\"ConstIterator\"@ respectively.
+instantiate :: String -> Type -> Type -> Reqs -> Contents
+instantiate mapName k v reqs = instantiate' mapName k v reqs defaultOptions
 
 -- | 'instantiate' with additional options.
-instantiate' :: String -> Type -> Type -> Options -> Contents
-instantiate' mapName k v opts =
+instantiate' :: String -> Type -> Type -> Reqs -> Options -> Contents
+instantiate' mapName k v userReqs opts =
   let reqs = mconcat
-             [ reqInclude $ includeStd "hoppy/map.hpp"
+             [ userReqs
+             , reqInclude $ includeStd "hoppy/map.hpp"
              , reqInclude $ includeStd "map"
              ]
       iteratorName = mapName ++ "Iterator"

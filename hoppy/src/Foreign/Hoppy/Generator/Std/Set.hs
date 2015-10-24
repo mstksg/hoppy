@@ -50,18 +50,19 @@ data Contents = Contents
   , c_iterator :: Class  -- ^ @std::set\<T>::iterator@
   }
 
--- | @instantiate className t@ creates a set of bindings for an instantiation
--- of @std::set@ and associated types (e.g. iterators).  In the result, the
--- 'c_set' class has an external name of @className@, and the
+-- | @instantiate className t tReqs@ creates a set of bindings for an
+-- instantiation of @std::set@ and associated types (e.g. iterators).  In the
+-- result, the 'c_set' class has an external name of @className@, and the
 -- iterator class is further suffixed with @\"Iterator\"@.
-instantiate :: String -> Type -> Contents
-instantiate setName t = instantiate' setName t defaultOptions
+instantiate :: String -> Type -> Reqs -> Contents
+instantiate setName t tReqs = instantiate' setName t tReqs defaultOptions
 
 -- | 'instantiate' with additional options.
-instantiate' :: String -> Type -> Options -> Contents
-instantiate' setName t opts =
+instantiate' :: String -> Type -> Reqs -> Options -> Contents
+instantiate' setName t tReqs opts =
   let reqs = mconcat
-             [ reqInclude $ includeStd "hoppy/set.hpp"
+             [ tReqs
+             , reqInclude $ includeStd "hoppy/set.hpp"
              , reqInclude $ includeStd "set"
              ]
       iteratorName = setName ++ "Iterator"
