@@ -535,7 +535,6 @@ typeToCType t = case t of
 
 typeUseReqs :: Type -> Generator Reqs
 typeUseReqs t = case t of
-  TVar _ -> abort $ freeVarErrorMsg (Just "typeUseReqs") t
   TVoid -> return mempty
   TBool -> return mempty
   TChar -> return mempty

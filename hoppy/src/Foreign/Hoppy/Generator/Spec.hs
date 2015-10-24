@@ -81,7 +81,6 @@ module Foreign.Hoppy.Generator.Spec (
   identT, identT', ident1T, ident2T, ident3T, ident4T, ident5T,
   -- * Basic types
   Type (..),
-  HasTVars (..),
   normalizeType,
   stripConst,
   -- ** Variables
@@ -124,9 +123,7 @@ module Foreign.Hoppy.Generator.Spec (
   HsModuleName, HsImportSet, HsImportKey (..), HsImportSpecs (..), HsImportName, HsImportVal (..),
   hsWholeModuleImport, hsQualifiedImport, hsImport1, hsImport1', hsImports, hsImports',
   -- * Internal to Hoppy
-  typeIsConcrete,
   stringOrIdentifier,
-  classInstantiationInfo,
   -- ** Haskell imports
   makeHsImportSet,
   getHsImportSet,
@@ -138,7 +135,6 @@ module Foreign.Hoppy.Generator.Spec (
   hsImportForSystemPosixTypes,
   hsImportForUnsafeIO,
   -- ** Error messages
-  freeVarErrorMsg,
   tObjToHeapWrongDirectionErrorMsg,
   ) where
 
@@ -157,7 +153,6 @@ import qualified Data.Map as M
 import Data.Maybe (fromMaybe)
 import qualified Data.Set as S
 import {-# SOURCE #-} qualified Foreign.Hoppy.Generator.Language.Haskell.General as Haskell
-import {-# SOURCE #-} Foreign.Hoppy.Generator.Spec.Template (ClassInstantiationInfo)
 import Language.Haskell.Syntax (HsType)
 
 -- | Indicates strings that are error messages.
@@ -657,15 +652,6 @@ instance Show Identifier where
               intersperse ", " (map show args) ++ [">"]) $
     identifierParts ident
 
-instance HasTVars Identifier where
-  substTVar var val =
-    Identifier .
-    map (\part -> part { idPartArgs =
-                            map (substTVar var val) <$>
-                            idPartArgs part
-                       }) .
-    identifierParts
-
 -- | A single component of an 'Identifier', between @::@s.
 data IdPart = IdPart
   { idPartBase :: String
@@ -740,8 +726,7 @@ ident5T a b c d e f ts =
 -- | Concrete C++ types.  It is possible to represent invalid C++ types with
 -- this, but we try to catch these and fail cleanly as much as possible.
 data Type =
-  TVar String  -- ^ A type variable.  May appear within a template.
-  | TVoid  -- ^ @void@
+    TVoid  -- ^ @void@
   | TBool  -- ^ @bool@
   | TChar  -- ^ @char@
   | TUChar  -- ^ @unsigned char@
@@ -777,43 +762,10 @@ data Type =
   | TConst Type  -- ^ A @const@ version of another type.
   deriving (Eq, Show)
 
-instance HasTVars Type where
-  substTVar var val t = case t of
-    TVar v | v == var -> val
-           | otherwise -> t
-    TVoid -> t
-    TBool -> t
-    TChar -> t
-    TUChar -> t
-    TShort -> t
-    TUShort -> t
-    TInt -> t
-    TUInt -> t
-    TLong -> t
-    TULong -> t
-    TLLong -> t
-    TULLong -> t
-    TFloat -> t
-    TDouble -> t
-    TPtrdiff -> t
-    TSize -> t
-    TSSize -> t
-    TEnum _ -> t
-    TBitspace _ -> t
-    TPtr t' -> recur t'
-    TRef t' -> recur t'
-    TFn paramTypes retType -> TFn (map recur paramTypes) $ recur retType
-    TCallback _ -> t
-    TObj _ -> t
-    TObjToHeap _ -> t
-    TConst t' -> recur t'
-    where recur = substTVar var val
-
 -- | Canonicalizes a 'Type' without changing its meaning.  Multiple nested
 -- 'TConst's are collapsed into a single one.
 normalizeType :: Type -> Type
 normalizeType t = case t of
-  TVar _ -> t
   TVoid -> t
   TBool -> t
   TChar -> t
@@ -847,49 +799,6 @@ stripConst :: Type -> Type
 stripConst t = case t of
   TConst t' -> stripConst t'
   _ -> t
-
--- | Returns whether there are no 'TVar' variables in the given type.
-typeIsConcrete :: Type -> Bool
-typeIsConcrete t = case t of
-  TVar _ -> False
-  TVoid -> True
-  TBool -> True
-  TChar -> True
-  TUChar -> True
-  TShort -> True
-  TUShort -> True
-  TInt -> True
-  TUInt -> True
-  TLong -> True
-  TULong -> True
-  TLLong -> True
-  TULLong -> True
-  TFloat -> True
-  TDouble -> True
-  TPtrdiff -> True
-  TSize -> True
-  TSSize -> True
-  TEnum _ -> True
-  TBitspace _ -> True
-  TPtr t' -> typeIsConcrete t'
-  TRef t' -> typeIsConcrete t'
-  TFn paramTypes retType -> all typeIsConcrete paramTypes && typeIsConcrete retType
-  TCallback _ -> True
-  TObj _ -> True
-  TObjToHeap _ -> True
-  TConst t' -> typeIsConcrete t'
-
--- | Things with 'Type's that may contain 'TVar' type variables.
-class HasTVars a where
-  -- | @substTVar var val x@ replaces all occurrences of @'TVar' var@ in @x@
-  -- with @val@.  (Classes and callbacks pointed to by 'TCallback' and 'TObj'
-  -- are not recurred into.)
-  substTVar :: String -> Type -> a -> a
-
-  -- | Applies a series of substitutions.  The default implementation uses a
-  -- right fold.
-  substTVars :: [(String, Type)] -> a -> a
-  substTVars vs x = foldr (uncurry substTVar) x vs
 
 -- | A C++ variable.
 data Variable = Variable
@@ -1100,16 +1009,6 @@ instance HasUseReqs Function where
   getUseReqs = fnUseReqs
   setUseReqs reqs fn = fn { fnUseReqs = reqs }
 
-instance HasTVars Function where
-  substTVar var val fn =
-    fn { fnCName = case fnCName fn of
-           FnName identifier -> FnName $ substTVar var val identifier
-           x@(FnOp _) -> x
-       , fnParams = map subst $ fnParams fn
-       , fnReturn = subst $ fnReturn fn
-       }
-    where subst = substTVar var val
-
 -- | Creates a binding for a C++ function.
 makeFn :: IsFnName Identifier name
        => name
@@ -1144,8 +1043,6 @@ data Class = Class
     -- ^ Behaviour for converting objects to and from foriegn values.
   , classUseReqs :: Reqs
     -- ^ Requirements for a 'Type' to reference this class.
-  , classInstantiationInfo :: Maybe ClassInstantiationInfo
-    -- ^ Internal information about a class instantiated from a template.
   }
 
 instance Eq Class where
@@ -1158,20 +1055,6 @@ instance Show Class where
 instance HasUseReqs Class where
   getUseReqs = classUseReqs
   setUseReqs reqs cls = cls { classUseReqs = reqs }
-
-instance HasTVars Class where
-  substTVar var val cls =
-    cls { classIdentifier = substTVar var val $ classIdentifier cls
-        , classCtors = map doCtor $ classCtors cls
-        , classMethods = map doMethod $ classMethods cls
-        }
-    where doCtor ctor =
-            ctor { ctorParams = map subst $ ctorParams ctor }
-          doMethod method =
-            method { methodParams = map subst $ methodParams method
-                   , methodReturn = subst $ methodReturn method
-                   }
-          subst = substTVar var val
 
 -- | Creates a binding for a C++ class and its contents.
 makeClass :: Identifier
@@ -1190,7 +1073,6 @@ makeClass identifier maybeExtName supers ctors methods = Class
   , classMethods = methods
   , classConversions = classConversionsNone
   , classUseReqs = mempty
-  , classInstantiationInfo = Nothing
   }
 
 -- | When a class object is returned from a function or taken as a parameter by
@@ -1724,16 +1606,6 @@ hsImportForSystemPosixTypes = hsQualifiedImport "System.Posix.Types" "HoppySPT"
 -- | Imports "System.IO.Unsafe" qualified as @HoppySIU@.
 hsImportForUnsafeIO :: HsImportSet
 hsImportForUnsafeIO = hsQualifiedImport "System.IO.Unsafe" "HoppySIU"
-
--- | Returns an error message indicating that @caller@ received a 'TVar' where
--- one is not accepted.
-freeVarErrorMsg :: Maybe String -> Type -> String
-freeVarErrorMsg maybeCaller t = concat $ case t of
-  TVar v -> [maybe "" (++ ": ") maybeCaller,
-             "Unexpected free template type variable ", show v,
-             maybe "" (const ".") maybeCaller]
-  _ -> ["freeVarErrorMsg: Expected a TVar from caller ", show maybeCaller,
-        " but instead received ", show t, "."]
 
 -- | Returns an error message indicating that 'TObjToHeap' is used where data is
 -- going from a foreign langauge into C++.

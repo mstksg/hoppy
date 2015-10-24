@@ -58,20 +58,6 @@ data ClassFeature =
 data IteratorMutability = Constant | Mutable
                         deriving (Eq, Ord, Show)
 
-instance HasTVars ClassFeature where
-  substTVar var val feature = case feature of
-    Assignable -> feature
-    Comparable -> feature
-    Copyable -> feature
-    Equatable -> feature
-    TrivialIterator mutable valueTypeMaybe -> TrivialIterator mutable $ subst <$> valueTypeMaybe
-    ForwardIterator mutable valueTypeMaybe -> ForwardIterator mutable $ subst <$> valueTypeMaybe
-    BidirectionalIterator mutable valueTypeMaybe ->
-      BidirectionalIterator mutable $ subst <$> valueTypeMaybe
-    RandomIterator mutable valueTypeMaybe distanceType ->
-      RandomIterator mutable (fmap subst valueTypeMaybe) distanceType
-    where subst = substTVar var val
-
 featureContents :: ClassFeature -> Class -> ([Ctor], [Method], Reqs)
 featureContents feature cls = case feature of
   Assignable -> assignableContents cls

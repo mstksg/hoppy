@@ -465,7 +465,6 @@ sayArgProcessing :: CallDirection -> Type -> String -> String -> Generator ()
 sayArgProcessing dir t fromVar toVar =
   withErrorContext ("processing argument of type " ++ show t) $
   case t of
-    TVar _ -> throwError $ freeVarErrorMsg Nothing t
     TVoid -> throwError $ "TVoid is not a valid argument type"
     TBool -> case dir of
       ToCpp -> saysLn ["let ", toVar, " = if ", fromVar, " then 1 else 0 in"]
@@ -545,7 +544,6 @@ sayCallAndProcessReturn :: CallDirection -> Type -> [String] -> Generator ()
 sayCallAndProcessReturn dir t callWords =
   withErrorContext ("processing return value of type " ++ show t) $
   case t of
-    TVar _ -> throwError $ freeVarErrorMsg Nothing t
     TVoid -> sayCall
     TBool -> do
       case dir of

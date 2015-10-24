@@ -27,7 +27,6 @@ library
     , Foreign.Hoppy.Generator.Main
     , Foreign.Hoppy.Generator.Spec
     , Foreign.Hoppy.Generator.Spec.ClassFeature
-    , Foreign.Hoppy.Generator.Spec.Template
     , Foreign.Hoppy.Generator.Std
     , Foreign.Hoppy.Generator.Std.List
     , Foreign.Hoppy.Generator.Std.Map

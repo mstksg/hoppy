@@ -538,7 +538,6 @@ cppTypeToHsTypeAndUse :: HsTypeSide -> Type -> Generator HsType
 cppTypeToHsTypeAndUse side t =
   withErrorContext (concat ["converting ", show t, " to ", show side, " type"]) $
   case t of
-    TVar _ -> throwError $ freeVarErrorMsg Nothing t
     TVoid -> return $ HsTyCon $ Special HsUnitCon
     -- C++ has sizeof(bool) == 1, whereas Haskell can > 1, so we have to convert.
     TBool -> case side of
