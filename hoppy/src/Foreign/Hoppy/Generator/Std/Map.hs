@@ -114,11 +114,11 @@ instantiate' mapName k v userReqs opts =
                             ("iterator", Nothing)])
         (Just $ toExtName iteratorName) [] []
         [ makeFnMethod getIteratorKeyIdent "getKey" MConst Nonpure
-          [TRef $ TConst $ TObj iterator] $ TRef $ TConst k
+          [TObj iterator] $ TRef $ TConst k
         , makeFnMethod getIteratorValueIdent "getValue" MNormal Nonpure
           [TRef $ TObj iterator] $ TRef v
         , makeFnMethod getIteratorValueIdent "getValueConst" MConst Nonpure
-          [TRef $ TConst $ TObj iterator] $ TRef $ TConst v
+          [TObj iterator] $ TRef $ TConst v
         ]
 
       constIterator =
@@ -132,11 +132,11 @@ instantiate' mapName k v userReqs opts =
         [ mkCtor "newFromConst" [TObj iterator]
         ]
         [ makeFnMethod (ident2 "hoppy" "iterator" "deconst") "deconst" MConst Nonpure
-          [TRef $ TConst $ TObj constIterator, TRef $ TObj map] $ TObjToHeap iterator
+          [TObj constIterator, TRef $ TObj map] $ TObjToHeap iterator
         , makeFnMethod getIteratorKeyIdent "getKey" MConst Nonpure
-          [TRef $ TConst $ TObj constIterator] $ TRef $ TConst k
+          [TObj constIterator] $ TRef $ TConst k
         , makeFnMethod getIteratorValueIdent "getValue" MConst Nonpure
-          [TRef $ TConst $ TObj constIterator] $ TRef $ TConst v
+          [TObj constIterator] $ TRef $ TConst v
         ]
 
   in Contents

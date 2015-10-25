@@ -80,14 +80,14 @@ instantiate' setName t tReqs opts =
         ]
         [ mkMethod "begin" [] $ TObjToHeap iterator
         , mkMethod "clear" [] TVoid
-        , mkConstMethod "count" [TRef $ TConst t] TSize
+        , mkConstMethod "count" [t] TSize
           -- TODO count
         , mkConstMethod "empty" [] TBool
         , mkMethod "end" [] $ TObjToHeap iterator
           -- equalRange: find is good enough.
         , mkMethod' "erase" "erase" [TObj iterator] TVoid
         , mkMethod' "erase" "eraseRange" [TObj iterator, TObj iterator] TVoid
-        , mkMethod "find" [TRef $ TConst t] $ TObjToHeap iterator
+        , mkMethod "find" [t] $ TObjToHeap iterator
         , makeFnMethod (ident2 "hoppy" "set" "insert") "insert"
           MNormal Nonpure [TRef $ TObj set, t] TBool
         , makeFnMethod (ident2 "hoppy" "set" "insertAndGetIterator") "insertAndGetIterator"

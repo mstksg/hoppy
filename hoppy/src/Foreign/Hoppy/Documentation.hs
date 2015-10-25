@@ -234,7 +234,10 @@ of C++, and independently, as an argument and as a return value:
 4. @'TPtr' ('TConst' ('TObj' _))@
 5. @'TPtr' ('TObj' _)@
 
-The first is equivalent to @'TConst' ('TObj' _)@.
+The first is equivalent to @'TConst' ('TObj' _)@.  When passing an argument from
+a foreign language to C++, the first two are equivalent, and it's recommended to
+use the first, shorter form (@T@ and @const T&@ are functionally equivalent, and
+it doesn't matter to Hoppy which an implementation uses).
 
 When passing any of the above types as an argument in either direction, an
 object is passed between C++ and a foreign language via a pointer.  Cases 1, 2,

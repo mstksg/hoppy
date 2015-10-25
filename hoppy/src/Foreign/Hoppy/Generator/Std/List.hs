@@ -91,17 +91,17 @@ instantiate' listName t tReqs opts =
         , just $ mkMethod' "erase" "eraseRange" [TObj iterator, TObj iterator] TVoid
         , just $ mkMethod' "front" "front" [] $ TRef t
         , just $ mkConstMethod' "front" "frontConst" [] $ TRef $ TConst t
-        , just $ mkMethod' "insert" "insert" [TObj iterator, TRef $ TConst t] TVoid
+        , just $ mkMethod' "insert" "insert" [TObj iterator, t] TVoid
         , just $ mkMethod' "insert" "insertAndGetIterator"
-          [TObj iterator, TRef $ TConst t] $ TObjToHeap iterator
+          [TObj iterator, t] $ TObjToHeap iterator
         , just $ mkConstMethod' "max_size" "maxSize" [] TSize
         , test (elem Comparable features) $ mkMethod "merge" [TRef $ TObj list] TVoid
           -- TODO merge(list&, Comparator)
         , just $ mkMethod "pop_back" [] TVoid
         , just $ mkMethod "pop_front" [] TVoid
-        , just $ mkMethod "push_back" [TRef $ TConst t] TVoid
-        , just $ mkMethod "push_front" [TRef $ TConst t] TVoid
-        , test (elem Equatable features) $ mkMethod "remove" [TRef $ TConst t] TVoid
+        , just $ mkMethod "push_back" [t] TVoid
+        , just $ mkMethod "push_front" [t] TVoid
+        , test (elem Equatable features) $ mkMethod "remove" [t] TVoid
           -- TODO remove_if(UnaryPredicate)
         , just $ mkMethod' "resize" "resize" [TSize] TVoid
         , just $ mkMethod' "resize" "resizeWith" [TSize, t] TVoid
@@ -134,7 +134,7 @@ instantiate' listName t tReqs opts =
         [ mkCtor "newFromConst" [TObj iterator]
         ]
         [ makeFnMethod (ident2 "hoppy" "iterator" "deconst") "deconst" MConst Nonpure
-          [TRef $ TConst $ TObj constIterator, TRef $ TObj list] $ TObjToHeap iterator
+          [TObj constIterator, TRef $ TObj list] $ TObjToHeap iterator
         ]
 
   in Contents

@@ -97,10 +97,10 @@ instantiate' vectorName t tReqs opts =
         , just $ mkConstMethod' "front" "frontConst" [] $ TRef $ TConst t
         , just $ mkMethod' "insert" "insert" [TObj iterator, TRef $ TConst t] TVoid
         , just $ mkMethod' "insert" "insertAndGetIterator"
-          [TObj iterator, TRef $ TConst t] $ TObjToHeap iterator
+          [TObj iterator, t] $ TObjToHeap iterator
         , just $ mkConstMethod' "max_size" "maxSize" [] TSize
         , just $ mkMethod' "pop_back" "popBack" [] TVoid
-        , just $ mkMethod' "push_back" "pushBack" [TRef $ TConst t] TVoid
+        , just $ mkMethod' "push_back" "pushBack" [t] TVoid
         , just $ mkMethod "reserve" [TSize] TVoid
         , just $ mkMethod' "resize" "resize" [TSize] TVoid
         , just $ mkMethod' "resize" "resizeWith" [TSize, t] TVoid
@@ -123,7 +123,7 @@ instantiate' vectorName t tReqs opts =
         [ mkCtor "newFromNonconst" [TObj iterator]
         ]
         [ makeFnMethod (ident2 "hoppy" "iterator" "deconst") "deconst" MConst Nonpure
-          [TRef $ TConst $ TObj constIterator, TRef $ TObj vector] $ TObjToHeap iterator
+          [TObj constIterator, TRef $ TObj vector] $ TObjToHeap iterator
         ]
 
   in Contents
