@@ -732,23 +732,23 @@ ident5T a b c d e f ts =
 -- | Concrete C++ types.  It is possible to represent invalid C++ types with
 -- this, but we try to catch these and fail cleanly as much as possible.
 data Type =
-    TVoid  -- ^ @void@
-  | TBool  -- ^ @bool@
-  | TChar  -- ^ @char@
-  | TUChar  -- ^ @unsigned char@
-  | TShort  -- ^ @short int@
-  | TUShort  -- ^ @unsigned short int@
-  | TInt  -- ^ @int@
-  | TUInt  -- ^ @unsigned int@
-  | TLong  -- ^ @long int@
-  | TULong  -- ^ @unsigned long int@
-  | TLLong  -- ^ @long long int@
-  | TULLong  -- ^ @unsigned long long int@
-  | TFloat  -- ^ @float@
-  | TDouble  -- ^ @double@
-  | TPtrdiff  -- ^ @ptrdiff_t@
-  | TSize  -- ^ @size_t@
-  | TSSize  -- ^ @ssize_t@
+    TVoid  -- ^ C++ @void@, Haskell @()@.
+  | TBool  -- ^ C++ @bool@, Haskell 'Bool'.
+  | TChar  -- ^ C++ @char@, Haskell 'Foreign.C.CChar'.
+  | TUChar  -- ^ C++ @unsigned char@, Haskell 'Foreign.C.CUChar'.
+  | TShort  -- ^ C++ @short int@, Haskell 'Foreign.C.CShort'.
+  | TUShort  -- ^ C++ @unsigned short int@, Haskell 'Foreign.C.CUShort'.
+  | TInt  -- ^ C++ @int@, Haskell 'Foreign.C.CInt'.
+  | TUInt  -- ^ C++ @unsigned int@, Haskell 'Foreign.C.CUInt'.
+  | TLong  -- ^ C++ @long int@, Haskell 'Foreign.C.CLong'.
+  | TULong  -- ^ C++ @unsigned long int@, Haskell 'Foreign.C.CULong'.
+  | TLLong  -- ^ C++ @long long int@, Haskell 'Foreign.C.CLLong'.
+  | TULLong  -- ^ C++ @unsigned long long int@, Haskell 'Foreign.C.CULLong'.
+  | TFloat  -- ^ C++ @float@, Haskell 'Foreign.C.CFloat'.
+  | TDouble  -- ^ C++ @double@, Haskell 'Foreign.C.CDouble'.
+  | TPtrdiff  -- ^ C++ @ptrdiff_t@, Haskell 'Foreign.C.CPtrdiff'.
+  | TSize  -- ^ C++ @size_t@, Haskell 'Foreign.C.CSize'.
+  | TSSize  -- ^ C++ @ssize_t@, Haskell 'System.Posix.Types.CSsize'.
   | TEnum CppEnum  -- ^ A C++ @enum@ value.
   | TBitspace Bitspace  -- ^ A C++ bitspace value.
   | TPtr Type  -- ^ A poiner to another type.
