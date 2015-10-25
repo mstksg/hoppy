@@ -23,6 +23,9 @@ module Foreign.Hoppy.Generator.Language.Haskell (
   generatedFiles,
   ) where
 
+#if !MIN_VERSION_base(4,8,0)
+import Control.Applicative ((<$>), (<*>), pure)
+#endif
 import Control.Arrow ((&&&), second)
 import Control.Monad (forM, unless, when)
 #if MIN_VERSION_mtl(2,2,1)
@@ -37,6 +40,9 @@ import Data.Graph (SCC (AcyclicSCC, CyclicSCC), stronglyConnComp)
 import Data.List (intersperse)
 import qualified Data.Map as M
 import Data.Maybe (catMaybes, isJust, mapMaybe)
+#if !MIN_VERSION_base(4,8,0)
+import Data.Monoid (mconcat)
+#endif
 import qualified Data.Set as S
 import Foreign.Hoppy.Common
 import Foreign.Hoppy.Generator.Spec
@@ -130,7 +136,7 @@ prependExtensions = (prependExtensionsPrefix ++)
 
 prependExtensionsPrefix :: String
 prependExtensionsPrefix =
-  -- MultiParamTypeClasses are necessary for instances of Decodable and
+  -- MultiParamTypeClasses is necessary for instances of Decodable and
   -- Encodable.  FlexibleContexts is needed for the type signature of the
   -- function that wraps the actual callback function in callback creation
   -- functions.
@@ -141,12 +147,18 @@ prependExtensionsPrefix =
   -- UndecidableInstances is needed for instances of the form "SomeClassConstPtr
   -- a => SomeClassValue a", and overlapping instances are used for the overlap
   -- between these instances and instances of SomeClassValue for the class's
-  -- native Haskell type, when it's convertible.
+  -- native Haskell type, when it's convertible.  CPP is used for warning-free
+  -- compatibility using overlapping instances with both GHC 7.8 and 7.10.
   --
   -- GeneralizedNewtypeDeriving is to enable automatic deriving of
   -- Data.Bits.Bits instances for bitspace newtypes.
-  "{-# LANGUAGE FlexibleContexts, FlexibleInstances, GeneralizedNewtypeDeriving, " ++
-  "MultiParamTypeClasses, TypeSynonymInstances, UndecidableInstances #-}\n\n"
+  concat
+  [ "{-# LANGUAGE CPP, FlexibleContexts, FlexibleInstances, GeneralizedNewtypeDeriving"
+  , ", MultiParamTypeClasses, TypeSynonymInstances, UndecidableInstances #-}\n\n"
+  , "#if !MIN_VERSION_base(4,8,0)\n"
+  , "{-# LANGUAGE OverlappingInstances #-}\n"
+  , "#endif\n\n"
+  ]
 
 generateSource :: Module -> Generator ()
 generateSource m = do
@@ -670,8 +682,13 @@ sayExportClassHsClass doDecls cls cst = do
 
     -- Generate instances for all pointer subtypes.
     ln
+    saysLn ["#if MIN_VERSION_base(4,8,0)"]
     saysLn ["instance {-# OVERLAPPABLE #-} ", hsPtrClassName, " a => ", hsValueClassName, " a",
             if doDecls then " where" else ""]
+    saysLn ["#else"]
+    saysLn ["instance ", hsPtrClassName, " a => ", hsValueClassName, " a",
+            if doDecls then " where" else ""]
+    saysLn ["#endif"]
     when doDecls $ do
       addImports $ mconcat [hsImports "Prelude" ["($)", "(.)"],
                             hsImportForPrelude]
@@ -681,8 +698,13 @@ sayExportClassHsClass doDecls cls cst = do
     forM_ (classHaskellConversion $ classConversions cls) $ \conv -> do
       hsType <- classHaskellConversionType conv
       ln
+      saysLn ["#if MIN_VERSION_base(4,8,0)"]
       saysLn ["instance {-# OVERLAPPING #-} ", hsValueClassName, " (", prettyPrint hsType, ")",
               if doDecls then " where" else ""]
+      saysLn ["#else"]
+      saysLn ["instance ", hsValueClassName, " (", prettyPrint hsType, ")",
+              if doDecls then " where" else ""]
+      saysLn ["#endif"]
       when doDecls $ do
         addImports hsImportForSupport
         indent $ saysLn [hsWithValuePtrName, " = HoppyFHRS.withCppObj"]

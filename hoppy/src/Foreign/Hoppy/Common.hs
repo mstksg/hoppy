@@ -14,6 +14,8 @@
 -- You should have received a copy of the GNU Affero General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+{-# LANGUAGE CPP #-}
+
 -- | General routines.
 module Foreign.Hoppy.Common (
   fromMaybeM,
@@ -24,6 +26,9 @@ module Foreign.Hoppy.Common (
   writeFileIfDifferent,
   ) where
 
+#if !MIN_VERSION_base(4,8,0)
+import Control.Applicative ((<$>))
+#endif
 import Control.Exception (evaluate)
 import Control.Monad (when)
 import System.Directory (doesFileExist)

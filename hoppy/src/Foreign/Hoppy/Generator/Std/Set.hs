@@ -14,6 +14,8 @@
 -- You should have received a copy of the GNU Affero General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+{-# LANGUAGE CPP #-}
+
 -- | Bindings for @std::set@.
 module Foreign.Hoppy.Generator.Std.Set (
   Options (..),
@@ -24,6 +26,9 @@ module Foreign.Hoppy.Generator.Std.Set (
   toExports,
   ) where
 
+#if !MIN_VERSION_base(4,8,0)
+import Data.Monoid (mconcat)
+#endif
 import Foreign.Hoppy.Generator.Spec
 import Foreign.Hoppy.Generator.Spec.ClassFeature (
   ClassFeature (Assignable, BidirectionalIterator, Comparable, Copyable),

@@ -15,7 +15,7 @@ library
     , TypeSynonymInstances
     , UndecidableInstances
   build-depends:
-      base >=4.8 && <4.9
+      base >=4.7 && <4.9
     , hoppy
   default-language: Haskell2010
   ghc-options: -W -fwarn-incomplete-patterns -fwarn-unused-do-bind
@@ -27,7 +27,7 @@ test-suite tests-circular
   default-language: Haskell2010
   ghc-options: -W -fwarn-incomplete-patterns -fwarn-unused-do-bind
   build-depends:
-      base >= 4.8 && < 4.9
+      base >=4.7 && <4.9
     , hoppy
     , hoppy-tests-circular
     , HUnit

@@ -14,6 +14,8 @@
 -- You should have received a copy of the GNU Affero General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+{-# LANGUAGE CPP #-}
+
 -- | A driver for a command-line interface to a generator.
 --
 -- A simple @Main.hs@ for a generator can be:
@@ -41,6 +43,9 @@ module Foreign.Hoppy.Generator.Main (
   run,
   ) where
 
+#if !MIN_VERSION_base(4,8,0)
+import Control.Applicative ((<$>))
+#endif
 import Control.Concurrent.MVar (MVar, modifyMVar, newMVar, readMVar)
 import Control.Monad ((<=<), unless, when)
 import Data.Foldable (forM_)

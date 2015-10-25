@@ -14,9 +14,14 @@
 -- You should have received a copy of the GNU Affero General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+{-# LANGUAGE CPP #-}
+
 -- | Bindings for @std::string@.
 module Foreign.Hoppy.Generator.Std.String (c_string) where
 
+#if !MIN_VERSION_base(4,8,0)
+import Data.Monoid (mconcat)
+#endif
 import Foreign.Hoppy.Generator.Language.Haskell.General (addImports, sayLn)
 import Foreign.Hoppy.Generator.Spec
 import Foreign.Hoppy.Generator.Spec.ClassFeature

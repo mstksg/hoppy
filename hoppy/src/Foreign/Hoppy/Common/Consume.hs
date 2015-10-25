@@ -14,6 +14,8 @@
 -- You should have received a copy of the GNU Affero General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+{-# LANGUAGE CPP #-}
+
 -- | A monad for consuming streams.
 module Foreign.Hoppy.Common.Consume (
   MonadConsume (..),
@@ -23,6 +25,9 @@ module Foreign.Hoppy.Common.Consume (
   execConsumeT,
   ) where
 
+#if !MIN_VERSION_base(4,8,0)
+import Control.Applicative ((<*>), Applicative, pure)
+#endif
 import Control.Monad (ap, liftM)
 import Control.Monad.Trans (MonadTrans, lift)
 import Control.Monad.State (StateT, get, put, runStateT)

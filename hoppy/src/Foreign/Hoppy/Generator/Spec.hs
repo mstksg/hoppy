@@ -138,6 +138,9 @@ module Foreign.Hoppy.Generator.Spec (
   tObjToHeapWrongDirectionErrorMsg,
   ) where
 
+#if !MIN_VERSION_base(4,8,0)
+import Control.Applicative ((<$>), (<*>))
+#endif
 import Control.Arrow ((&&&))
 import Control.Monad (liftM2, unless)
 #if MIN_VERSION_mtl(2,2,1)
@@ -151,6 +154,9 @@ import Data.Function (on)
 import Data.List (intercalate, intersperse)
 import qualified Data.Map as M
 import Data.Maybe (fromMaybe)
+#if !MIN_VERSION_base(4,8,0)
+import Data.Monoid (Monoid, mappend, mconcat, mempty)
+#endif
 import qualified Data.Set as S
 import {-# SOURCE #-} qualified Foreign.Hoppy.Generator.Language.Haskell.General as Haskell
 import Language.Haskell.Syntax (HsType)

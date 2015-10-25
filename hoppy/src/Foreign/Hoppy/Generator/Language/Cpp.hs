@@ -14,7 +14,7 @@
 -- You should have received a copy of the GNU Affero General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-{-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE CPP, ViewPatterns #-}
 
 -- | Internal portion of the C++ code generator.
 module Foreign.Hoppy.Generator.Language.Cpp (
@@ -23,6 +23,9 @@ module Foreign.Hoppy.Generator.Language.Cpp (
   generatedFiles,
   ) where
 
+#if !MIN_VERSION_base(4,8,0)
+import Control.Applicative ((<$>))
+#endif
 import Control.Monad (liftM, unless, when)
 import Control.Monad.Reader (MonadReader, ReaderT, ask, runReaderT)
 import Control.Monad.Writer (WriterT, execWriterT, runWriterT, tell)
@@ -31,6 +34,9 @@ import Data.Foldable (forM_)
 import Data.List (intersperse)
 import qualified Data.Map as M
 import Data.Maybe (fromMaybe, isJust)
+#if !MIN_VERSION_base(4,8,0)
+import Data.Monoid (mappend, mconcat, mempty)
+#endif
 import qualified Data.Set as S
 import Foreign.Hoppy.Common
 import Foreign.Hoppy.Generator.Language.Cpp.General

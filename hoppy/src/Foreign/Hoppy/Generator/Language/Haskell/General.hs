@@ -68,12 +68,15 @@ module Foreign.Hoppy.Generator.Language.Haskell.General (
   prettyPrint,
   ) where
 
+#if !MIN_VERSION_base(4,8,0)
+import Control.Applicative ((<$>))
+#endif
 import Control.Arrow (first)
 import Control.Monad (when)
 #if MIN_VERSION_mtl(2,2,1)
 import Control.Monad.Except (Except, catchError, runExcept, throwError)
 #else
-import Control.Monad.Error (ErrorT, catchError, runError, runErrorT, throwError)
+import Control.Monad.Error (catchError, throwError)
 #endif
 import Control.Monad.Reader (ReaderT, ask, runReaderT)
 import Control.Monad.Writer (WriterT, censor, runWriterT, tell)
@@ -84,6 +87,9 @@ import Data.Functor (($>))
 import Data.List (intercalate, intersperse)
 import qualified Data.Map as M
 import Data.Maybe (fromMaybe, isJust)
+#if !MIN_VERSION_base(4,8,0)
+import Data.Monoid (Monoid, mappend, mconcat, mempty)
+#endif
 import Data.Tuple (swap)
 import Foreign.Hoppy.Generator.Spec
 import qualified Language.Haskell.Pretty as P
@@ -281,8 +287,6 @@ runGenerator iface modName generator =
   fmap (first (Partial modName) . swap) $
 #if MIN_VERSION_mtl(2,2,1)
   runExcept $
-#else
-  runError $
 #endif
   flip catchError (\msg -> throwError $ msg ++ ".") $
   runWriterT $ runReaderT generator $ Env iface modName

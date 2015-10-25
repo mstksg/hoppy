@@ -14,6 +14,8 @@
 -- You should have received a copy of the GNU Affero General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+{-# LANGUAGE CPP #-}
+
 -- | Bindings for common class operations, such as copy construction.
 module Foreign.Hoppy.Generator.Spec.ClassFeature (
   ClassFeature (..),
@@ -22,6 +24,9 @@ module Foreign.Hoppy.Generator.Spec.ClassFeature (
   ) where
 
 import Data.Maybe (catMaybes)
+#if !MIN_VERSION_base(4,8,0)
+import Data.Monoid (mappend, mconcat, mempty)
+#endif
 import Foreign.Hoppy.Generator.Spec
 import Foreign.Hoppy.Generator.Version (collect, just)
 
