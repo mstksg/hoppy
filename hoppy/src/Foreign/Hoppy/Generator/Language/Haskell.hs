@@ -154,7 +154,7 @@ prependExtensionsPrefix =
   -- Data.Bits.Bits instances for bitspace newtypes.
   concat
   [ "{-# LANGUAGE CPP, FlexibleContexts, FlexibleInstances, GeneralizedNewtypeDeriving"
-  , ", MultiParamTypeClasses, TypeSynonymInstances, UndecidableInstances #-}\n\n"
+  , ", MultiParamTypeClasses, TypeSynonymInstances, UndecidableInstances #-}\n"
   , "#if !MIN_VERSION_base(4,8,0)\n"
   , "{-# LANGUAGE OverlappingInstances #-}\n"
   , "#endif\n\n"

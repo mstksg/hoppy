@@ -97,10 +97,10 @@ instantiate' listName t tReqs opts =
         , just $ mkConstMethod' "max_size" "maxSize" [] TSize
         , test (elem Comparable features) $ mkMethod "merge" [TRef $ TObj list] TVoid
           -- TODO merge(list&, Comparator)
-        , just $ mkMethod "pop_back" [] TVoid
-        , just $ mkMethod "pop_front" [] TVoid
-        , just $ mkMethod "push_back" [t] TVoid
-        , just $ mkMethod "push_front" [t] TVoid
+        , just $ mkMethod' "pop_back" "popBack" [] TVoid
+        , just $ mkMethod' "pop_front" "popFront" [] TVoid
+        , just $ mkMethod' "push_back" "pushBack" [t] TVoid
+        , just $ mkMethod' "push_front" "pushFront" [t] TVoid
         , test (elem Equatable features) $ mkMethod "remove" [t] TVoid
           -- TODO remove_if(UnaryPredicate)
         , just $ mkMethod' "resize" "resize" [TSize] TVoid
