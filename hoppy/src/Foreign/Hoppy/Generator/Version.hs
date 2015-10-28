@@ -82,12 +82,13 @@ data CppVersion =
 -- changing environment.
 activeCppVersion :: CppVersion
 activeCppVersion = unsafePerformIO $ do
-  str <- lookupEnv "HOPPY_CPP_STD"
-  case str of
+  strMaybe <- lookupEnv "HOPPY_CPP_STD"
+  case strMaybe of
+    Nothing -> return def
+    Just "" -> return def
     Just "c++98" -> return Cpp1998
     Just "c++11" -> return Cpp2011
     Just "c++14" -> return Cpp2014
-    Just _ -> do hPutStrLn stderr $ "Warning: Invalid HOPPY_CPP_STD value " ++ show str ++ "."
-                 return def
-    Nothing -> return def
+    Just str -> do hPutStrLn stderr $ "Warning: Invalid HOPPY_CPP_STD value " ++ show str ++ "."
+                   return def
   where def = Cpp2011

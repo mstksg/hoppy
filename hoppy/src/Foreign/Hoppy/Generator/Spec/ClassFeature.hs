@@ -95,7 +95,7 @@ comparableContents cls =
 
 copyableContents :: Class -> ([Ctor], [Method], Reqs)
 copyableContents cls =
-  ([ mkCtor "newCopy" [TRef $ TConst $ TObj cls]
+  ([ mkCtor "newCopy" [TObj cls]
    ],
    [],
    mempty)
@@ -103,8 +103,8 @@ copyableContents cls =
 equatableContents :: Class -> ([Ctor], [Method], Reqs)
 equatableContents cls =
   ([],
-   [ mkConstMethod OpEq [TRef $ TConst $ TObj cls] TBool
-   , mkConstMethod OpNe [TRef $ TConst $ TObj cls] TBool
+   [ mkConstMethod OpEq [TObj cls] TBool
+   , mkConstMethod OpNe [TObj cls] TBool
    ],
    mempty)
 
