@@ -51,44 +51,55 @@ testModule :: Module
 testModule =
   modifyModule' (makeModule "basic" "basic.hpp" "basic.cpp") $
   addModuleExports
-  [ ExportClass c_IntBox
+  [ -- Is this thing on?
+    ExportClass c_IntBox
   , ExportClass c_PtrCtr
   , ExportFn f_piapprox
   , ExportFn f_piapproxNonpure
   , ExportFn f_timesTwo
+    -- For testing TObjToHeap.
   , ExportFn f_givePtrCtrByValue
   , ExportFn f_givePtrCtrByValueToCallback
   , ExportCallback cb_GetPtrCtrByValueCallback
+    -- Passing objects to C++.
   , ExportFn f_getBoxValueByValue
   , ExportFn f_getBoxValueByRef
   , ExportFn f_getBoxValueByRefConst
   , ExportFn f_getBoxValueByPtr
   , ExportFn f_getBoxValueByPtrConst
+    -- Returning objects from C++.
   , ExportFn f_makeBoxByValue
   , ExportFn f_makeBoxByRef
   , ExportFn f_makeBoxByRefConst
   , ExportFn f_makeBoxByPtr
   , ExportFn f_makeBoxByPtrConst
+    -- Passing objects to Haskell callbacks.
   , ExportCallback cb_GetBoxValueByValueCallback
   , ExportCallback cb_GetBoxValueByRefCallback
   , ExportCallback cb_GetBoxValueByRefConstCallback
   , ExportCallback cb_GetBoxValueByPtrCallback
   , ExportCallback cb_GetBoxValueByPtrConstCallback
+    -- ...and the C++ drivers for the above.
   , ExportFn f_getBoxValueByValueCallbackDriver
   , ExportFn f_getBoxValueByRefCallbackDriver
   , ExportFn f_getBoxValueByRefConstCallbackDriver
   , ExportFn f_getBoxValueByPtrCallbackDriver
   , ExportFn f_getBoxValueByPtrConstCallbackDriver
+    -- Returning objects from Haskell callbacks.
   , ExportCallback cb_MakeBoxByValueCallback
   , ExportCallback cb_MakeBoxByRefCallback
   , ExportCallback cb_MakeBoxByRefConstCallback
   , ExportCallback cb_MakeBoxByPtrCallback
   , ExportCallback cb_MakeBoxByPtrConstCallback
+    -- ...and the C++ drivers for the above.
   , ExportFn f_makeBoxByValueCallbackDriver
   , ExportFn f_makeBoxByRefCallbackDriver
   , ExportFn f_makeBoxByRefConstCallbackDriver
   , ExportFn f_makeBoxByPtrCallbackDriver
   , ExportFn f_makeBoxByPtrConstCallbackDriver
+    -- Testing FnMethod.
+  , ExportClass c_IntBoxWithFnMethods
+    -- Primitive type sizeof checks.
   , ExportFn f_isTrue
   , ExportFn f_isFalse
   , ExportFn f_sizeOfBool
@@ -102,6 +113,7 @@ testModule =
   , ExportFn f_sizeOfPtrdiff
   , ExportFn f_sizeOfSize
   , ExportFn f_sizeOfSSize
+    -- Multiple inheritance tests.
   , ExportClass c_InheritanceA
   , ExportClass c_InheritanceB
   , ExportClass c_InheritanceC
@@ -154,8 +166,6 @@ f_timesTwo =
   addReqIncludes [includeLocal "functions.hpp"] $
   makeFn (ident "timesTwo") Nothing Pure [TLong] TLong
 
--- For testing TObjToHeap:
-
 f_givePtrCtrByValue :: Function
 f_givePtrCtrByValue =
   addReqIncludes [includeLocal "functions.hpp"] $
@@ -171,8 +181,6 @@ cb_GetPtrCtrByValueCallback :: Callback
 cb_GetPtrCtrByValueCallback =
   addReqIncludes [includeLocal "ptrctr.hpp"] $
   makeCallback (toExtName "GetPtrCtrByValueCallback") [TObjToHeap c_PtrCtr] TVoid
-
--- Passing objects to C++:
 
 f_getBoxValueByValue :: Function
 f_getBoxValueByValue =
@@ -199,8 +207,6 @@ f_getBoxValueByPtrConst =
   addReqIncludes [includeLocal "functions.hpp"] $
   makeFn (ident "getBoxValueByPtrConst") Nothing Nonpure [TPtr $ TConst $ TObj c_IntBox] TInt
 
--- Returning objects from C++:
-
 f_makeBoxByValue :: Function
 f_makeBoxByValue =
   addReqIncludes [includeLocal "functions.hpp"] $
@@ -226,8 +232,6 @@ f_makeBoxByPtrConst =
   addReqIncludes [includeLocal "functions.hpp"] $
   makeFn (ident "makeBoxByPtrConst") Nothing Nonpure [TInt] $ TPtr $ TConst $ TObj c_IntBox
 
--- Passing objects to Haskell callbacks:
-
 cb_GetBoxValueByValueCallback :: Callback
 cb_GetBoxValueByValueCallback =
   addReqIncludes [includeLocal "intbox.hpp"] $
@@ -252,8 +256,6 @@ cb_GetBoxValueByPtrConstCallback :: Callback
 cb_GetBoxValueByPtrConstCallback =
   addReqIncludes [includeLocal "intbox.hpp"] $
   makeCallback (toExtName "GetBoxValueByPtrConstCallback") [TPtr $ TConst $ TObj c_IntBox] TInt
-
--- ...and the C++ drivers for the above:
 
 f_getBoxValueByValueCallbackDriver :: Function
 f_getBoxValueByValueCallbackDriver =
@@ -285,8 +287,6 @@ f_getBoxValueByPtrConstCallbackDriver =
   makeFn (ident "getBoxValueByPtrConstCallbackDriver") Nothing Nonpure
   [TCallback cb_GetBoxValueByPtrConstCallback, TInt] TInt
 
--- Returning objects from Haskell callbacks:
-
 cb_MakeBoxByValueCallback :: Callback
 cb_MakeBoxByValueCallback =
   addReqIncludes [includeLocal "intbox.hpp"] $
@@ -311,8 +311,6 @@ cb_MakeBoxByPtrConstCallback :: Callback
 cb_MakeBoxByPtrConstCallback =
   addReqIncludes [includeLocal "intbox.hpp"] $
   makeCallback (toExtName "MakeBoxByPtrConstCallback") [TInt] $ TPtr $ TConst $ TObj c_IntBox
-
--- ...and the C++ drivers for the above:
 
 f_makeBoxByValueCallbackDriver :: Function
 f_makeBoxByValueCallbackDriver =
@@ -344,7 +342,21 @@ f_makeBoxByPtrConstCallbackDriver =
   makeFn (ident "makeBoxByPtrConstCallbackDriver") Nothing Nonpure
   [TCallback cb_MakeBoxByPtrConstCallback, TInt] TInt
 
--- Primitive type sizeof checks.
+c_IntBoxWithFnMethods :: Class
+c_IntBoxWithFnMethods =
+  addReqIncludes [includeLocal "functions.hpp", includeLocal "intbox.hpp"] $
+  makeClass (ident "IntBox") (Just $ toExtName "IntBoxWithFnMethods") []
+  [ mkCtor "new" [TInt]
+  ]
+  [ -- A normal method.
+    makeFnMethod (ident "getBoxValueByRef") "getValue" MNormal Nonpure
+    [TRef $ TObj c_IntBoxWithFnMethods] TInt
+    -- A const method.
+  , makeFnMethod (ident "getBoxValueByPtrConst") "getValueConst" MConst Nonpure
+    [TPtr $ TConst $ TObj c_IntBoxWithFnMethods] TInt
+    -- A static method.
+  , makeFnMethod (ident "timesTwo") "double" MStatic Pure [TLong] TLong
+  ]
 
 f_isTrue :: Function
 f_isTrue =

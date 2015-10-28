@@ -987,10 +987,12 @@ fnToHsTypeAndUse side methodInfo purity paramTypes returnType = do
 
 getMethodEffectiveParams :: Class -> Method -> [Type]
 getMethodEffectiveParams cls method =
-  (case methodApplicability method of
-     MNormal -> (TPtr (TObj cls):)
-     MConst -> (TPtr (TConst $ TObj cls):)
-     MStatic -> id) $
+  (case methodImpl method of
+     RealMethod {} -> case methodApplicability method of
+       MNormal -> (TPtr (TObj cls):)
+       MConst -> (TPtr (TConst $ TObj cls):)
+       MStatic -> id
+     FnMethod {} -> id) $
   methodParams method
 
 -- | Imports bindings for the given class into the Haskell module.

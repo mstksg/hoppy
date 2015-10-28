@@ -73,6 +73,7 @@ tests =
   , conversionTests
   , tObjToHeapTests
   , classConversionTests
+  , fnMethodTests
   , primitiveTypeSizeTests
   , inheritanceTests
   ]
@@ -218,6 +219,19 @@ classConversionTests =
     , "by constant pointer" ~:
       makeBoxByPtrConstCallbackDriver (fmap toIntBoxConst . intBox_newWithValue) 5 >>= (@?= 5)
     ]
+  ]
+
+fnMethodTests :: Test
+fnMethodTests =
+  "function methods" ~: TestList
+  [ "MNormal" ~: withScopedPtr (intBoxWithFnMethods_new 5) $ \box ->
+    intBoxWithFnMethods_getValue box >>= (@?= 5)
+
+  , "MConst" ~: withScopedPtr (intBoxWithFnMethods_new 5) $ \box -> do
+    intBoxWithFnMethods_getValueConst box >>= (@?= 5)
+    intBoxWithFnMethods_getValueConst (toIntBoxWithFnMethodsConst box) >>= (@?= 5)
+
+  , "MStatic" ~: intBoxWithFnMethods_double 7 @?= 14
   ]
 
 primitiveTypeSizeTests :: Test
