@@ -16,6 +16,12 @@
 
 -- | Runtime support for generated Haskell bindings.
 module Foreign.Hoppy.Runtime.Support (
+  -- * Primitive types
+  CBool (..),
+  -- CBool is a newtype for CUChar, so GHC 7.10 (at least) requires reexporting
+  -- the CUChar data constructor for CBool to be marshalled in foreign imports.
+  CUChar (CUChar),
+  -- * Objects
   CppPtr (..),
   Encodable (..),
   encodeAs,
@@ -23,6 +29,9 @@ module Foreign.Hoppy.Runtime.Support (
   decodeAndDelete,
   withCppObj,
   withScopedPtr,
+  -- * Containers
+  HasContents (..),
+  FromContents (..),
   -- * Internal
   CCallback (..),
   freeHaskellFunPtrFunPtr,
@@ -31,7 +40,7 @@ module Foreign.Hoppy.Runtime.Support (
 
 import Control.Exception (bracket)
 import Data.Typeable (Typeable, typeOf)
-import Foreign (FunPtr, Ptr, freeHaskellFunPtr)
+import Foreign (FunPtr, Ptr, Storable, freeHaskellFunPtr, peek)
 import Foreign.C (
   CChar,
   CDouble,
@@ -41,7 +50,7 @@ import Foreign.C (
   CLong,
   CShort,
   CSize,
-  CUChar,
+  CUChar (CUChar),
   CUInt,
   CULLong,
   CULong,
@@ -52,6 +61,22 @@ import System.IO.Unsafe (unsafePerformIO)
 foreign import ccall "wrapper" newFreeHaskellFunPtrFunPtr
   :: (FunPtr (IO ()) -> IO ())
   -> IO (FunPtr (FunPtr (IO ()) -> IO ()))
+
+-- | A numeric type representing a C++ boolean.
+newtype CBool = CBool CUChar
+  deriving (Eq, Integral, Num, Ord, Real, Show, Storable)
+
+instance Bounded CBool where
+  minBound = 0
+  maxBound = 1
+
+instance Enum CBool where
+  fromEnum (CBool n) = fromIntegral n
+
+  toEnum n =
+    if n == 0 || n == 1
+    then CBool $ fromIntegral n
+    else error $ concat ["CBool.toEnum: Invalid value ", show n, "."]
 
 -- | An instance of this class represents a pointer to a C++ object.  All C++
 -- classes bound by Hoppy have subclasses of @CppPtr@.
@@ -78,21 +103,6 @@ class CppPtr this where
 class Encodable cppPtrType hsType | cppPtrType -> hsType where
   encode :: hsType -> IO cppPtrType
 
-instance Encodable Bool Bool where encode = return
-instance Encodable CChar CChar where encode = return
-instance Encodable CUChar CUChar where encode = return
-instance Encodable CShort CShort where encode = return
-instance Encodable CUShort CUShort where encode = return
-instance Encodable CInt CInt where encode = return
-instance Encodable CUInt CUInt where encode = return
-instance Encodable CLong CLong where encode = return
-instance Encodable CULong CULong where encode = return
-instance Encodable CLLong CLLong where encode = return
-instance Encodable CULLong CULLong where encode = return
-instance Encodable CFloat CFloat where encode = return
-instance Encodable CDouble CDouble where encode = return
-instance Encodable CSize CSize where encode = return
-
 -- | Takes a dummy argument to help with type resolution of 'encode', a la
 -- 'asTypeOf'.  For example, for a C++ pointer type @StdString@ that gets
 -- converted to a regular haskell 'String', the expected usage is:
@@ -110,6 +120,21 @@ encodeAs to = fmap (`asTypeOf` to) . encode
 -- See also 'Encodable'.
 class Decodable cppPtrType hsType | cppPtrType -> hsType where
   decode :: cppPtrType -> IO hsType
+
+instance Decodable (Ptr CBool) Bool where decode = fmap (/= 0) . peek
+instance Decodable (Ptr CChar) CChar where decode = peek
+instance Decodable (Ptr CUChar) CUChar where decode = peek
+instance Decodable (Ptr CShort) CShort where decode = peek
+instance Decodable (Ptr CUShort) CUShort where decode = peek
+instance Decodable (Ptr CInt) CInt where decode = peek
+instance Decodable (Ptr CUInt) CUInt where decode = peek
+instance Decodable (Ptr CLong) CLong where decode = peek
+instance Decodable (Ptr CULong) CULong where decode = peek
+instance Decodable (Ptr CLLong) CLLong where decode = peek
+instance Decodable (Ptr CULLong) CULLong where decode = peek
+instance Decodable (Ptr CFloat) CFloat where decode = peek
+instance Decodable (Ptr CDouble) CDouble where decode = peek
+instance Decodable (Ptr CSize) CSize where decode = peek
 
 -- | Decodes a C++ object to a Haskell value with 'decode', releases the
 -- original object with 'delete', then returns the Haskell value.
@@ -130,6 +155,43 @@ withCppObj x = bracket (encode x) delete
 -- execute.  When @f@ finishes, the pointer is deleted.
 withScopedPtr :: CppPtr cppPtrType => IO cppPtrType -> (cppPtrType -> IO a) -> IO a
 withScopedPtr p = bracket p delete
+
+-- | Containers whose contents can be convered to a list.
+--
+-- For a container @Cont@ holding values with C-side type @Foo@ and Haskell-side
+-- type @Bar@, if the container uses 'Foreign.Hoppy.Generator.Std.ConvertPtr'
+-- then the following instances are recommended:
+--
+-- > instance HasContents ContConst FooConst
+-- > instance HasContents Cont Foo
+--
+-- If the container uses 'Foreign.Hoppy.Generator.Std.ConvertValue' then the
+-- following instances are recommended:
+--
+-- > instance HasContents ContConst Bar
+-- > instance HasContents Cont Bar
+class HasContents c e | c -> e where
+  -- | Extracts the contents of a container, returning the elements in a list.
+  toContents :: c -> IO [e]
+
+-- | Containers that can be created from a list.
+--
+-- For a container @Cont@ holding values with C-side type @Foo@ and Haskell-side
+-- type @Bar@, if the container uses 'Foreign.Hoppy.Generator.Std.ConvertPtr'
+-- then the following instance is recommended:
+--
+-- > instance FromContents Cont Foo
+--
+-- If the container uses 'Foreign.Hoppy.Generator.Std.ConvertValue' then the
+-- following instance is recommended:
+--
+-- > instance HasContents Cont Bar
+--
+-- No instances for @ContConst@ are needed because it is easy enough to cast the
+-- resulting collection to a const pointer.
+class FromContents c e | c -> e where
+  -- | Creates and returns a new container holding the given elements.
+  fromContents :: [e] -> IO c
 
 -- | Internal type that represents a pointer to a C++ callback object (callback
 -- impl object, specifically).

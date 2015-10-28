@@ -22,7 +22,7 @@ import Foreign.Hoppy.Generator.Spec.ClassFeature (
   ClassFeature (Comparable, Equatable),
   classAddFeatures,
   )
-import Foreign.Hoppy.Generator.Std (mod_std)
+import Foreign.Hoppy.Generator.Std (ValueConversion (ConvertPtr, ConvertValue), mod_std)
 import Foreign.Hoppy.Generator.Std.String (c_string)
 import qualified Foreign.Hoppy.Generator.Std.List as List
 import qualified Foreign.Hoppy.Generator.Std.Map as Map
@@ -61,6 +61,7 @@ testModule =
     , ExportClass c_IntBoxComparable
     , ExportClass c_IntBoxEquatable
     ]
+  , List.toExports listInt
   , List.toExports listIntBox
   , List.toExports listIntBoxComparable
   , List.toExports listIntBoxEquatable
@@ -104,8 +105,15 @@ c_IntBoxEquatable =
   classAddFeatures [Equatable] $
   makeClass (ident "IntBoxEquatable") Nothing [c_IntBox] [] []
 
+listInt :: List.Contents
+listInt =
+  List.instantiate' "listInt" TInt mempty $
+  List.defaultOptions { List.optValueConversion = Just ConvertValue }
+
 listIntBox :: List.Contents
-listIntBox = List.instantiate "listIntBox" (TObj c_IntBox) intBoxReqs
+listIntBox =
+  List.instantiate' "listIntBox" (TObj c_IntBox) intBoxReqs $
+  List.defaultOptions { List.optValueConversion = Just ConvertPtr }
 
 listIntBoxComparable :: List.Contents
 listIntBoxComparable = List.instantiate "listIntBoxComparable" (TObj c_IntBoxComparable) intBoxReqs

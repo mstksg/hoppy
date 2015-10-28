@@ -26,15 +26,29 @@ module Foreign.Hoppy.Generator.Std.List (
   toExports,
   ) where
 
+import Control.Monad (forM_, when)
 #if !MIN_VERSION_base(4,8,0)
 import Data.Monoid (mconcat)
 #endif
+import Foreign.Hoppy.Generator.Language.Haskell.General (
+  HsTypeSide (HsHsSide),
+  addImports,
+  cppTypeToHsTypeAndUse,
+  indent,
+  ln,
+  prettyPrint,
+  sayLn,
+  saysLn,
+  toHsDataTypeName,
+  toHsMethodName',
+  )
 import Foreign.Hoppy.Generator.Spec
 import Foreign.Hoppy.Generator.Spec.ClassFeature (
   ClassFeature (Assignable, BidirectionalIterator, Comparable, Copyable, Equatable),
   IteratorMutability (Constant, Mutable),
   classAddFeatures,
   )
+import Foreign.Hoppy.Generator.Std
 import Foreign.Hoppy.Generator.Version (collect, just, test)
 
 -- | Options for instantiating the list classes.
@@ -43,11 +57,12 @@ data Options = Options
     -- ^ Additional features to add to the @std::list@ class.  Lists are always
     -- 'Assignable' and 'Copyable', but you may want to add 'Equatable' and
     -- 'Comparable' if your value type supports those.
+  , optValueConversion :: Maybe ValueConversion
   }
 
 -- | The default options have no additional 'ClassFeature's.
 defaultOptions :: Options
-defaultOptions = Options []
+defaultOptions = Options [] Nothing
 
 -- | A set of instantiated list classes.
 data Contents = Contents
@@ -73,6 +88,9 @@ instantiate' listName t tReqs opts =
       features = Assignable : Copyable : optListClassFeatures opts
 
       list =
+        (case optValueConversion opts of
+           Nothing -> id
+           Just conversion -> addAddendumHaskell $ makeAddendum conversion) $
         addUseReqs reqs $
         classAddFeatures features $
         makeClass (ident1T "std" "list" [t]) (Just $ toExtName listName) []
@@ -136,6 +154,78 @@ instantiate' listName t tReqs opts =
         [ makeFnMethod (ident2 "hoppy" "iterator" "deconst") "deconst" MConst Nonpure
           [TObj constIterator, TRef $ TObj list] $ TObjToHeap iterator
         ]
+
+      -- The addendum for the list class contains HasContents and FromContents
+      -- instances.
+      makeAddendum conversion = do
+        addImports $ mconcat [hsImport1 "Prelude" "($)", hsImportForPrelude]
+        when (conversion == ConvertValue) $
+          addImports $ mconcat [hsImport1 "Prelude" "(=<<)", hsImportForSupport]
+
+        forM_ [Const, Nonconst] $ \cst -> do
+          let hsDataTypeName = toHsDataTypeName cst list
+          hsValueType <-
+            cppTypeToHsTypeAndUse HsHsSide $
+            (case conversion of
+               ConvertPtr -> TPtr
+               ConvertValue -> id) $
+            case cst of
+              Const -> TConst t
+              Nonconst -> t
+
+          -- Generate const and nonconst HasContents instances.
+          ln
+          saysLn ["instance HoppyFHRS.HasContents ", hsDataTypeName,
+                  " (", prettyPrint hsValueType, ") where"]
+          indent $ do
+            sayLn "toContents this' = do"
+            indent $ do
+              let listBegin = case cst of
+                    Const -> "beginConst"
+                    Nonconst -> "begin"
+                  listEnd = case cst of
+                    Const -> "endConst"
+                    Nonconst -> "end"
+                  iter = case cst of
+                    Const -> constIterator
+                    Nonconst -> iterator
+                  iterGet = case cst of
+                    Const -> "getConst"
+                    Nonconst -> "get"
+              saysLn ["empty' <- ", toHsMethodName' list "empty", " this'"]
+              sayLn "if empty' then HoppyP.return [] else"
+              indent $ do
+                saysLn ["HoppyFHRS.withScopedPtr (", toHsMethodName' list listBegin,
+                        " this') $ \\begin' ->"]
+                saysLn ["HoppyFHRS.withScopedPtr (", toHsMethodName' list listEnd,
+                        " this') $ \\iter' ->"]
+                sayLn "go' iter' begin' []"
+              sayLn "where"
+              indent $ do
+                sayLn "go' iter' begin' acc' = do"
+                indent $ do
+                  saysLn ["stop' <- ", toHsMethodName' iter OpEq, " iter' begin'"]
+                  sayLn "if stop' then HoppyP.return acc' else do"
+                  indent $ do
+                    saysLn ["_ <- ", toHsMethodName' iter OpDecPre, " iter'"]
+                    saysLn ["value' <- ",
+                            case conversion of
+                              ConvertPtr -> ""
+                              ConvertValue -> "HoppyFHRS.decode =<< ",
+                            toHsMethodName' iter iterGet, " iter'"]
+                    sayLn "go' iter' begin' $ value':acc'"
+
+          -- Only generate a nonconst FromContents instance.
+          when (cst == Nonconst) $ do
+            ln
+            saysLn ["instance HoppyFHRS.FromContents ", hsDataTypeName,
+                    " (", prettyPrint hsValueType, ") where"]
+            indent $ do
+              sayLn "fromContents values' = do"
+              indent $ do
+                saysLn ["list' <- ", toHsMethodName' list "new"]
+                saysLn ["HoppyP.mapM_ (", toHsMethodName' list "pushBack", " list') values'"]
+                sayLn "HoppyP.return list'"
 
   in Contents
      { c_list = list

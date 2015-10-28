@@ -170,16 +170,21 @@ generateBootSource m =
   forM_ (moduleExports m) $ sayExport SayExportBoot
 
 data SayExportMode = SayExportForeignImports | SayExportDecls | SayExportBoot
+                   deriving (Eq, Show)
 
 sayExport :: SayExportMode -> Export -> Generator ()
-sayExport mode export = case export of
-  ExportVariable v -> sayExportVar mode v
-  ExportEnum enum -> sayExportEnum mode enum
-  ExportBitspace bitspace -> sayExportBitspace mode bitspace
-  ExportFn fn ->
-    (sayExportFn mode <$> fnExtName <*> pure Nothing <*> fnPurity <*> fnParams <*> fnReturn) fn
-  ExportClass cls -> sayExportClass mode cls
-  ExportCallback cb -> sayExportCallback mode cb
+sayExport mode export = do
+  case export of
+    ExportVariable v -> sayExportVar mode v
+    ExportEnum enum -> sayExportEnum mode enum
+    ExportBitspace bitspace -> sayExportBitspace mode bitspace
+    ExportFn fn ->
+      (sayExportFn mode <$> fnExtName <*> pure Nothing <*> fnPurity <*> fnParams <*> fnReturn) fn
+    ExportClass cls -> sayExportClass mode cls
+    ExportCallback cb -> sayExportCallback mode cb
+
+  when (mode == SayExportDecls) $
+    addendumHaskell $ exportAddendum export
 
 sayExportVar :: SayExportMode -> Variable -> Generator ()
 sayExportVar mode v = do

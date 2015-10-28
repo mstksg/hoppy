@@ -24,6 +24,10 @@ module Foreign.Hoppy.Common (
   listSubst,
   zipWithM,
   writeFileIfDifferent,
+  -- * String utilities
+  capitalize,
+  lowerFirst,
+  upperFirst,
   ) where
 
 #if !MIN_VERSION_base(4,8,0)
@@ -31,6 +35,7 @@ import Control.Applicative ((<$>))
 #endif
 import Control.Exception (evaluate)
 import Control.Monad (when)
+import Data.Char (toLower, toUpper)
 import System.Directory (doesFileExist)
 import System.IO (IOMode (ReadMode), hGetContents, withFile)
 
@@ -69,3 +74,19 @@ writeFileIfDifferent path newContents = do
             contents <- hGetContents handle
             _ <- evaluate $ length contents
             return contents
+
+-- | Upper cases the first character of a string, and lower cases the rest of
+-- it.  Does nothing to an empty string.
+capitalize :: String -> String
+capitalize "" = ""
+capitalize (c:cs) = toUpper c : map toLower cs
+
+-- | Lower cases the first character of a string, if nonempty.
+lowerFirst :: String -> String
+lowerFirst "" = ""
+lowerFirst (c:cs) = toLower c : cs
+
+-- | Upper cases the first character of a string, if nonempty.
+upperFirst :: String -> String
+upperFirst "" = ""
+upperFirst (c:cs) = toUpper c : cs

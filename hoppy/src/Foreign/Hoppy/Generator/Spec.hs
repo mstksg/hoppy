@@ -72,6 +72,7 @@ module Foreign.Hoppy.Generator.Spec (
   operatorType,
   Export (..),
   exportExtName,
+  exportAddendum,
   Identifier,
   identifierParts,
   IdPart,
@@ -119,6 +120,10 @@ module Foreign.Hoppy.Generator.Spec (
   -- ** Callbacks
   Callback, makeCallback, callbackExtName, callbackParams, callbackReturn, callbackUseReqs,
   callbackToTFn,
+  -- * Addenda
+  Addendum (..),
+  HasAddendum,
+  addAddendumHaskell,
   -- * Haskell imports
   HsModuleName, HsImportSet, HsImportKey (..), HsImportSpecs (..), HsImportName, HsImportVal (..),
   hsWholeModuleImport, hsQualifiedImport, hsImport1, hsImport1', hsImports, hsImports',
@@ -640,6 +645,16 @@ exportExtName export = case export of
   ExportClass c -> classExtName c
   ExportCallback cb -> callbackExtName cb
 
+-- | Returns the export's addendum.  'Export' doesn't have a 'HasAddendum'
+-- instance because you normally wouldn't want to modify the addendum of one.
+exportAddendum export = case export of
+  ExportVariable v -> getAddendum v
+  ExportEnum e -> getAddendum e
+  ExportBitspace bs -> getAddendum bs
+  ExportFn f -> getAddendum f
+  ExportClass cls -> getAddendum cls
+  ExportCallback cb -> getAddendum cb
+
 -- | A path to some C++ object, including namespaces.
 newtype Identifier = Identifier
   { identifierParts :: [IdPart]
@@ -817,6 +832,8 @@ data Variable = Variable
     -- variable is read-only.
   , varUseReqs :: Reqs
     -- ^ Requirements for bindings to use this variable.
+  , varAddendum :: Addendum
+    -- ^ The variable's addendum.
   }
 
 instance Eq Variable where
@@ -829,10 +846,14 @@ instance HasUseReqs Variable where
   getUseReqs = varUseReqs
   setUseReqs reqs v = v { varUseReqs = reqs }
 
+instance HasAddendum Variable where
+  getAddendum = varAddendum
+  setAddendum addendum v = v { varAddendum = addendum }
+
 -- | Creates a binding for a C++ variable.
 makeVariable :: Identifier -> Maybe ExtName -> Type -> Variable
 makeVariable identifier maybeExtName t =
-  Variable identifier (extNameOrIdentifier identifier maybeExtName) t mempty
+  Variable identifier (extNameOrIdentifier identifier maybeExtName) t mempty mempty
 
 -- | Returns whether the variable is constant, i.e. whether its type is
 -- @'TConst' ...@.
@@ -862,6 +883,8 @@ data CppEnum = CppEnum
     -- a name in a particular foreign language depends on the language.
   , enumUseReqs :: Reqs
     -- ^ Requirements for a 'Type' to reference this enum.
+  , enumAddendum :: Addendum
+    -- ^ The enum's addendum.
   }
 
 instance Eq CppEnum where
@@ -874,6 +897,10 @@ instance HasUseReqs CppEnum where
   getUseReqs = enumUseReqs
   setUseReqs reqs e = e { enumUseReqs = reqs }
 
+instance HasAddendum CppEnum where
+  getAddendum = enumAddendum
+  setAddendum addendum e = e { enumAddendum = addendum }
+
 -- | Creates a binding for a C++ enum.
 makeEnum :: Identifier  -- ^ 'enumIdentifier'
          -> Maybe ExtName
@@ -882,7 +909,7 @@ makeEnum :: Identifier  -- ^ 'enumIdentifier'
          -> [(Int, [String])]  -- ^ 'enumValueNames'
          -> CppEnum
 makeEnum identifier maybeExtName valueNames =
-  CppEnum identifier (extNameOrIdentifier identifier maybeExtName) valueNames mempty
+  CppEnum identifier (extNameOrIdentifier identifier maybeExtName) valueNames mempty mempty
 
 -- | A C++ numeric space with bitwise operations.  This is similar to a
 -- 'CppEnum', but in addition to the extra operations, this differs in that
@@ -925,6 +952,8 @@ data Bitspace = Bitspace
     -- 'bitspaceFromCppValueFn', and 'bitspaceToCppValueFn'.  'bitspaceType' can
     -- take some numeric types that require includes as well, but you don't need
     -- to list these here.
+  , bitspaceAddendum :: Addendum
+    -- ^ The bitspace's addendum.
   }
 
 instance Eq Bitspace where
@@ -937,13 +966,17 @@ instance HasUseReqs Bitspace where
   getUseReqs = bitspaceUseReqs
   setUseReqs reqs b = b { bitspaceUseReqs = reqs }
 
+instance HasAddendum Bitspace where
+  getAddendum = bitspaceAddendum
+  setAddendum addendum bs = bs { bitspaceAddendum = addendum }
+
 -- | Creates a binding for a C++ bitspace.
 makeBitspace :: ExtName  -- ^ 'bitspaceExtName'
              -> Type  -- ^ 'bitspaceType'
              -> [(Int, [String])]  -- ^ 'bitspaceValueNames'
              -> Bitspace
 makeBitspace extName t valueNames =
-  Bitspace extName t valueNames Nothing Nothing Nothing Nothing mempty
+  Bitspace extName t valueNames Nothing Nothing Nothing Nothing mempty mempty
 
 -- | Associates an enum with the bitspace.  See 'bitspaceEnum'.
 bitspaceAddEnum :: CppEnum -> Bitspace -> Bitspace
@@ -1004,6 +1037,8 @@ data Function = Function
     -- ^ The function's return type.
   , fnUseReqs :: Reqs
     -- ^ Requirements for a binding to call the function.
+  , fnAddendum :: Addendum
+    -- ^ The function's addendum.
   }
 
 instance Show Function where
@@ -1014,6 +1049,10 @@ instance Show Function where
 instance HasUseReqs Function where
   getUseReqs = fnUseReqs
   setUseReqs reqs fn = fn { fnUseReqs = reqs }
+
+instance HasAddendum Function where
+  getAddendum = fnAddendum
+  setAddendum addendum fn = fn { fnAddendum = addendum }
 
 -- | Creates a binding for a C++ function.
 makeFn :: IsFnName Identifier name
@@ -1029,7 +1068,7 @@ makeFn cName maybeExtName purity paramTypes retType =
   let fnName = toFnName cName
   in Function fnName
               (extNameOrFnIdentifier fnName maybeExtName)
-              purity paramTypes retType mempty
+              purity paramTypes retType mempty mempty
 
 -- | A C++ class declaration.  A class's external name is automatically combined
 -- with the external names of things inside the class, by way of
@@ -1049,6 +1088,8 @@ data Class = Class
     -- ^ Behaviour for converting objects to and from foriegn values.
   , classUseReqs :: Reqs
     -- ^ Requirements for a 'Type' to reference this class.
+  , classAddendum :: Addendum
+    -- ^ The class's addendum.
   }
 
 instance Eq Class where
@@ -1061,6 +1102,10 @@ instance Show Class where
 instance HasUseReqs Class where
   getUseReqs = classUseReqs
   setUseReqs reqs cls = cls { classUseReqs = reqs }
+
+instance HasAddendum Class where
+  getAddendum = classAddendum
+  setAddendum addendum cls = cls { classAddendum = addendum }
 
 -- | Creates a binding for a C++ class and its contents.
 makeClass :: Identifier
@@ -1079,6 +1124,7 @@ makeClass identifier maybeExtName supers ctors methods = Class
   , classMethods = methods
   , classConversions = classConversionsNone
   , classUseReqs = mempty
+  , classAddendum = mempty
   }
 
 -- | When a class object is returned from a function or taken as a parameter by
@@ -1144,6 +1190,8 @@ class HasClassyExtName a where
 
   -- | Computes the external name to use in generated code, containing both the
   -- class's and object's external names.
+  --
+  -- See also 'Foreign.Hoppy.Generator.Language.Haskell.General.toHsMethodName'.
   getClassyExtName :: Class -> a -> ExtName
   getClassyExtName cls x =
     toExtName $ concat [fromExtName $ classExtName cls, "_", fromExtName $ getClassyExtNameSuffix x]
@@ -1451,6 +1499,8 @@ data Callback = Callback
     -- ^ The callback's return type.
   , callbackUseReqs :: Reqs
     -- ^ Requirements for the callback.
+  , callbackAddendum :: Addendum
+    -- ^ The callback's addendum.
   }
 
 instance Eq Callback where
@@ -1465,12 +1515,16 @@ instance HasUseReqs Callback where
   getUseReqs = callbackUseReqs
   setUseReqs reqs cb = cb { callbackUseReqs = reqs }
 
+instance HasAddendum Callback where
+  getAddendum = callbackAddendum
+  setAddendum addendum cb = cb { callbackAddendum = addendum }
+
 -- | Creates a binding for constructing callbacks into foreign code.
 makeCallback :: ExtName
              -> [Type]  -- ^ Parameter types.
              -> Type  -- ^ Return type.
              -> Callback
-makeCallback extName paramTypes retType = Callback extName paramTypes retType mempty
+makeCallback extName paramTypes retType = Callback extName paramTypes retType mempty mempty
 
 -- | Creates a 'TFn' from a callback's parameter and return types.
 callbackToTFn :: Callback -> Type
@@ -1499,6 +1553,39 @@ instance Monoid HsImportSet where
 
   mconcat sets =
     HsImportSet $ M.unionsWith mergeImportSpecs $ map getHsImportSet sets
+
+-- | A literal piece of code that will be inserted into a generated source file
+-- after the regular binding glue.  The 'Monoid' instance concatenates code
+-- (actions).
+data Addendum = Addendum
+  { addendumHaskell :: Haskell.Generator ()
+    -- ^ Code to be output into the Haskell binding.  May also add imports and
+    -- exports.
+  }
+
+instance Monoid Addendum where
+  mempty = Addendum $ return ()
+  mappend (Addendum a) (Addendum b) = Addendum $ a >> b
+
+-- | A typeclass for types that have an addendum.
+class HasAddendum a where
+  {-# MINIMAL getAddendum, (setAddendum | modifyAddendum) #-}
+
+  -- | Returns an object's addendum.
+  getAddendum :: a -> Addendum
+
+  -- | Replaces and object's addendum with another.
+  setAddendum :: Addendum -> a -> a
+  setAddendum addendum = modifyAddendum $ const addendum
+
+  -- | Modified an object's addendum.
+  modifyAddendum :: (Addendum -> Addendum) -> a -> a
+  modifyAddendum f x = setAddendum (f $ getAddendum x) x
+
+-- | Adds a Haskell addendum to an object.
+addAddendumHaskell :: HasAddendum a => Haskell.Generator () -> a -> a
+addAddendumHaskell gen = modifyAddendum $ \addendum ->
+  addendum `mappend` mempty { addendumHaskell = gen }
 
 -- | Constructor for an import set.
 makeHsImportSet :: M.Map HsImportKey HsImportSpecs -> HsImportSet

@@ -60,6 +60,8 @@ module Foreign.Hoppy.Generator.Language.Haskell.General (
   toHsDataTypeName,
   toHsClassNullName,
   toHsClassDeleteFnName,
+  toHsMethodName,
+  toHsMethodName',
   toHsCallbackCtorName,
   toHsFnName,
   toArgName,
@@ -80,7 +82,7 @@ import Control.Monad.Error (catchError, throwError)
 #endif
 import Control.Monad.Reader (ReaderT, ask, runReaderT)
 import Control.Monad.Writer (WriterT, censor, runWriterT, tell)
-import Data.Char (toLower, toUpper)
+import Data.Char (toUpper)
 import Data.Foldable (forM_)
 import Data.Function (on)
 import Data.Functor (($>))
@@ -91,6 +93,7 @@ import Data.Maybe (fromMaybe, isJust)
 import Data.Monoid (Monoid, mappend, mconcat, mempty)
 #endif
 import Data.Tuple (swap)
+import Foreign.Hoppy.Common (capitalize, lowerFirst)
 import Foreign.Hoppy.Generator.Spec
 import qualified Language.Haskell.Pretty as P
 import Language.Haskell.Syntax (
@@ -513,6 +516,21 @@ toHsClassNullName cls = toHsFnName (classExtName cls) ++ "_null"
 toHsClassDeleteFnName :: Class -> String
 toHsClassDeleteFnName cls = 'd':'e':'l':'e':'t':'e':'\'':toHsDataTypeName Nonconst cls
 
+-- | Returns the name of the Haskell function that invokes the given method.
+--
+-- See also 'getClassyExtName'.
+toHsMethodName :: Class -> Method -> String
+toHsMethodName cls method = toHsMethodName' cls $ fromExtName $ methodExtName method
+
+-- | Returns the name of the Haskell function that invokes a method with a
+-- specific name in a class.
+toHsMethodName' :: IsFnName String name => Class -> name -> String
+toHsMethodName' cls methodName =
+  concat [fromExtName $ classExtName cls, "_",
+          case toFnName methodName of
+            FnName name -> name
+            FnOp op -> fromExtName $ operatorPreferredExtName op]
+
 -- | The name of the function that takes a Haskell function and wraps it in a
 -- callback object.  This is internal to the binding; normal users can pass
 -- Haskell functions to be used as callbacks inplicitly.
@@ -545,7 +563,7 @@ cppTypeToHsTypeAndUse side t =
     TVoid -> return $ HsTyCon $ Special HsUnitCon
     -- C++ has sizeof(bool) == 1, whereas Haskell can > 1, so we have to convert.
     TBool -> case side of
-      HsCSide -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CChar")
+      HsCSide -> addImports hsImportForSupport $> HsTyCon (UnQual $ HsIdent "HoppyFHRS.CBool")
       HsHsSide -> addImports hsImportForPrelude $> HsTyCon (UnQual $ HsIdent "HoppyP.Bool")
     TChar -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CChar")
     TUChar -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CUChar")
@@ -587,7 +605,10 @@ cppTypeToHsTypeAndUse side t =
         foldr HsTyFun (HsTyApp (HsTyCon $ UnQual $ HsIdent "HoppyP.IO") retHsType) paramHsTypes
     TPtr t' -> do
       addImports hsImportForForeign
-      HsTyApp (HsTyCon $ UnQual $ HsIdent "HoppyF.Ptr") <$> cppTypeToHsTypeAndUse side t'
+      -- Pointers to other types (i.e. primitive number types) point to the raw
+      -- C++ value, so we need to use the C-side type of the pointer target
+      -- here.
+      HsTyApp (HsTyCon $ UnQual $ HsIdent "HoppyF.Ptr") <$> cppTypeToHsTypeAndUse HsCSide t'
     TRef t' -> cppTypeToHsTypeAndUse side $ TPtr t'
     TFn paramTypes retType -> do
       paramHsTypes <- mapM (cppTypeToHsTypeAndUse side) paramTypes
@@ -619,14 +640,3 @@ cppTypeToHsTypeAndUse side t =
 -- could go badly.
 prettyPrint :: P.Pretty a => a -> String
 prettyPrint = filter (/= '\n') . P.prettyPrint
-
--- | Uppercases the first character of a string, and lowercases the rest of it.
--- Does nothing to an empty string.
-capitalize :: String -> String
-capitalize "" = ""
-capitalize (c:cs) = toUpper c : map toLower cs
-
--- | Lowercases the first character of a string, if nonempty.
-lowerFirst :: String -> String
-lowerFirst "" = ""
-lowerFirst (c:cs) = toLower c : cs

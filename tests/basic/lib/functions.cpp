@@ -157,30 +157,40 @@ size_t sizeOfInt() {
     return sizeof(int);
 }
 
-size_t sizeOfLong(){
+size_t sizeOfLong() {
     return sizeof(long);
 }
 
-size_t sizeOfLLong(){
+size_t sizeOfLLong() {
     return sizeof(long long);
 }
 
-size_t sizeOfFloat(){
+size_t sizeOfFloat() {
     return sizeof(float);
 }
 
-size_t sizeOfDouble(){
+size_t sizeOfDouble() {
     return sizeof(double);
 }
 
-size_t sizeOfPtrdiff(){
+size_t sizeOfPtrdiff() {
     return sizeof(ptrdiff_t);
 }
 
-size_t sizeOfSize(){
+size_t sizeOfSize() {
     return sizeof(size_t);
 }
 
-size_t sizeOfSSize(){
+size_t sizeOfSSize() {
     return sizeof(ssize_t);
+}
+
+bool* getBoolPtr() {
+    static bool data;
+    return &data;
+}
+
+int* getIntPtr() {
+    static int data;
+    return &data;
 }

@@ -78,4 +78,8 @@ size_t sizeOfPtrdiff();
 size_t sizeOfSize();
 size_t sizeOfSSize();
 
+// Testing primitive type pointers.
+bool* getBoolPtr();
+int* getIntPtr();
+
 #endif

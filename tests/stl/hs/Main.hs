@@ -18,8 +18,9 @@
 
 module Main (main) where
 
-import Control.Monad (when)
-import Foreign.Hoppy.Runtime.Support (withScopedPtr)
+import Control.Monad ((>=>), when)
+import Foreign (peek)
+import Foreign.Hoppy.Runtime.Support (HasContents, fromContents, toContents, withScopedPtr)
 import Foreign.Hoppy.Test.Stl
 import System.Exit (exitFailure)
 import Test.HUnit (
@@ -36,10 +37,52 @@ main = do
   counts <- runTestTT tests
   when (errors counts /= 0 || failures counts /= 0) exitFailure
 
+assertList :: (HasContents l a, Eq a, Show a) => [a] -> l -> IO ()
+assertList expectedContents list = toContents list >>= (@?= expectedContents)
+
 tests :: Test
 tests =
   TestList
-  [ vectorTests
+  [ listIntTests
+  , vectorTests
+  ]
+
+listIntTests :: Test
+listIntTests =
+  "std::list<int>" ~: TestList
+  [ "creation" ~: withScopedPtr listInt_new $ listInt_empty >=> (@?= True)
+
+  , "contents conversion" ~: do
+    let input = [1, 2, 4, 8]
+    withScopedPtr (fromContents input :: IO ListInt) $ \l -> do
+      listInt_size l >>= (@?= 4)
+      toContents l >>= (@?= input)
+
+  , "pushing, popping, clearing" ~: withScopedPtr listInt_new $ \l -> do
+    listInt_pushFront l 1
+    listInt_pushBack l 2
+    listInt_pushFront l 3
+    listInt_pushBack l 4
+    assertList [3, 1, 2, 4] l
+    listInt_popFront l
+    assertList [1, 2, 4] l
+    listInt_popBack l
+    assertList [1, 2] l
+    listInt_clear l
+    assertList [] l
+
+  , "iterating" ~:
+    withScopedPtr (fromContents [1, 5] :: IO ListInt) $ \l ->
+    withScopedPtr (listInt_end l) $ \end -> do
+      withScopedPtr (listInt_begin l) $ \it -> do
+        listIntIterator_get it >>= peek >>= (@?= 1)
+        listIntIterator_put it 2
+        _ <- listIntIterator_INC it
+        listIntIterator_get it >>= peek >>= (@?= 5)
+        listIntIterator_EQ it end >>= (@?= False)
+        _ <- listIntIterator_INC it
+        listIntIterator_EQ it end >>= (@?= True)
+      listInt_front l >>= peek >>= (@?= 2)
   ]
 
 vectorTests :: Test
