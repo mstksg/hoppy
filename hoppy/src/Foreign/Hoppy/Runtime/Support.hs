@@ -23,6 +23,7 @@ module Foreign.Hoppy.Runtime.Support (
   CUChar (CUChar),
   -- * Objects
   CppPtr (..),
+  Assignable (..),
   Encodable (..),
   encodeAs,
   Decodable (..),
@@ -40,7 +41,7 @@ module Foreign.Hoppy.Runtime.Support (
 
 import Control.Exception (bracket)
 import Data.Typeable (Typeable, typeOf)
-import Foreign (FunPtr, Ptr, Storable, freeHaskellFunPtr, peek)
+import Foreign (FunPtr, Ptr, Storable, freeHaskellFunPtr, peek, poke)
 import Foreign.C (
   CChar,
   CDouble,
@@ -86,6 +87,31 @@ class CppPtr this where
 
   -- | Converts to a regular pointer.
   toPtr :: this -> Ptr this
+
+-- | Typeclasses for C++ types that can be assigned to.  This includes pointers
+-- ('Ptr') to all primitive number types, as well as pointers to object types
+-- that have an assignment operator (see
+-- 'Foreign.Hoppy.Generator.Spec.ClassFeature.Assignable').
+class Assignable cppType value where
+  -- | @assign x v@ assigns the value @v@ at the location pointed to by @x@.
+  assign :: cppType -> value -> IO ()
+
+instance Assignable (Ptr CBool) Bool where
+  assign p b = poke p $ if b then 1 else 0
+
+instance Assignable (Ptr CChar) CChar where assign = poke
+instance Assignable (Ptr CUChar) CUChar where assign = poke
+instance Assignable (Ptr CShort) CShort where assign = poke
+instance Assignable (Ptr CUShort) CUShort where assign = poke
+instance Assignable (Ptr CInt) CInt where assign = poke
+instance Assignable (Ptr CUInt) CUInt where assign = poke
+instance Assignable (Ptr CLong) CLong where assign = poke
+instance Assignable (Ptr CULong) CULong where assign = poke
+instance Assignable (Ptr CLLong) CLLong where assign = poke
+instance Assignable (Ptr CULLong) CULLong where assign = poke
+instance Assignable (Ptr CFloat) CFloat where assign = poke
+instance Assignable (Ptr CDouble) CDouble where assign = poke
+instance Assignable (Ptr CSize) CSize where assign = poke
 
 -- | For a C++ class that also has a native Haskell representation (e.g. value
 -- types such as @std::string@), this typeclass allows converting a Haskell

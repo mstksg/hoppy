@@ -26,26 +26,44 @@ module Foreign.Hoppy.Generator.Std.Map (
   toExports,
   ) where
 
+import Control.Monad (forM_, when)
 #if !MIN_VERSION_base(4,8,0)
 import Data.Monoid (mconcat)
 #endif
+import Foreign.Hoppy.Generator.Language.Haskell.General (
+  HsTypeSide (HsHsSide),
+  addImports,
+  cppTypeToHsTypeAndUse,
+  indent,
+  ln,
+  prettyPrint,
+  sayLn,
+  saysLn,
+  toHsDataTypeName,
+  toHsMethodName',
+  )
 import Foreign.Hoppy.Generator.Spec
 import Foreign.Hoppy.Generator.Spec.ClassFeature (
   ClassFeature (Assignable, BidirectionalIterator, Copyable),
   IteratorMutability (Constant, Mutable),
   classAddFeatures,
   )
+import Foreign.Hoppy.Generator.Std (ValueConversion (ConvertPtr, ConvertValue))
 
 -- | Options for instantiating the map classes.
 data Options = Options
   { optMapClassFeatures :: [ClassFeature]
     -- ^ Additional features to add to the @std::map@ class.  Maps are always
     -- 'Assignable' and 'Copyable'.
+  , optKeyConversion :: Maybe ValueConversion
+    -- ^ How to convert values of the key type.
+  , optValueConversion :: Maybe ValueConversion
+    -- ^ How to convert values of the value type.
   }
 
 -- | The default options have no additional 'ClassFeature's.
 defaultOptions :: Options
-defaultOptions = Options []
+defaultOptions = Options [] Nothing Nothing
 
 -- | A set of instantiated map classes.
 data Contents = Contents
@@ -65,7 +83,8 @@ instantiate mapName k v reqs = instantiate' mapName k v reqs defaultOptions
 -- | 'instantiate' with additional options.
 instantiate' :: String -> Type -> Type -> Reqs -> Options -> Contents
 instantiate' mapName k v userReqs opts =
-  let reqs = mconcat
+  let extName = toExtName mapName
+      reqs = mconcat
              [ userReqs
              , reqInclude $ includeStd "hoppy/map.hpp"
              , reqInclude $ includeStd "map"
@@ -77,9 +96,18 @@ instantiate' mapName k v userReqs opts =
       getIteratorValueIdent = ident2T "hoppy" "map" "getIteratorValue" [k, v]
 
       map =
+        (case (optKeyConversion opts, optValueConversion opts) of
+           (Nothing, Nothing) -> id
+           (Just keyConv, Just valueConv) -> addAddendumHaskell $ makeAddendum keyConv valueConv
+           (maybeKeyConv, maybeValueConv) ->
+             error $ concat
+             ["Error instantiating std::map<", show k, ", ", show v, "> (external name ",
+              show extName, "), key and value conversions must either both be specified or ",
+              "absent; they are, repectively, ", show maybeKeyConv, " and ", show maybeValueConv,
+              "."]) $
         addUseReqs reqs $
         classAddFeatures (Assignable : Copyable : optMapClassFeatures opts) $
-        makeClass (ident1T "std" "map" [k, v]) (Just $ toExtName mapName) []
+        makeClass (ident1T "std" "map" [k, v]) (Just extName) []
         [ mkCtor "new" []
         ]
         [ mkMethod' "at" "at" [k] $ TRef v
@@ -135,9 +163,95 @@ instantiate' mapName k v userReqs opts =
           [TObj constIterator, TRef $ TObj map] $ TObjToHeap iterator
         , makeFnMethod getIteratorKeyIdent "getKey" MConst Nonpure
           [TObj constIterator] $ TRef $ TConst k
-        , makeFnMethod getIteratorValueIdent "getValue" MConst Nonpure
+        , makeFnMethod getIteratorValueIdent "getValueConst" MConst Nonpure
           [TObj constIterator] $ TRef $ TConst v
         ]
+
+      -- The addendum for the map class contains HasContents and FromContents
+      -- instances with that work with key-value pairs.
+      makeAddendum keyConv valueConv = do
+        addImports $ mconcat [hsImports "Prelude" ["($)", "(=<<)"],
+                              hsImportForPrelude,
+                              hsImportForSupport]
+
+        forM_ [Const, Nonconst] $ \cst -> do
+          let hsDataTypeName = toHsDataTypeName cst map
+
+          keyHsType <-
+            cppTypeToHsTypeAndUse HsHsSide $
+            (case keyConv of
+               ConvertPtr -> TPtr
+               ConvertValue -> id) $
+            TConst k
+
+          valueHsType <-
+            cppTypeToHsTypeAndUse HsHsSide $
+            (case valueConv of
+               ConvertPtr -> TPtr
+               ConvertValue -> id) $
+            case cst of
+              Const -> TConst v
+              Nonconst -> v
+
+          -- Generate const and nonconst HasContents instances.
+          ln
+          saysLn ["instance HoppyFHRS.HasContents ", hsDataTypeName,
+                  " ((", prettyPrint keyHsType, "), (", prettyPrint valueHsType, ")) where"]
+          indent $ do
+            sayLn "toContents this' = do"
+            indent $ do
+              let mapBegin = case cst of
+                    Const -> "beginConst"
+                    Nonconst -> "begin"
+                  mapEnd = case cst of
+                    Const -> "endConst"
+                    Nonconst -> "end"
+                  iter = case cst of
+                    Const -> constIterator
+                    Nonconst -> iterator
+                  iterGetValue = case cst of
+                    Const -> "getValueConst"
+                    Nonconst -> "getValue"
+              saysLn ["empty' <- ", toHsMethodName' map "empty", " this'"]
+              sayLn "if empty' then HoppyP.return [] else"
+              indent $ do
+                saysLn ["HoppyFHRS.withScopedPtr (", toHsMethodName' map mapBegin,
+                        " this') $ \\begin' ->"]
+                saysLn ["HoppyFHRS.withScopedPtr (", toHsMethodName' map mapEnd,
+                        " this') $ \\iter' ->"]
+                sayLn "go' iter' begin' []"
+              sayLn "where"
+              indent $ do
+                sayLn "go' iter' begin' acc' = do"
+                indent $ do
+                  saysLn ["stop' <- ", toHsMethodName' iter OpEq, " iter' begin'"]
+                  sayLn "if stop' then HoppyP.return acc' else do"
+                  indent $ do
+                    saysLn ["_ <- ", toHsMethodName' iter OpDecPre, " iter'"]
+                    saysLn ["key' <- ",
+                            case keyConv of
+                              ConvertPtr -> ""
+                              ConvertValue -> "HoppyFHRS.decode =<< ",
+                            toHsMethodName' iter "getKey", " iter'"]
+                    saysLn ["value' <- ",
+                            case valueConv of
+                              ConvertPtr -> ""
+                              ConvertValue -> "HoppyFHRS.decode =<< ",
+                            toHsMethodName' iter iterGetValue, " iter'"]
+                    sayLn "go' iter' begin' $ (key', value'):acc'"
+
+          -- Only generate a nonconst FromContents instance.
+          when (cst == Nonconst) $ do
+            ln
+            saysLn ["instance HoppyFHRS.FromContents ", hsDataTypeName,
+                    " ((", prettyPrint keyHsType, "), (", prettyPrint valueHsType, ")) where"]
+            indent $ do
+              sayLn "fromContents values' = do"
+              indent $ do
+                saysLn ["map' <- ", toHsMethodName' map "new"]
+                saysLn ["HoppyP.mapM_ (\\(k, v) -> HoppyP.flip HoppyFHRS.assign v =<< ",
+                        toHsMethodName' map "at", " map' k) values'"]
+                sayLn "HoppyP.return map'"
 
   in Contents
      { c_map = map

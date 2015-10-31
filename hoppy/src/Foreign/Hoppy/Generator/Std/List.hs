@@ -48,7 +48,7 @@ import Foreign.Hoppy.Generator.Spec.ClassFeature (
   IteratorMutability (Constant, Mutable),
   classAddFeatures,
   )
-import Foreign.Hoppy.Generator.Std
+import Foreign.Hoppy.Generator.Std (ValueConversion (ConvertPtr, ConvertValue))
 import Foreign.Hoppy.Generator.Version (collect, just, test)
 
 -- | Options for instantiating the list classes.

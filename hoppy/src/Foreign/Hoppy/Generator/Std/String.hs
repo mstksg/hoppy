@@ -52,7 +52,8 @@ c_string =
            }) $
   makeClass (ident1 "std" "string") (Just $ toExtName "StdString")
   []
-  [ mkCtor "newFromCString" [TPtr $ TConst TChar]
+  [ mkCtor "new" []
+  , mkCtor "newFromCString" [TPtr $ TConst TChar]
   ]
   [ mkConstMethod' "at" "at" [TInt] $ TRef TChar
   , mkConstMethod' "at" "get" [TInt] TChar

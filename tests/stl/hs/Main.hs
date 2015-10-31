@@ -18,9 +18,12 @@
 
 module Main (main) where
 
-import Control.Monad ((>=>), when)
+import Control.Monad ((>=>), forM_, when)
 import Foreign (peek)
-import Foreign.Hoppy.Runtime.Support (HasContents, fromContents, toContents, withScopedPtr)
+import Foreign.C (castCCharToChar, withCString)
+import Foreign.Hoppy.Runtime.Support (
+  HasContents, assign, decode, encode, fromContents, toContents, withCppObj, withScopedPtr)
+import Foreign.Hoppy.Test.Std
 import Foreign.Hoppy.Test.Stl
 import System.Exit (exitFailure)
 import Test.HUnit (
@@ -43,8 +46,31 @@ assertList expectedContents list = toContents list >>= (@?= expectedContents)
 tests :: Test
 tests =
   TestList
-  [ listIntTests
-  , vectorTests
+  [ stringTests
+  , "containers" ~: TestList
+    [ listIntTests
+    , vectorTests
+    ]
+  ]
+
+stringTests :: Test
+stringTests =
+  "strings" ~: TestList
+  [ "encoding" ~:
+    withScopedPtr (encode "Hello, world!" :: IO StdString) $ \p -> do
+    stdString_size p >>= (@?= 13)
+    forM_ (zip [0..] "Hello, world!") $ \(i, c) ->
+      stdString_get p i >>= (@?= c) . castCCharToChar
+
+  , "decoding" ~:
+    withCString "Hello, world!" $ \cs ->
+    withScopedPtr (stdString_newFromCString cs) $ \s ->
+    decode s >>= (@?= "Hello, world!")
+
+  , "assignment" ~:
+    withCppObj "Hello" $ \(s :: StdString) -> do
+    assign s "planet!"
+    decode s >>= (@?= "planet!")
   ]
 
 listIntTests :: Test

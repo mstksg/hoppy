@@ -847,6 +847,9 @@ sayExportClassHsCtors mode cls =
 
 sayExportClassHsSpecialFns :: SayExportMode -> Class -> Generator ()
 sayExportClassHsSpecialFns mode cls = do
+  let typeName = toHsDataTypeName Nonconst cls
+      typeNameConst = toHsDataTypeName Const cls
+
   -- Say the delete function.
   case mode of
     SayExportForeignImports -> do
@@ -859,13 +862,35 @@ sayExportClassHsSpecialFns mode cls = do
     SayExportDecls -> return ()
     SayExportBoot -> return ()
 
+  -- If the class has an assignment operator that takes its own type, then
+  -- generate an instance of Assignable.
+  let assignmentMethods = flip filter (classMethods cls) $ \m ->
+        methodApplicability m == MNormal &&
+        (methodParams m == [TObj cls] || methodParams m == [TRef $ TConst $ TObj cls]) &&
+        (case methodImpl m of
+          RealMethod name -> name == FnOp OpAssign
+          FnMethod name -> name == FnOp OpAssign)
+      withAssignmentMethod f = case assignmentMethods of
+        [] -> return ()
+        [m] -> f m
+        _ ->
+          throwError $ concat
+          ["Can't determine an Assignable instance to generator for ", show cls,
+          " because it has multiple assignment operators ", show assignmentMethods]
+  when (mode == SayExportDecls) $ withAssignmentMethod $ \m -> do
+    addImports $ mconcat [hsImport1 "Prelude" "(>>)", hsImportForPrelude]
+    ln
+    saysLn ["instance ", toHsValueClassName cls, " a => HoppyFHRS.Assignable ", typeName,
+            " a where"]
+    indent $
+      saysLn ["assign x' y' = ", toHsFnName $ getClassyExtName cls m,
+                " x' y' >> HoppyP.return ()"]
+
   -- Say Encodable and Decodable instances, if the class is encodable and
   -- decodable.
   forM_ (classHaskellConversion $ classConversions cls) $ \conv -> do
     hsType <- classHaskellConversionType conv
     let hsTypeStr = concat ["(", prettyPrint hsType, ")"]
-        typeName = toHsDataTypeName Nonconst cls
-        typeNameConst = toHsDataTypeName Const cls
     case mode of
       SayExportForeignImports -> return ()
 
@@ -874,23 +899,23 @@ sayExportClassHsSpecialFns mode cls = do
 
         -- Say the Encodable instances.
         ln
-        saysLn ["instance HoppyFHRS.Encodable ", typeName, " (", hsTypeStr, ") where"]
+        saysLn ["instance HoppyFHRS.Encodable ", typeName, " ", hsTypeStr, " where"]
         indent $ do
           sayLn "encode ="
           indent $ classHaskellConversionToCppFn conv
         ln
-        saysLn ["instance HoppyFHRS.Encodable ", typeNameConst, " (", hsTypeStr, ") where"]
+        saysLn ["instance HoppyFHRS.Encodable ", typeNameConst, " ", hsTypeStr, " where"]
         indent $
           saysLn ["encode = HoppyP.fmap (", toHsCastMethodName Const cls,
                   ") . HoppyFHRS.encodeAs (HoppyP.undefined :: ", typeName, ")"]
 
         -- Say the Decodable instances.
         ln
-        saysLn ["instance HoppyFHRS.Decodable ", typeName, " (", hsTypeStr, ") where"]
+        saysLn ["instance HoppyFHRS.Decodable ", typeName, " ", hsTypeStr, " where"]
         indent $
           saysLn ["decode = HoppyFHRS.decode . ", toHsCastMethodName Const cls]
         ln
-        saysLn ["instance HoppyFHRS.Decodable ", typeNameConst, " (", hsTypeStr, ") where"]
+        saysLn ["instance HoppyFHRS.Decodable ", typeNameConst, " ", hsTypeStr, " where"]
         indent $ do
           sayLn "decode ="
           indent $ classHaskellConversionFromCppFn conv

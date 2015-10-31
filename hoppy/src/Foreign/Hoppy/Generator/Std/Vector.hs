@@ -26,15 +26,29 @@ module Foreign.Hoppy.Generator.Std.Vector (
   toExports,
   ) where
 
+import Control.Monad (forM_, when)
 #if !MIN_VERSION_base(4,8,0)
 import Data.Monoid (mconcat)
 #endif
+import Foreign.Hoppy.Generator.Language.Haskell.General (
+  HsTypeSide (HsHsSide),
+  addImports,
+  cppTypeToHsTypeAndUse,
+  indent,
+  ln,
+  prettyPrint,
+  sayLn,
+  saysLn,
+  toHsDataTypeName,
+  toHsMethodName',
+  )
 import Foreign.Hoppy.Generator.Spec
 import Foreign.Hoppy.Generator.Spec.ClassFeature (
   ClassFeature (Assignable, Copyable, RandomIterator),
   IteratorMutability (Constant, Mutable),
   classAddFeatures,
   )
+import Foreign.Hoppy.Generator.Std (ValueConversion (ConvertPtr, ConvertValue))
 import Foreign.Hoppy.Generator.Version (CppVersion (Cpp2011), activeCppVersion, collect, just, test)
 
 -- | Options for instantiating the vector classes.
@@ -45,11 +59,12 @@ data Options = Options
     -- 'Foreign.Hoppy.Generator.Spec.ClassFeature.Equatable' and
     -- 'Foreign.Hoppy.Generator.Spec.ClassFeature.Comparable' if your value type
     -- supports those.
+  , optValueConversion :: Maybe ValueConversion
   }
 
 -- | The default options have no additional 'ClassFeature's.
 defaultOptions :: Options
-defaultOptions = Options []
+defaultOptions = Options [] Nothing
 
 -- | A set of instantiated vector classes.
 data Contents = Contents
@@ -74,6 +89,9 @@ instantiate' vectorName t tReqs opts =
       constIteratorName = vectorName ++ "ConstIterator"
 
       vector =
+        (case optValueConversion opts of
+           Nothing -> id
+           Just conversion -> addAddendumHaskell $ makeAddendum conversion) $
         addUseReqs reqs $
         classAddFeatures (Assignable : Copyable : optVectorClassFeatures opts) $
         makeClass (ident1T "std" "vector" [t]) (Just $ toExtName vectorName) []
@@ -125,6 +143,57 @@ instantiate' vectorName t tReqs opts =
         [ makeFnMethod (ident2 "hoppy" "iterator" "deconst") "deconst" MConst Nonpure
           [TObj constIterator, TRef $ TObj vector] $ TObjToHeap iterator
         ]
+
+      -- The addendum for the vector class contains HasContents and FromContents
+      -- instances.
+      makeAddendum conversion = do
+        addImports $ mconcat [hsImports "Prelude" ["($)", "(-)"],
+                              hsImportForPrelude,
+                              hsImportForSupport]
+        when (conversion == ConvertValue) $
+          addImports $ hsImport1 "Control.Monad" "(<=<)"
+
+        forM_ [Const, Nonconst] $ \cst -> do
+          let hsDataTypeName = toHsDataTypeName cst vector
+          hsValueType <-
+            cppTypeToHsTypeAndUse HsHsSide $
+            (case conversion of
+               ConvertPtr -> TPtr
+               ConvertValue -> id) $
+            case cst of
+              Const -> TConst t
+              Nonconst -> t
+
+          -- Generate const and nonconst HasContents instances.
+          ln
+          saysLn ["instance HoppyFHRS.HasContents ", hsDataTypeName,
+                  " (", prettyPrint hsValueType, ") where"]
+          indent $ do
+            sayLn "toContents this' = do"
+            indent $ do
+              let vectorAt = case cst of
+                    Const -> "atConst"
+                    Nonconst -> "at"
+              saysLn ["size' <- ", toHsMethodName' vector "size", " this'"]
+              saysLn ["HoppyP.mapM (",
+                      case conversion of
+                        ConvertPtr -> ""
+                        ConvertValue -> "HoppyFHRS.decode <=< ",
+                      toHsMethodName' vector vectorAt, " this') [0..size'-1]"]
+
+          -- Only generate a nonconst FromContents instance.
+          when (cst == Nonconst) $ do
+            ln
+            saysLn ["instance HoppyFHRS.FromContents ", hsDataTypeName,
+                    " (", prettyPrint hsValueType, ") where"]
+            indent $ do
+              sayLn "fromContents values' = do"
+              indent $ do
+                saysLn ["vector' <- ", toHsMethodName' vector "new"]
+                saysLn [toHsMethodName' vector "reserve",
+                        " vector' $ HoppyFHRS.coerceIntegral $ HoppyP.length values'"]
+                saysLn ["HoppyP.mapM_ (", toHsMethodName' vector "pushBack", " vector') values'"]
+                sayLn "HoppyP.return vector'"
 
   in Contents
      { c_vector = vector
