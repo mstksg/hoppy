@@ -68,6 +68,7 @@ testModule =
   , Map.toExports mapInts
   , Map.toExports mapIntBoxes
   , Pair.toExports pairIntBoxes
+  , Set.toExports setInt
   , Set.toExports setIntBox
   , Vector.toExports vectorIntBox
   , Vector.toExports vectorIntBoxComparable
@@ -142,8 +143,15 @@ mapIntBoxes =
 pairIntBoxes :: Pair.Contents
 pairIntBoxes = Pair.instantiate "pairIntBoxes" (TObj c_IntBox) (TObj c_IntBox) intBoxReqs
 
+setInt :: Set.Contents
+setInt =
+  Set.instantiate' "setInt" TInt intBoxReqs $
+  Set.defaultOptions { Set.optValueConversion = Just ConvertValue }
+
 setIntBox :: Set.Contents
-setIntBox = Set.instantiate "setIntBox" (TObj c_IntBoxComparable) intBoxReqs
+setIntBox =
+  Set.instantiate' "setIntBox" (TObj c_IntBoxComparable) intBoxReqs $
+  Set.defaultOptions { Set.optValueConversion = Just ConvertPtr }
 
 vectorIntBox :: Vector.Contents
 vectorIntBox =
