@@ -117,9 +117,11 @@ testModule =
   , ExportClass c_InheritanceA
   , ExportClass c_InheritanceB
   , ExportClass c_InheritanceC
-    -- Testing primitive type pointers.
+    -- Testing raw pointers.
   , ExportFn f_getBoolPtr
   , ExportFn f_getIntPtr
+  , ExportFn f_getIntPtrPtr
+  , ExportFn f_getIntBoxPtrPtr
   ]
 
 c_IntBox :: Class
@@ -458,3 +460,13 @@ f_getIntPtr :: Function
 f_getIntPtr =
   addReqIncludes [includeLocal "functions.hpp"] $
   makeFn (ident "getIntPtr") Nothing Nonpure [] $ TPtr TInt
+
+f_getIntPtrPtr :: Function
+f_getIntPtrPtr =
+  addReqIncludes [includeLocal "functions.hpp"] $
+  makeFn (ident "getIntPtrPtr") Nothing Nonpure [] $ TPtr $ TPtr TInt
+
+f_getIntBoxPtrPtr :: Function
+f_getIntBoxPtrPtr =
+  addReqIncludes [includeLocal "functions.hpp"] $
+  makeFn (ident "getIntBoxPtrPtr") Nothing Nonpure [] $ TPtr $ TPtr $ TObj c_IntBox

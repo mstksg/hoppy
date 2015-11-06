@@ -186,11 +186,23 @@ size_t sizeOfSSize() {
 }
 
 bool* getBoolPtr() {
-    static bool data;
+    static bool data = false;
     return &data;
 }
 
 int* getIntPtr() {
-    static int data;
+    static int data = 23;
     return &data;
+}
+
+int** getIntPtrPtr() {
+    static int data = 1234;
+    static int* ptr = &data;
+    return &ptr;
+}
+
+IntBox** getIntBoxPtrPtr() {
+    static IntBox box(1010);
+    static IntBox* ptr = &box;
+    return &ptr;
 }

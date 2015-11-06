@@ -34,6 +34,8 @@ import Foreign.C (
   CSize,
   )
 import Foreign.Hoppy.Runtime.Support (
+  CBool (CBool),
+  assign,
   decode,
   decodeAndDelete,
   delete,
@@ -44,7 +46,7 @@ import Foreign.Hoppy.Runtime.Support (
   )
 import Foreign.Hoppy.Test.Basic
 import Foreign.Hoppy.Test.Basic.HsBox
-import Foreign.Storable (sizeOf)
+import Foreign.Storable (peek, sizeOf)
 import System.Exit (exitFailure)
 import System.Posix.Types (CSsize)
 import Test.HUnit (
@@ -75,6 +77,7 @@ tests =
   , classConversionTests
   , fnMethodTests
   , primitiveTypeSizeTests
+  , rawPointerTests
   , inheritanceTests
   ]
 
@@ -254,6 +257,36 @@ primitiveTypeSizeTests =
   , "TPtrdiff" ~: fromIntegral sizeOfPtrdiff @?= sizeOf (undefined :: CPtrdiff)
   , "TSize" ~: fromIntegral sizeOfSize @?= sizeOf (undefined :: CSize)
   , "TSSize" ~: fromIntegral sizeOfSSize @?= sizeOf (undefined :: CSsize)
+  ]
+
+rawPointerTests:: Test
+rawPointerTests =
+  "raw pointers" ~: TestList
+  [ "can read and write a bool*" ~: do
+    p <- getBoolPtr
+    peek p >>= (@?= CBool 0)
+    decode p >>= (@?= False)
+    assign p True
+    peek p >>= (@?= CBool 1)
+    decode p >>= (@?= True)
+
+  , "can read and write an int*" ~: do
+    p <- getIntPtr
+    peek p >>= (@?= 23)
+    decode p >>= (@?= 23)
+    assign p (34 :: CInt)
+    peek p >>= (@?= 34)
+    decode p >>= (@?= 34)
+
+  , "can read an int**" ~: do
+    pp <- getIntPtrPtr
+    p <- decode pp
+    decode p >>= (@?= 1234)
+
+  , "can read a IntBox**" ~: do
+    pp <- getIntBoxPtrPtr
+    p <- decode pp
+    intBox_get p >>= (@?= 1010)
   ]
 
 inheritanceTests :: Test

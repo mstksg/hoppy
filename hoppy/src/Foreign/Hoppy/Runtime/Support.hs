@@ -88,9 +88,9 @@ class CppPtr this where
   -- | Converts to a regular pointer.
   toPtr :: this -> Ptr this
 
--- | Typeclasses for C++ types that can be assigned to.  This includes pointers
--- ('Ptr') to all primitive number types, as well as pointers to object types
--- that have an assignment operator (see
+-- | A typeclass for references to C++ values that can be assigned to.  This
+-- includes raw pointers ('Ptr'), as well as pointers to object types that have
+-- an assignment operator (see
 -- 'Foreign.Hoppy.Generator.Spec.ClassFeature.Assignable').
 class Assignable cppType value where
   -- | @assign x v@ assigns the value @v@ at the location pointed to by @x@.
@@ -99,19 +99,8 @@ class Assignable cppType value where
 instance Assignable (Ptr CBool) Bool where
   assign p b = poke p $ if b then 1 else 0
 
-instance Assignable (Ptr CChar) CChar where assign = poke
-instance Assignable (Ptr CUChar) CUChar where assign = poke
-instance Assignable (Ptr CShort) CShort where assign = poke
-instance Assignable (Ptr CUShort) CUShort where assign = poke
-instance Assignable (Ptr CInt) CInt where assign = poke
-instance Assignable (Ptr CUInt) CUInt where assign = poke
-instance Assignable (Ptr CLong) CLong where assign = poke
-instance Assignable (Ptr CULong) CULong where assign = poke
-instance Assignable (Ptr CLLong) CLLong where assign = poke
-instance Assignable (Ptr CULLong) CULLong where assign = poke
-instance Assignable (Ptr CFloat) CFloat where assign = poke
-instance Assignable (Ptr CDouble) CDouble where assign = poke
-instance Assignable (Ptr CSize) CSize where assign = poke
+instance Storable a => Assignable (Ptr a) a where
+  assign = poke
 
 -- | For a C++ class that also has a native Haskell representation (e.g. value
 -- types such as @std::string@), this typeclass allows converting a Haskell
@@ -138,10 +127,15 @@ class Encodable cppPtrType hsType | cppPtrType -> hsType where
 encodeAs :: Encodable cppPtrType hsType => cppPtrType -> hsType -> IO cppPtrType
 encodeAs to = fmap (`asTypeOf` to) . encode
 
--- | For a C++ class that also has a native Haskell representation (e.g. value
+-- | A typeclass for converting references to C++ values into Haskell values.
+-- What this means depends on the type of C++ value.  Pointers to numeric types
+-- and to other pointers (i.e. @'Ptr' ('Ptr' ...)@) are decodable by peeking at
+-- the value.
+--
+-- For a C++ class that also has a native Haskell representation (e.g. value
 -- types such as @std::string@), this typeclass allows converting a C++ heap
--- object into a Haskell value.  Decoding from both the non-const and const
--- objects is supported.
+-- object into a Haskell value based on the defined conversion.  Decoding from
+-- both the non-const and const objects is supported.
 --
 -- See also 'Encodable'.
 class Decodable cppPtrType hsType | cppPtrType -> hsType where
@@ -161,6 +155,8 @@ instance Decodable (Ptr CULLong) CULLong where decode = peek
 instance Decodable (Ptr CFloat) CFloat where decode = peek
 instance Decodable (Ptr CDouble) CDouble where decode = peek
 instance Decodable (Ptr CSize) CSize where decode = peek
+
+instance Decodable (Ptr (Ptr a)) (Ptr a) where decode = peek
 
 -- | Decodes a C++ object to a Haskell value with 'decode', releases the
 -- original object with 'delete', then returns the Haskell value.

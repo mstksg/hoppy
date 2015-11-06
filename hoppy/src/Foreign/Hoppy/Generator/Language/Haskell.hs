@@ -151,7 +151,8 @@ prependExtensionsPrefix =
   -- compatibility using overlapping instances with both GHC 7.8 and 7.10.
   --
   -- GeneralizedNewtypeDeriving is to enable automatic deriving of
-  -- Data.Bits.Bits instances for bitspace newtypes.
+  -- Data.Bits.Bits instances for bitspace newtypes and Storable instances for
+  -- object pointer newtypes.
   concat
   [ "{-# LANGUAGE CPP, FlexibleContexts, FlexibleInstances, GeneralizedNewtypeDeriving"
   , ", MultiParamTypeClasses, TypeSynonymInstances, UndecidableInstances #-}\n"
@@ -747,6 +748,9 @@ sayExportClassHsType doDecls cls cst = do
   addExport' hsTypeName
   ln
   saysLn ["newtype ", hsTypeName, " = ", hsTypeName, " (HoppyF.Ptr ", hsTypeName, ")"]
+  if doDecls
+    then indent $ sayLn "deriving (HoppyF.Storable)"
+    else saysLn ["instance HoppyF.Storable ", hsTypeName]
 
   -- Generate const_cast functions:
   --   castFooToConst :: Foo -> FooConst
@@ -885,6 +889,25 @@ sayExportClassHsSpecialFns mode cls = do
     indent $
       saysLn ["assign x' y' = ", toHsFnName $ getClassyExtName cls m,
                 " x' y' >> HoppyP.return ()"]
+
+  -- A pointer to an object pointer is decodable to an object pointer by peeking
+  -- at the value, so generate a Decodable instance.  You are now a two-star
+  -- programmer.  There is a generic @Ptr (Ptr a)@ to @Ptr a@ instance which
+  -- handles deeper levels.
+  case mode of
+    SayExportForeignImports -> return ()
+
+    SayExportDecls -> do
+      addImports $ mconcat [hsImportForForeign, hsImportForSupport]
+      ln
+      saysLn ["instance HoppyFHRS.Decodable (HoppyF.Ptr ", typeName, ") ", typeName, " where"]
+      indent $ sayLn "decode = HoppyF.peek"
+
+    SayExportBoot -> do
+      addImports $ mconcat [hsImportForForeign, hsImportForSupport]
+      ln
+      -- TODO Encodable.
+      saysLn ["instance HoppyFHRS.Decodable (HoppyF.Ptr ", typeName, ") ", typeName]
 
   -- Say Encodable and Decodable instances, if the class is encodable and
   -- decodable.
