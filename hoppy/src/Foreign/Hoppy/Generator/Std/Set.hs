@@ -129,9 +129,11 @@ instantiate' setName t tReqs opts =
       -- The addendum for the set class contains HasContents and FromContents
       -- instances.
       makeAddendum conversion = do
-        addImports $ mconcat [hsImport1 "Prelude" "($)", hsImportForPrelude]
+        addImports $ mconcat [hsImport1 "Prelude" "($)",
+                              hsImportForPrelude,
+                              hsImportForSupport]
         when (conversion == ConvertValue) $
-          addImports $ mconcat [hsImport1 "Prelude" "(=<<)", hsImportForSupport]
+          addImports $ mconcat [hsImport1 "Prelude" "(=<<)"]
 
         let hsDataNameConst = toHsDataTypeName Const set
             hsDataName = toHsDataTypeName Nonconst set

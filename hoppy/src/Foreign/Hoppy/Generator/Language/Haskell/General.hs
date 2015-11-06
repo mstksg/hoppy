@@ -526,6 +526,7 @@ toHsMethodName cls method = toHsMethodName' cls $ fromExtName $ methodExtName me
 -- specific name in a class.
 toHsMethodName' :: IsFnName String name => Class -> name -> String
 toHsMethodName' cls methodName =
+  lowerFirst $
   concat [fromExtName $ classExtName cls, "_",
           case toFnName methodName of
             FnName name -> name

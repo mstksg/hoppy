@@ -73,8 +73,8 @@ data Contents = Contents
 
 -- | @instantiate className t tReqs@ creates a set of bindings for an
 -- instantiation of @std::list@ and associated types (e.g. iterators).  In the
--- result, the 'c_list' class has an external name of @\"list\" ++ className@,
--- and the iterator classes are further suffixed with @\"Iterator\"@ and
+-- result, the 'c_list' class has an external name of @className@, and the
+-- iterator classes are further suffixed with @\"Iterator\"@ and
 -- @\"ConstIterator\"@ respectively.
 instantiate :: String -> Type -> Reqs -> Contents
 instantiate listName t tReqs = instantiate' listName t tReqs defaultOptions
@@ -158,9 +158,11 @@ instantiate' listName t tReqs opts =
       -- The addendum for the list class contains HasContents and FromContents
       -- instances.
       makeAddendum conversion = do
-        addImports $ mconcat [hsImport1 "Prelude" "($)", hsImportForPrelude]
+        addImports $ mconcat [hsImport1 "Prelude" "($)",
+                              hsImportForPrelude,
+                                hsImportForSupport]
         when (conversion == ConvertValue) $
-          addImports $ mconcat [hsImport1 "Prelude" "(=<<)", hsImportForSupport]
+          addImports $ hsImport1 "Prelude" "(=<<)"
 
         forM_ [Const, Nonconst] $ \cst -> do
           let hsDataTypeName = toHsDataTypeName cst list
