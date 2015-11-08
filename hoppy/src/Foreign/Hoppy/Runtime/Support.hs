@@ -21,6 +21,7 @@ module Foreign.Hoppy.Runtime.Support (
   -- CBool is a newtype for CUChar, so GHC 7.10 (at least) requires reexporting
   -- the CUChar data constructor for CBool to be marshalled in foreign imports.
   CUChar (CUChar),
+  coerceIntegral,
   -- * Objects
   CppPtr (..),
   Assignable (..),
@@ -36,7 +37,6 @@ module Foreign.Hoppy.Runtime.Support (
   -- * Internal
   CCallback (..),
   freeHaskellFunPtrFunPtr,
-  coerceIntegral,
   ) where
 
 import Control.Exception (bracket)
@@ -78,6 +78,18 @@ instance Enum CBool where
     if n == 0 || n == 1
     then CBool $ fromIntegral n
     else error $ concat ["CBool.toEnum: Invalid value ", show n, "."]
+
+-- | Converts between integral types by going from @a@ to @b@, and also
+-- round-tripping the @b@ value back to an @a@ value.  If the two @a@ values
+-- don't match, then an error is signalled.
+coerceIntegral :: (Integral a, Integral b, Typeable a, Typeable b, Show a) => a -> b
+coerceIntegral a =
+  let b = fromIntegral a
+      a' = fromIntegral b
+  in if a' == a
+     then b
+     else error $ "Conversion from " ++ show (typeOf a) ++ " to " ++
+          show (typeOf b) ++ " is not idempotent for value " ++ show a ++ "."
 
 -- | An instance of this class represents a pointer to a C++ object.  All C++
 -- classes bound by Hoppy have subclasses of @CppPtr@.
@@ -224,15 +236,3 @@ freeHaskellFunPtrFunPtr :: FunPtr (FunPtr (IO ()) -> IO ())
 {-# NOINLINE freeHaskellFunPtrFunPtr #-}
 freeHaskellFunPtrFunPtr =
   unsafePerformIO $ newFreeHaskellFunPtrFunPtr freeHaskellFunPtr
-
--- | Converts between integral types by going from @a@ to @b@, and also
--- round-tripping the @b@ value back to an @a@ value.  If the two @a@ values
--- don't match, then an error is signalled.
-coerceIntegral :: (Integral a, Integral b, Typeable a, Typeable b, Show a) => a -> b
-coerceIntegral a =
-  let b = fromIntegral a
-      a' = fromIntegral b
-  in if a' == a
-     then b
-     else error $ "Conversion from " ++ show (typeOf a) ++ " to " ++
-          show (typeOf b) ++ " is not idempotent for value " ++ show a ++ "."
