@@ -149,7 +149,7 @@ instantiate' vectorName t tReqs opts =
       makeAddendum conversion = do
         addImports $ mconcat [hsImports "Prelude" ["($)", "(-)"],
                               hsImportForPrelude,
-                              hsImportForSupport]
+                              hsImportForRuntime]
         when (conversion == ConvertValue) $
           addImports $ hsImport1 "Control.Monad" "(<=<)"
 
@@ -166,7 +166,7 @@ instantiate' vectorName t tReqs opts =
 
           -- Generate const and nonconst HasContents instances.
           ln
-          saysLn ["instance HoppyFHRS.HasContents ", hsDataTypeName,
+          saysLn ["instance HoppyFHR.HasContents ", hsDataTypeName,
                   " (", prettyPrint hsValueType, ") where"]
           indent $ do
             sayLn "toContents this' = do"
@@ -178,20 +178,20 @@ instantiate' vectorName t tReqs opts =
               saysLn ["HoppyP.mapM (",
                       case conversion of
                         ConvertPtr -> ""
-                        ConvertValue -> "HoppyFHRS.decode <=< ",
+                        ConvertValue -> "HoppyFHR.decode <=< ",
                       toHsMethodName' vector vectorAt, " this') [0..size'-1]"]
 
           -- Only generate a nonconst FromContents instance.
           when (cst == Nonconst) $ do
             ln
-            saysLn ["instance HoppyFHRS.FromContents ", hsDataTypeName,
+            saysLn ["instance HoppyFHR.FromContents ", hsDataTypeName,
                     " (", prettyPrint hsValueType, ") where"]
             indent $ do
               sayLn "fromContents values' = do"
               indent $ do
                 saysLn ["vector' <- ", toHsMethodName' vector "new"]
                 saysLn [toHsMethodName' vector "reserve",
-                        " vector' $ HoppyFHRS.coerceIntegral $ HoppyP.length values'"]
+                        " vector' $ HoppyFHR.coerceIntegral $ HoppyP.length values'"]
                 saysLn ["HoppyP.mapM_ (", toHsMethodName' vector "pushBack", " vector') values'"]
                 sayLn "HoppyP.return vector'"
 

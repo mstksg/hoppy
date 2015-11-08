@@ -15,7 +15,7 @@
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 -- | Runtime support for generated Haskell bindings.
-module Foreign.Hoppy.Runtime.Support (
+module Foreign.Hoppy.Runtime (
   -- * Primitive types
   CBool (..),
   -- CBool is a newtype for CUChar, so GHC 7.10 (at least) requires reexporting

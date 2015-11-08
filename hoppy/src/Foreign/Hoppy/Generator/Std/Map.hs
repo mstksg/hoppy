@@ -172,7 +172,7 @@ instantiate' mapName k v userReqs opts =
       makeAddendum keyConv valueConv = do
         addImports $ mconcat [hsImports "Prelude" ["($)", "(=<<)"],
                               hsImportForPrelude,
-                              hsImportForSupport]
+                              hsImportForRuntime]
 
         forM_ [Const, Nonconst] $ \cst -> do
           let hsDataTypeName = toHsDataTypeName cst map
@@ -195,7 +195,7 @@ instantiate' mapName k v userReqs opts =
 
           -- Generate const and nonconst HasContents instances.
           ln
-          saysLn ["instance HoppyFHRS.HasContents ", hsDataTypeName,
+          saysLn ["instance HoppyFHR.HasContents ", hsDataTypeName,
                   " ((", prettyPrint keyHsType, "), (", prettyPrint valueHsType, ")) where"]
           indent $ do
             sayLn "toContents this' = do"
@@ -215,9 +215,9 @@ instantiate' mapName k v userReqs opts =
               saysLn ["empty' <- ", toHsMethodName' map "empty", " this'"]
               sayLn "if empty' then HoppyP.return [] else"
               indent $ do
-                saysLn ["HoppyFHRS.withScopedPtr (", toHsMethodName' map mapBegin,
+                saysLn ["HoppyFHR.withScopedPtr (", toHsMethodName' map mapBegin,
                         " this') $ \\begin' ->"]
-                saysLn ["HoppyFHRS.withScopedPtr (", toHsMethodName' map mapEnd,
+                saysLn ["HoppyFHR.withScopedPtr (", toHsMethodName' map mapEnd,
                         " this') $ \\iter' ->"]
                 sayLn "go' iter' begin' []"
               sayLn "where"
@@ -231,25 +231,25 @@ instantiate' mapName k v userReqs opts =
                     saysLn ["key' <- ",
                             case keyConv of
                               ConvertPtr -> ""
-                              ConvertValue -> "HoppyFHRS.decode =<< ",
+                              ConvertValue -> "HoppyFHR.decode =<< ",
                             toHsMethodName' iter "getKey", " iter'"]
                     saysLn ["value' <- ",
                             case valueConv of
                               ConvertPtr -> ""
-                              ConvertValue -> "HoppyFHRS.decode =<< ",
+                              ConvertValue -> "HoppyFHR.decode =<< ",
                             toHsMethodName' iter iterGetValue, " iter'"]
                     sayLn "go' iter' begin' $ (key', value'):acc'"
 
           -- Only generate a nonconst FromContents instance.
           when (cst == Nonconst) $ do
             ln
-            saysLn ["instance HoppyFHRS.FromContents ", hsDataTypeName,
+            saysLn ["instance HoppyFHR.FromContents ", hsDataTypeName,
                     " ((", prettyPrint keyHsType, "), (", prettyPrint valueHsType, ")) where"]
             indent $ do
               sayLn "fromContents values' = do"
               indent $ do
                 saysLn ["map' <- ", toHsMethodName' map "new"]
-                saysLn ["HoppyP.mapM_ (\\(k, v) -> HoppyP.flip HoppyFHRS.assign v =<< ",
+                saysLn ["HoppyP.mapM_ (\\(k, v) -> HoppyP.flip HoppyFHR.assign v =<< ",
                         toHsMethodName' map "at", " map' k) values'"]
                 sayLn "HoppyP.return map'"
 

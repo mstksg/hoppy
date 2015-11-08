@@ -136,7 +136,7 @@ module Foreign.Hoppy.Generator.Spec (
   hsImportForForeign,
   hsImportForForeignC,
   hsImportForPrelude,
-  hsImportForSupport,
+  hsImportForRuntime,
   hsImportForSystemPosixTypes,
   hsImportForUnsafeIO,
   -- ** Error messages
@@ -1688,9 +1688,9 @@ hsImportForForeignC = hsQualifiedImport "Foreign.C" "HoppyFC"
 hsImportForPrelude :: HsImportSet
 hsImportForPrelude = hsQualifiedImport "Prelude" "HoppyP"
 
--- | Imports "Foreign.Hoppy.Runtime.Support" qualified as @HoppyFHRS@.
-hsImportForSupport :: HsImportSet
-hsImportForSupport = hsQualifiedImport "Foreign.Hoppy.Runtime.Support" "HoppyFHRS"
+-- | Imports "Foreign.Hoppy.Runtime" qualified as @HoppyFHR@.
+hsImportForRuntime :: HsImportSet
+hsImportForRuntime = hsQualifiedImport "Foreign.Hoppy.Runtime" "HoppyFHR"
 
 -- | Imports "System.Posix.Types" qualified as @HoppySPT@.
 hsImportForSystemPosixTypes :: HsImportSet

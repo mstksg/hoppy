@@ -285,11 +285,11 @@ sayExportBitspace mode bitspace =
       forM_ (bitspaceEnum bitspace) $ \enum -> do
         let enumTypeName = toHsEnumTypeName enum
         importHsModuleForExtName $ enumExtName enum
-        addImports $ mconcat [hsImport1 "Prelude" "(.)", hsImportForPrelude, hsImportForSupport]
+        addImports $ mconcat [hsImport1 "Prelude" "(.)", hsImportForPrelude, hsImportForRuntime]
         ln
         saysLn ["instance ", className, " ", enumTypeName, " where"]
         indent $
-          saysLn [toFnName, " = ", hsTypeName, " . HoppyFHRS.coerceIntegral . HoppyP.fromEnum"]
+          saysLn [toFnName, " = ", hsTypeName, " . HoppyFHR.coerceIntegral . HoppyP.fromEnum"]
 
       -- Print out the constants.
       ln
@@ -418,15 +418,15 @@ sayExportCallback mode cb =
     hsFnHsType <- cppTypeToHsTypeAndUse HsHsSide fnType
 
     let getWholeFnType = do
-          addImports $ mconcat [hsImportForPrelude, hsImportForSupport]
+          addImports $ mconcat [hsImportForPrelude, hsImportForRuntime]
           return $
             HsTyFun hsFnHsType $
             HsTyApp (HsTyCon $ UnQual $ HsIdent "HoppyP.IO") $
-            HsTyApp (HsTyCon $ UnQual $ HsIdent "HoppyFHRS.CCallback") hsFnCType
+            HsTyApp (HsTyCon $ UnQual $ HsIdent "HoppyFHR.CCallback") hsFnCType
 
     case mode of
       SayExportForeignImports -> do
-        addImports $ mconcat [hsImportForForeign, hsImportForPrelude, hsImportForSupport]
+        addImports $ mconcat [hsImportForForeign, hsImportForPrelude, hsImportForRuntime]
         let hsFunPtrType = HsTyApp (HsTyCon $ UnQual $ HsIdent "HoppyF.FunPtr") hsFnCType
             hsFunPtrImportType =
               HsTyFun hsFnCType $
@@ -441,7 +441,7 @@ sayExportCallback mode cb =
                        HsTyCon $ Special HsUnitCon) $
               HsTyFun (HsTyCon $ UnQual $ HsIdent "HoppyP.Bool") $
               HsTyApp (HsTyCon $ UnQual $ HsIdent "HoppyP.IO") $
-              HsTyApp (HsTyCon $ UnQual $ HsIdent "HoppyFHRS.CCallback") hsFnCType
+              HsTyApp (HsTyCon $ UnQual $ HsIdent "HoppyFHR.CCallback") hsFnCType
 
         saysLn ["foreign import ccall \"wrapper\" ", hsFnName'newFunPtr, " :: ",
                 prettyPrint hsFunPtrImportType]
@@ -467,7 +467,7 @@ sayExportCallback mode cb =
                     "f'hs" : map (' ':) argNames']
             Nothing
           saysLn ["f'p <- ", hsFnName'newFunPtr, " f'c"]
-          saysLn [hsFnName'newCallback, " f'p HoppyFHRS.freeHaskellFunPtrFunPtr HoppyP.False"]
+          saysLn [hsFnName'newCallback, " f'p HoppyFHR.freeHaskellFunPtrFunPtr HoppyP.False"]
 
       SayExportBoot -> do
         addExport hsFnName
@@ -504,14 +504,14 @@ sayArgProcessing dir t fromVar toVar =
     TSize -> noConversion
     TSSize -> noConversion
     TEnum _ -> do
-      addImports $ mconcat [hsImport1 "Prelude" "($)", hsImportForPrelude, hsImportForSupport]
+      addImports $ mconcat [hsImport1 "Prelude" "($)", hsImportForPrelude, hsImportForRuntime]
       saysLn ["let ", toVar,
               -- TODO The coersion here is unnecssary if we replace the C numeric
               -- types with their Haskell ones across the board (e.g. CInt ->
               -- Int).
               case dir of
-                ToCpp -> " = HoppyFHRS.coerceIntegral $ HoppyP.fromEnum "
-                FromCpp -> " = HoppyP.toEnum $ HoppyFHRS.coerceIntegral ",
+                ToCpp -> " = HoppyFHR.coerceIntegral $ HoppyP.fromEnum "
+                FromCpp -> " = HoppyP.toEnum $ HoppyFHR.coerceIntegral ",
               fromVar, " in"]
     TBitspace b -> do
       importHsModuleForExtName $ bitspaceExtName b
@@ -544,8 +544,8 @@ sayArgProcessing dir t fromVar toVar =
         addImportForClass cls
         saysLn [toHsWithValuePtrName cls, " ", fromVar, " $ \\", toVar, " ->"]
       FromCpp -> do
-        addImports $ mconcat [hsImport1 "Prelude" "(>>=)", hsImportForSupport]
-        saysLn ["HoppyFHRS.decode ", fromVar, " >>= \\", toVar, " ->"]
+        addImports $ mconcat [hsImport1 "Prelude" "(>>=)", hsImportForRuntime]
+        saysLn ["HoppyFHR.decode ", fromVar, " >>= \\", toVar, " ->"]
     TObjToHeap cls -> case dir of
       ToCpp -> throwError $ tObjToHeapWrongDirectionErrorMsg Nothing cls
       FromCpp -> noConversion
@@ -585,12 +585,12 @@ sayCallAndProcessReturn dir t callWords =
     TSize -> sayCall
     TSSize -> sayCall
     TEnum _ -> do
-      addImports $ mconcat [hsImport1 "Prelude" "(.)", hsImportForPrelude, hsImportForSupport]
+      addImports $ mconcat [hsImport1 "Prelude" "(.)", hsImportForPrelude, hsImportForRuntime]
       case dir of
         -- TODO The coersion here is unnecssary if we replace the C numeric types
         -- with their Haskell ones across the board (e.g. CInt -> Int).
-        ToCpp -> saysLn ["HoppyP.fmap (HoppyP.toEnum . HoppyFHRS.coerceIntegral)"]
-        FromCpp -> saysLn ["HoppyP.fmap (HoppyFHRS.coerceIntegral . HoppyP.fromEnum)"]
+        ToCpp -> saysLn ["HoppyP.fmap (HoppyP.toEnum . HoppyFHR.coerceIntegral)"]
+        FromCpp -> saysLn ["HoppyP.fmap (HoppyFHR.coerceIntegral . HoppyP.fromEnum)"]
       sayCall
     TBitspace b -> do
       addImports hsImportForPrelude
@@ -608,10 +608,10 @@ sayCallAndProcessReturn dir t callWords =
         saysLn [toHsCallbackCtorName cb, "=<<"]
         sayCall
     TObj _ -> do
-      addImports $ mconcat [hsImport1 "Prelude" "(=<<)", hsImportForSupport]
+      addImports $ mconcat [hsImport1 "Prelude" "(=<<)", hsImportForRuntime]
       case dir of
-        ToCpp -> sayLn "HoppyFHRS.decodeAndDelete =<<"
-        FromCpp -> sayLn "HoppyFHRS.encode =<<"
+        ToCpp -> sayLn "HoppyFHR.decodeAndDelete =<<"
+        FromCpp -> sayLn "HoppyFHR.encode =<<"
       sayCall
     TObjToHeap cls -> case dir of
       ToCpp -> sayCall
@@ -668,8 +668,8 @@ sayExportClassHsClass doDecls cls cst = do
   forM_ supers $ importHsModuleForExtName . classExtName
   hsSupers <-
     (\x -> if null x
-           then do addImports hsImportForSupport
-                   return ["HoppyFHRS.CppPtr"]
+           then do addImports hsImportForRuntime
+                   return ["HoppyFHR.CppPtr"]
            else return x) $
     case cst of
       Const -> map (toHsPtrClassName Const) supers
@@ -712,8 +712,8 @@ sayExportClassHsClass doDecls cls cst = do
               if doDecls then " where" else ""]
       saysLn ["#endif"]
       when doDecls $ do
-        addImports hsImportForSupport
-        indent $ saysLn [hsWithValuePtrName, " = HoppyFHRS.withCppObj"]
+        addImports hsImportForRuntime
+        indent $ saysLn [hsWithValuePtrName, " = HoppyFHR.withCppObj"]
 
   -- Print the pointer class definition.
   addExport' hsPtrClassName
@@ -742,7 +742,7 @@ sayExportClassHsStaticMethods cls =
 
 sayExportClassHsType :: Bool -> Class -> Constness -> Generator ()
 sayExportClassHsType doDecls cls cst = do
-  addImports $ mconcat [hsImportForForeign, hsImportForSupport]
+  addImports $ mconcat [hsImportForForeign, hsImportForRuntime]
   -- Unfortunately, we must export the data constructor, so that GHC can marshal
   -- it in foreign calls in other modules.
   addExport' hsTypeName
@@ -761,19 +761,19 @@ sayExportClassHsType doDecls cls cst = do
   saysLn [constCastFnName, " :: ", toHsDataTypeName (constNegate cst) cls, " -> ", hsTypeName]
   when doDecls $ do
     addImports $ hsImport1 "Prelude" "(.)"
-    saysLn [constCastFnName, " = ", hsTypeName, " . HoppyF.castPtr . HoppyFHRS.toPtr"]
+    saysLn [constCastFnName, " = ", hsTypeName, " . HoppyF.castPtr . HoppyFHR.toPtr"]
 
   -- Generate an instance of CppPtr.
   ln
   if doDecls
-    then do saysLn ["instance HoppyFHRS.CppPtr ", hsTypeName, " where"]
+    then do saysLn ["instance HoppyFHR.CppPtr ", hsTypeName, " where"]
             saysLn ["  toPtr (", hsTypeName, " ptr) = ptr"]
             deleteTail <- case cst of
               Const -> return []
               Nonconst -> do addImports $ hsImport1 "Prelude" "(.)"
                              return [" . ", toHsCastMethodName Const cls]
             saysLn $ "  delete = " : toHsClassDeleteFnName cls : deleteTail
-    else saysLn ["instance HoppyFHRS.CppPtr ", hsTypeName]
+    else saysLn ["instance HoppyFHR.CppPtr ", hsTypeName]
 
   -- Generate instances for all superclasses' typeclasses.
   genInstances [] cls
@@ -884,7 +884,7 @@ sayExportClassHsSpecialFns mode cls = do
   when (mode == SayExportDecls) $ withAssignmentMethod $ \m -> do
     addImports $ mconcat [hsImport1 "Prelude" "(>>)", hsImportForPrelude]
     ln
-    saysLn ["instance ", toHsValueClassName cls, " a => HoppyFHRS.Assignable ", typeName,
+    saysLn ["instance ", toHsValueClassName cls, " a => HoppyFHR.Assignable ", typeName,
             " a where"]
     indent $
       saysLn ["assign x' y' = ", toHsFnName $ getClassyExtName cls m,
@@ -898,16 +898,16 @@ sayExportClassHsSpecialFns mode cls = do
     SayExportForeignImports -> return ()
 
     SayExportDecls -> do
-      addImports $ mconcat [hsImportForForeign, hsImportForSupport]
+      addImports $ mconcat [hsImportForForeign, hsImportForRuntime]
       ln
-      saysLn ["instance HoppyFHRS.Decodable (HoppyF.Ptr ", typeName, ") ", typeName, " where"]
+      saysLn ["instance HoppyFHR.Decodable (HoppyF.Ptr ", typeName, ") ", typeName, " where"]
       indent $ sayLn "decode = HoppyF.peek"
 
     SayExportBoot -> do
-      addImports $ mconcat [hsImportForForeign, hsImportForSupport]
+      addImports $ mconcat [hsImportForForeign, hsImportForRuntime]
       ln
       -- TODO Encodable.
-      saysLn ["instance HoppyFHRS.Decodable (HoppyF.Ptr ", typeName, ") ", typeName]
+      saysLn ["instance HoppyFHR.Decodable (HoppyF.Ptr ", typeName, ") ", typeName]
 
   -- Say Encodable and Decodable instances, if the class is encodable and
   -- decodable.
@@ -918,38 +918,38 @@ sayExportClassHsSpecialFns mode cls = do
       SayExportForeignImports -> return ()
 
       SayExportDecls -> do
-        addImports $ mconcat [hsImportForPrelude, hsImportForSupport]
+        addImports $ mconcat [hsImportForPrelude, hsImportForRuntime]
 
         -- Say the Encodable instances.
         ln
-        saysLn ["instance HoppyFHRS.Encodable ", typeName, " ", hsTypeStr, " where"]
+        saysLn ["instance HoppyFHR.Encodable ", typeName, " ", hsTypeStr, " where"]
         indent $ do
           sayLn "encode ="
           indent $ classHaskellConversionToCppFn conv
         ln
-        saysLn ["instance HoppyFHRS.Encodable ", typeNameConst, " ", hsTypeStr, " where"]
+        saysLn ["instance HoppyFHR.Encodable ", typeNameConst, " ", hsTypeStr, " where"]
         indent $
           saysLn ["encode = HoppyP.fmap (", toHsCastMethodName Const cls,
-                  ") . HoppyFHRS.encodeAs (HoppyP.undefined :: ", typeName, ")"]
+                  ") . HoppyFHR.encodeAs (HoppyP.undefined :: ", typeName, ")"]
 
         -- Say the Decodable instances.
         ln
-        saysLn ["instance HoppyFHRS.Decodable ", typeName, " ", hsTypeStr, " where"]
+        saysLn ["instance HoppyFHR.Decodable ", typeName, " ", hsTypeStr, " where"]
         indent $
-          saysLn ["decode = HoppyFHRS.decode . ", toHsCastMethodName Const cls]
+          saysLn ["decode = HoppyFHR.decode . ", toHsCastMethodName Const cls]
         ln
-        saysLn ["instance HoppyFHRS.Decodable ", typeNameConst, " ", hsTypeStr, " where"]
+        saysLn ["instance HoppyFHR.Decodable ", typeNameConst, " ", hsTypeStr, " where"]
         indent $ do
           sayLn "decode ="
           indent $ classHaskellConversionFromCppFn conv
 
       SayExportBoot -> do
-        addImports hsImportForSupport
+        addImports hsImportForRuntime
         ln
-        saysLn ["instance HoppyFHRS.Encodable ", typeName, " (", hsTypeStr, ")"]
-        saysLn ["instance HoppyFHRS.Encodable ", typeNameConst, " (", hsTypeStr, ")"]
-        saysLn ["instance HoppyFHRS.Decodable ", typeName, " (", hsTypeStr, ")"]
-        saysLn ["instance HoppyFHRS.Decodable ", typeNameConst, " (", hsTypeStr, ")"]
+        saysLn ["instance HoppyFHR.Encodable ", typeName, " (", hsTypeStr, ")"]
+        saysLn ["instance HoppyFHR.Encodable ", typeNameConst, " (", hsTypeStr, ")"]
+        saysLn ["instance HoppyFHR.Decodable ", typeName, " (", hsTypeStr, ")"]
+        saysLn ["instance HoppyFHR.Decodable ", typeNameConst, " (", hsTypeStr, ")"]
 
 sayExportClassCastPrimitives :: SayExportMode -> Class -> Generator ()
 sayExportClassCastPrimitives mode cls = do
@@ -1032,7 +1032,7 @@ fnToHsTypeAndUse side methodInfo purity paramTypes returnType = do
         receiveValue s t cls = case side of
           HsCSide -> handoff side t
           HsHsSide -> do
-            addImports hsImportForSupport
+            addImports hsImportForRuntime
             addImportForClass cls
             let t' = HsTyVar $ HsIdent s
             return (Just (UnQual $ HsIdent $ toHsValueClassName cls, [t']),

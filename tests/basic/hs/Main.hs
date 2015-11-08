@@ -33,7 +33,7 @@ import Foreign.C (
   CShort,
   CSize,
   )
-import Foreign.Hoppy.Runtime.Support (
+import Foreign.Hoppy.Runtime (
   CBool (CBool),
   assign,
   decode,

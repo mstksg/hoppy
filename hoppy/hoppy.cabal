@@ -36,7 +36,7 @@ library
     , Foreign.Hoppy.Generator.Std.Vector
     , Foreign.Hoppy.Generator.Version
     , Foreign.Hoppy.Paths
-    , Foreign.Hoppy.Runtime.Support
+    , Foreign.Hoppy.Runtime
   other-modules:
       Foreign.Hoppy.Common.Consume
     , Foreign.Hoppy.Generator.Language.Cpp

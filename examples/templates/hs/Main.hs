@@ -19,7 +19,7 @@ module Main (main) where
 import Control.Monad ((>=>), forM_)
 import Foreign.Hoppy.Example.Instances
 import Foreign.Hoppy.Example.Std
-import Foreign.Hoppy.Runtime.Support (delete, encodeAs, withCppObj)
+import Foreign.Hoppy.Runtime (delete, encodeAs, withCppObj)
 
 main :: IO ()
 main = do

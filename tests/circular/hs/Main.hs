@@ -19,7 +19,7 @@ module Main (main) where
 import Control.Monad (when)
 import Data.Bits ((.|.))
 import Foreign.C (castCCharToChar, castCharToCChar)
-import Foreign.Hoppy.Runtime.Support (toPtr)
+import Foreign.Hoppy.Runtime (toPtr)
 import Foreign.Hoppy.Test.Flob
 import Foreign.Hoppy.Test.Flub
 import System.Exit (exitFailure)

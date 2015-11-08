@@ -160,7 +160,7 @@ instantiate' listName t tReqs opts =
       makeAddendum conversion = do
         addImports $ mconcat [hsImport1 "Prelude" "($)",
                               hsImportForPrelude,
-                                hsImportForSupport]
+                                hsImportForRuntime]
         when (conversion == ConvertValue) $
           addImports $ hsImport1 "Prelude" "(=<<)"
 
@@ -177,7 +177,7 @@ instantiate' listName t tReqs opts =
 
           -- Generate const and nonconst HasContents instances.
           ln
-          saysLn ["instance HoppyFHRS.HasContents ", hsDataTypeName,
+          saysLn ["instance HoppyFHR.HasContents ", hsDataTypeName,
                   " (", prettyPrint hsValueType, ") where"]
           indent $ do
             sayLn "toContents this' = do"
@@ -197,9 +197,9 @@ instantiate' listName t tReqs opts =
               saysLn ["empty' <- ", toHsMethodName' list "empty", " this'"]
               sayLn "if empty' then HoppyP.return [] else"
               indent $ do
-                saysLn ["HoppyFHRS.withScopedPtr (", toHsMethodName' list listBegin,
+                saysLn ["HoppyFHR.withScopedPtr (", toHsMethodName' list listBegin,
                         " this') $ \\begin' ->"]
-                saysLn ["HoppyFHRS.withScopedPtr (", toHsMethodName' list listEnd,
+                saysLn ["HoppyFHR.withScopedPtr (", toHsMethodName' list listEnd,
                         " this') $ \\iter' ->"]
                 sayLn "go' iter' begin' []"
               sayLn "where"
@@ -213,14 +213,14 @@ instantiate' listName t tReqs opts =
                     saysLn ["value' <- ",
                             case conversion of
                               ConvertPtr -> ""
-                              ConvertValue -> "HoppyFHRS.decode =<< ",
+                              ConvertValue -> "HoppyFHR.decode =<< ",
                             toHsMethodName' iter iterGet, " iter'"]
                     sayLn "go' iter' begin' $ value':acc'"
 
           -- Only generate a nonconst FromContents instance.
           when (cst == Nonconst) $ do
             ln
-            saysLn ["instance HoppyFHRS.FromContents ", hsDataTypeName,
+            saysLn ["instance HoppyFHR.FromContents ", hsDataTypeName,
                     " (", prettyPrint hsValueType, ") where"]
             indent $ do
               sayLn "fromContents values' = do"

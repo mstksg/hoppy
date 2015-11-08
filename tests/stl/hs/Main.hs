@@ -21,7 +21,7 @@ module Main (main) where
 import Control.Monad ((>=>), forM_, when)
 import Foreign (peek)
 import Foreign.C (castCCharToChar, withCString)
-import Foreign.Hoppy.Runtime.Support (
+import Foreign.Hoppy.Runtime (
   HasContents, assign, decode, encode, fromContents, toContents, withCppObj, withScopedPtr)
 import Foreign.Hoppy.Test.Std
 import Foreign.Hoppy.Test.Stl

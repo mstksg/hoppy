@@ -81,7 +81,7 @@ import Foreign.C (CInt)
 import Foreign.Hoppy.Generator.Language.Haskell.General
 import Foreign.Hoppy.Generator.Main
 import Foreign.Hoppy.Generator.Spec
-import Foreign.Hoppy.Runtime.Support
+import Foreign.Hoppy.Runtime
 import Foreign.Ptr (castPtr)
 import Language.Haskell.Syntax (HsType)
 import System.IO.Unsafe (unsafePerformIO)

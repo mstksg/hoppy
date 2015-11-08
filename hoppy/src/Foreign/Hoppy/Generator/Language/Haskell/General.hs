@@ -512,7 +512,7 @@ toHsClassNullName cls = toHsFnName (classExtName cls) ++ "_null"
 
 -- | The name of the foreign function import wrapping @delete@ for the given
 -- class type.  This is in internal to the binding; normal users should use
--- 'Foreign.Hoppy.Runtime.Support.delete'.
+-- 'Foreign.Hoppy.Runtime.delete'.
 toHsClassDeleteFnName :: Class -> String
 toHsClassDeleteFnName cls = 'd':'e':'l':'e':'t':'e':'\'':toHsDataTypeName Nonconst cls
 
@@ -564,7 +564,7 @@ cppTypeToHsTypeAndUse side t =
     TVoid -> return $ HsTyCon $ Special HsUnitCon
     -- C++ has sizeof(bool) == 1, whereas Haskell can > 1, so we have to convert.
     TBool -> case side of
-      HsCSide -> addImports hsImportForSupport $> HsTyCon (UnQual $ HsIdent "HoppyFHRS.CBool")
+      HsCSide -> addImports hsImportForRuntime $> HsTyCon (UnQual $ HsIdent "HoppyFHR.CBool")
       HsHsSide -> addImports hsImportForPrelude $> HsTyCon (UnQual $ HsIdent "HoppyP.Bool")
     TChar -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CChar")
     TUChar -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CUChar")
@@ -622,8 +622,8 @@ cppTypeToHsTypeAndUse side t =
       case side of
         HsHsSide -> return hsType
         HsCSide -> do
-          addImports hsImportForSupport
-          return $ HsTyApp (HsTyCon $ UnQual $ HsIdent "HoppyFHRS.CCallback") hsType
+          addImports hsImportForRuntime
+          return $ HsTyApp (HsTyCon $ UnQual $ HsIdent "HoppyFHR.CCallback") hsType
     TObj cls -> case side of
       HsCSide -> cppTypeToHsTypeAndUse side $ TPtr $ TConst t
       HsHsSide ->
