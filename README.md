@@ -5,35 +5,52 @@ making binding to C++ easy.
 
 Homepage: http://khumba.net/projects/hoppy
 
-Hoppy is free software under the GNU Affero General Public License version 3,
-the terms of which are in the `LICENSE` file.  I, Bryan Gardiner, reserve the
-right (a) to release all AGPL parts of Hoppy under a future version of the AGPL
-per section 14 of the AGPLv3, at my sole discretion, as well as the right (b) to
-extend rights (a) and (b) to another entity.  By offering contributions to the
-project, you accept these terms, and agree to license your contributions under
-the project's current license(s) at the time of your submission.
-
 Copyright 2015 Bryan Gardiner <bog@khumba.net>
 
-## Installing
+The `LICENSE` file contains information about Hoppy's license.
 
-Dependencies:
+## Dependencies
 
-- GHC >=7.10
+- GHC 7.8-7.10
+- haskell-src 1.0-1.1 (for binding development only)
+- mtl 2.1-2.3 (for binding development only)
 
-That's all!  If you just want to install Hoppy to use it as a dependency of
-another project, then all you need to do is build and install the Cabal package
-in `hoppy/`.
+If you just want to install Hoppy to use it as a dependency of another project,
+then all you need to do is build and install the Cabal package in `runtime/`.
 
 ## Using
 
+Hoppy consists of four Cabal packages:
+
+- `generator/` holds the code generator library.  Developers specify interfaces
+  in Haskell code, that then link against this library to produce a generator
+  program that can create actual binding source code.  This package is only used
+  while generating code, and isn't a dependency of generated bindings.
+
+- `std/` provides interface definitions for the C++ standard library, including
+  strings, containers, and iterators.
+
+- `runtime/` is a runtime support library for Haskell bindings.  This is needed
+  by generated Haskell code, so bindings created using Hoppy should list this as
+  package as a dependency in their `.cabal` files.
+
+- `docs/` contains documentation written using Haddock.  It depends on the
+  previous packages for hyperlinks.
+
 There is a user's guide written using Haddock at
-`hoppy/src/Foreign/Hoppy/Documentation.hs`.  You can read it as is, or build it
+`docs/src/Foreign/Hoppy/Documentation.hs`.  You can read it as is, or build it
 with
 
-    cd hoppy && cabal configure && cabal haddock
+    # Build the generator library documentation.
+    cd generator && cabal configure && cabal haddock && cabal install
+    # Build the standard library interface documentation.
+    cd std && cabal configure && cabal haddock && cabal install
+    # Build the runtime documentation.
+    cd runtime && cabal configure && cabal haddock && cabal install
+    # Build the documentation.
+    cd docs && cabal configure && cabal haddock
 
-and browse the HTML files in `hoppy/dist/doc`.
+and browse the HTML files in `docs/dist/doc`.
 
 ## Developing
 

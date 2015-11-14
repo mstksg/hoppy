@@ -5,8 +5,9 @@
 # Copyright 2015 Bryan Gardiner <bog@khumba.net>
 #
 # This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License version 3
-# as published by the Free Software Foundation.
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
 #
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -45,20 +46,23 @@ if $doBuild; then
 
     # Build the generator and its dependencies.
     set -x
-    cd "$suiteRoot/../../hoppy"
+    cd "$suiteRoot/../../generator"
+    cabal build
+    cd "$suiteRoot/../../std"
+    cabal build
+    cd "$suiteRoot/../../runtime"
     cabal build
     cd "$suiteRoot/hs"
     cabal sandbox delete
     cabal sandbox init
-    cabal install ../../../hoppy
+    cabal install ../../../{generator,std,runtime}
     cabal install ../generator
 
     # Build the C++ library.
     cd ../lib
     make clean
     ../hs/.cabal-sandbox/bin/generator --gen-cpp .
-    CXXFLAGS=-I$(../hs/.cabal-sandbox/bin/generator --get-include-dir) \
-        make
+    make
     cd ../hs
 
     # Build and run the Haskell test program.

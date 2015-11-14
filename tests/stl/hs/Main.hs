@@ -3,8 +3,9 @@
 -- Copyright 2015 Bryan Gardiner <bog@khumba.net>
 --
 -- This program is free software: you can redistribute it and/or modify
--- it under the terms of the GNU Affero General Public License version 3
--- as published by the Free Software Foundation.
+-- it under the terms of the GNU Affero General Public License as published by
+-- the Free Software Foundation, either version 3 of the License, or
+-- (at your option) any later version.
 --
 -- This program is distributed in the hope that it will be useful,
 -- but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -103,10 +104,10 @@ listIntTests =
       withScopedPtr (listInt_begin l) $ \it -> do
         listIntIterator_get it >>= peek >>= (@?= 1)
         listIntIterator_put it 2
-        _ <- listIntIterator_INC it
+        _ <- listIntIterator_next it
         listIntIterator_get it >>= peek >>= (@?= 5)
         listIntIterator_EQ it end >>= (@?= False)
-        _ <- listIntIterator_INC it
+        _ <- listIntIterator_next it
         listIntIterator_EQ it end >>= (@?= True)
       listInt_front l >>= peek >>= (@?= 2)
   ]
