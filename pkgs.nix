@@ -33,11 +33,6 @@ let
     overrides = self: super: {
       hoppy = self.callPackage (hoppyDir + /hoppy) haskellOptions;
 
-      hoppy-example-templates-generator =
-        self.callPackage (hoppyDir + /examples/templates/generator) {};
-      hoppy-example-templates =
-        self.callPackage (hoppyDir + /examples/templates/hs) {};
-
       hoppy-tests-basic-generator =
         self.callPackage (hoppyDir + /tests/basic/generator) {};
       hoppy-tests-basic =
@@ -56,10 +51,6 @@ let
   };
 
   packageOverrides = pkgs: rec {
-    hoppy-example-templates-cpp = pkgs.callPackage (hoppyDir + /examples/templates/cpp) {
-      inherit (haskellPackages) hoppy-example-templates-generator;
-    };
-
     hoppy-tests-basic-cpp = pkgs.callPackage (hoppyDir + /tests/basic/cpp) {
       inherit (haskellPackages) hoppy hoppy-tests-basic-generator;
     };
