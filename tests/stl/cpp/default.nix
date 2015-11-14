@@ -15,15 +15,15 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-{ stdenv, hoppy, hoppy-tests-basic-generator }:
+{ stdenv, hoppy, hoppy-tests-stl-generator }:
 
-let gen = hoppy-tests-basic-generator;
-    name = "hoppy-tests-basic";
+let gen = hoppy-tests-stl-generator;
+    name = "hoppy-tests-stl";
     libName = "lib${name}.so";
 in
 
 stdenv.mkDerivation {
-  name = "${name}-lib-0.1.0";
+  name = "${name}-cpp-0.1.0";
   src = ./.;
   buildInputs = [ gen ];
 

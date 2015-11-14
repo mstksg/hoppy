@@ -59,7 +59,7 @@ if $doBuild; then
     cabal install ../generator
 
     # Build the C++ library.
-    cd ../lib
+    cd ../cpp
     make clean
     ../hs/.cabal-sandbox/bin/generator --gen-cpp .
     make
@@ -67,8 +67,8 @@ if $doBuild; then
 
     # Build and run the Haskell test program.
     .cabal-sandbox/bin/generator --gen-hs .
-    cabal configure --enable-tests --extra-lib-dirs="$suiteRoot/lib"
-    LD_LIBRARY_PATH="$suiteRoot/lib" cabal test
+    cabal configure --enable-tests --extra-lib-dirs="$suiteRoot/cpp"
+    LD_LIBRARY_PATH="$suiteRoot/cpp" cabal test
     set +x
     cd ..
 fi
@@ -84,5 +84,5 @@ if $doClean; then
     cd ../generator
     cabal clean
     cd ..
-    rm -fv -- lib/"$suite".{hpp,cpp} lib/*.o lib/*.so $filesToClean
+    rm -fv -- cpp/"$suite".{hpp,cpp} cpp/*.o cpp/*.so $filesToClean
 fi

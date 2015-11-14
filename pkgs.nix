@@ -56,19 +56,19 @@ let
   };
 
   packageOverrides = pkgs: rec {
-    hoppy-example-templates-lib = pkgs.callPackage (hoppyDir + /examples/templates/lib) {
+    hoppy-example-templates-cpp = pkgs.callPackage (hoppyDir + /examples/templates/cpp) {
       inherit (haskellPackages) hoppy-example-templates-generator;
     };
 
-    hoppy-tests-basic-lib = pkgs.callPackage (hoppyDir + /tests/basic/lib) {
+    hoppy-tests-basic-cpp = pkgs.callPackage (hoppyDir + /tests/basic/cpp) {
       inherit (haskellPackages) hoppy hoppy-tests-basic-generator;
     };
 
-    hoppy-tests-circular-lib = pkgs.callPackage (hoppyDir + /tests/circular/lib) {
+    hoppy-tests-circular-cpp = pkgs.callPackage (hoppyDir + /tests/circular/cpp) {
       inherit (haskellPackages) hoppy hoppy-tests-circular-generator;
     };
 
-    hoppy-tests-stl-lib = pkgs.callPackage (hoppyDir + /tests/stl/lib) {
+    hoppy-tests-stl-cpp = pkgs.callPackage (hoppyDir + /tests/stl/cpp) {
       inherit (haskellPackages) hoppy hoppy-tests-stl-generator;
     };
 

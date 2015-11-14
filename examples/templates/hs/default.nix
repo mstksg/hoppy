@@ -16,7 +16,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 { mkDerivation, base, hoppy, stdenv
-, hoppy-example-templates-generator, hoppy-example-templates-lib
+, hoppy-example-templates-generator, hoppy-example-templates-cpp
 }:
 
 let gen = hoppy-example-templates-generator; in
@@ -28,7 +28,7 @@ mkDerivation {
   isLibrary = false;
   isExecutable = true;
   executableHaskellDepends = [ base hoppy ];
-  executableSystemDepends = [ hoppy-example-templates-lib ];
+  executableSystemDepends = [ hoppy-example-templates-cpp ];
   license = stdenv.lib.licenses.agpl3Plus;
 
   prePatch = ''

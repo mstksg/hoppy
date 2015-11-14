@@ -28,6 +28,6 @@ myDir=$(readlink -f "$0")
 myDir=$(dirname "$myDir")
 cd "$myDir"
 
-filesToClean="lib/std.?pp"
+filesToClean="cpp/std.?pp"
 
 . ../test-runner.sh

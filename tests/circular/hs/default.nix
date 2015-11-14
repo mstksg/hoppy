@@ -16,7 +16,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 { mkDerivation, base, hoppy, stdenv, HUnit
-, hoppy-tests-circular-generator, hoppy-tests-circular-lib
+, hoppy-tests-circular-generator, hoppy-tests-circular-cpp
 }:
 
 let gen = hoppy-tests-circular-generator; in
@@ -26,7 +26,7 @@ mkDerivation {
   version = "0.1.0";
   src = ./.;
   executableHaskellDepends = [ base hoppy ];
-  executableSystemDepends = [ hoppy-tests-circular-lib ];
+  executableSystemDepends = [ hoppy-tests-circular-cpp ];
   testHaskellDepends = [ base HUnit ];
   license = stdenv.lib.licenses.agpl3Plus;
   doCheck = true;

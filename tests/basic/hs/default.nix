@@ -16,7 +16,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 { mkDerivation, base, hoppy, stdenv, HUnit
-, hoppy-tests-basic-generator, hoppy-tests-basic-lib
+, hoppy-tests-basic-generator, hoppy-tests-basic-cpp
 }:
 
 let gen = hoppy-tests-basic-generator; in
@@ -26,7 +26,7 @@ mkDerivation {
   version = "0.1.0";
   src = ./.;
   executableHaskellDepends = [ base hoppy ];
-  executableSystemDepends = [ hoppy-tests-basic-lib ];
+  executableSystemDepends = [ hoppy-tests-basic-cpp ];
   testHaskellDepends = [ base HUnit ];
   license = stdenv.lib.licenses.agpl3Plus;
   doCheck = true;

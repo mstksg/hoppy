@@ -15,15 +15,15 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-{ stdenv, hoppy, hoppy-tests-circular-generator }:
+{ stdenv, hoppy-example-templates-generator }:
 
-let gen = hoppy-tests-circular-generator;
-    name = "hoppy-tests-circular";
+let gen = hoppy-example-templates-generator;
+    name = "hoppy-example-templates";
     libName = "lib${name}.so";
 in
 
 stdenv.mkDerivation {
-  name = "${name}-lib-0.1.0";
+  name = "${name}-cpp-0.1.0";
   src = ./.;
   buildInputs = [ gen ];
 
@@ -31,12 +31,7 @@ stdenv.mkDerivation {
     ${gen}/bin/generator --gen-cpp .
   '';
 
-  CXXFLAGS = "-I${hoppy}/include";
-
   installPhase = ''
-    mkdir -p $out/src
-    install -m 444 *.cpp *.hpp $out/src
-
     mkdir -p $out/lib
     install ${libName} $out/lib/${libName}.0.1.0
     cd $out/lib

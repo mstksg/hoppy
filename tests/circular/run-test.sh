@@ -28,6 +28,6 @@ myDir=$(readlink -f "$0")
 myDir=$(dirname "$myDir")
 cd "$myDir"
 
-filesToClean="lib/flobm.?pp lib/flubm.?pp"
+filesToClean="cpp/flobm.?pp cpp/flubm.?pp"
 
 . ../test-runner.sh
