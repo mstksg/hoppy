@@ -48,12 +48,12 @@ module Foreign.Hoppy.Generator.Spec (
   moduleReqs,
   moduleHaskellName,
   makeModule,
-  modifyModule,
-  modifyModule',
-  setModuleHppPath,
-  setModuleCppPath,
-  addModuleExports,
-  addModuleHaskellName,
+  moduleModify,
+  moduleModify',
+  moduleSetHppPath,
+  moduleSetCppPath,
+  moduleAddExports,
+  moduleAddHaskellName,
   -- * Requirements
   Reqs,
   reqsIncludes,
@@ -295,7 +295,7 @@ data Module = Module
   , moduleHaskellName :: Maybe [String]
     -- ^ The generated Haskell module name, underneath the
     -- 'interfaceHaskellModuleBase'.  If absent (by default), the 'moduleName'
-    -- is used.  May be modified with 'addModuleHaskellName'.
+    -- is used.  May be modified with 'moduleAddHaskellName'.
   }
 
 instance Eq Module where
@@ -311,7 +311,7 @@ instance HasUseReqs Module where
   getUseReqs = moduleReqs
   setUseReqs reqs m = m { moduleReqs = reqs }
 
--- | Creates an empty module, ready to be configured with 'modifyModule'.
+-- | Creates an empty module, ready to be configured with 'moduleModify'.
 makeModule :: String  -- ^ 'moduleName'
            -> String  -- ^ 'moduleHppPath'
            -> String  -- ^ 'moduleCppPath'
@@ -327,30 +327,30 @@ makeModule name hppPath cppPath = Module
 
 -- | Extends a module.  To be used with the module state-monad actions in this
 -- package.
-modifyModule :: Module -> StateT Module (Either String) () -> Either ErrorMsg Module
-modifyModule = flip execStateT
+moduleModify :: Module -> StateT Module (Either String) () -> Either ErrorMsg Module
+moduleModify = flip execStateT
 
--- | Same as 'modifyModule', but calls 'error' in the case of failure, which is
+-- | Same as 'moduleModify', but calls 'error' in the case of failure, which is
 -- okay in for a generator which would abort in this case anyway.
-modifyModule' :: Module -> StateT Module (Either String) () -> Module
-modifyModule' m action = case modifyModule m action of
+moduleModify' :: Module -> StateT Module (Either String) () -> Module
+moduleModify' m action = case moduleModify m action of
   Left errorMsg ->
     error $ concat
-    ["modifyModule' failed to modify ", show m, ": ", errorMsg]
+    ["moduleModify' failed to modify ", show m, ": ", errorMsg]
   Right m' -> m'
 
 -- | Replaces a module's 'moduleHppPath'.
-setModuleHppPath :: MonadState Module m => String -> m ()
-setModuleHppPath path = modify $ \m -> m { moduleHppPath = path }
+moduleSetHppPath :: MonadState Module m => String -> m ()
+moduleSetHppPath path = modify $ \m -> m { moduleHppPath = path }
 
 -- | Replaces a module's 'moduleCppPath'.
-setModuleCppPath :: MonadState Module m => String -> m ()
-setModuleCppPath path = modify $ \m -> m { moduleCppPath = path }
+moduleSetCppPath :: MonadState Module m => String -> m ()
+moduleSetCppPath path = modify $ \m -> m { moduleCppPath = path }
 
 -- | Adds exports to a module.  An export must only be added to any module at
 -- most once, and must not be added to multiple modules.
-addModuleExports :: (MonadError String m, MonadState Module m) => [Export] -> m ()
-addModuleExports exports = do
+moduleAddExports :: (MonadError String m, MonadState Module m) => [Export] -> m ()
+moduleAddExports exports = do
   m <- get
   let existingExports = moduleExports m
       newExports = M.fromList $ map (exportExtName &&& id) exports
@@ -358,19 +358,19 @@ addModuleExports exports = do
   if S.null duplicateNames
     then modify $ \m -> m { moduleExports = existingExports `mappend` newExports }
     else throwError $ concat
-         ["addModuleExports: ", show m, " defines external names multiple times: ",
+         ["moduleAddExports: ", show m, " defines external names multiple times: ",
           show duplicateNames]
 
 -- | Changes a module's 'moduleHaskellName' from the default.  This can only be
 -- called once on a module.
-addModuleHaskellName :: (MonadError String m, MonadState Module m) => [String] -> m ()
-addModuleHaskellName name = do
+moduleAddHaskellName :: (MonadError String m, MonadState Module m) => [String] -> m ()
+moduleAddHaskellName name = do
   m <- get
   case moduleHaskellName m of
     Nothing -> modify $ \m -> m { moduleHaskellName = Just name }
     Just name' ->
       throwError $ concat
-      ["addModuleHaskellName: ", show m, " already has Haskell name ",
+      ["moduleAddHaskellName: ", show m, " already has Haskell name ",
        show name', "; trying to add name ", show name, "."]
 
 -- | A set of requirements of needed to use an identifier in C++ (function,

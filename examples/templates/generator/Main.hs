@@ -52,8 +52,8 @@ modules = [mod_std, instancesModule]
 
 instancesModule :: Module
 instancesModule =
-  modifyModule' (makeModule "instances" "instances.hpp" "instances.cpp") $
-  addModuleExports
+  moduleModify' (makeModule "instances" "instances.hpp" "instances.cpp") $
+  moduleAddExports
   [ ExportClass c_vector_string
   ]
 

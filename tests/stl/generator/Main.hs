@@ -55,8 +55,8 @@ modules = [mod_std, testModule]
 
 testModule :: Module
 testModule =
-  modifyModule' (makeModule "stl" "stl.hpp" "stl.cpp") $
-  addModuleExports $
+  moduleModify' (makeModule "stl" "stl.hpp" "stl.cpp") $
+  moduleAddExports $
   concat
   [ [ ExportClass c_IntBox
     , ExportClass c_IntBoxComparable

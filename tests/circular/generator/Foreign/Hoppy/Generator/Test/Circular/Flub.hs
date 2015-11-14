@@ -29,8 +29,8 @@ import {-# SOURCE #-} Foreign.Hoppy.Generator.Test.Circular.Flob
 flubModule :: Module
 flubModule =
   addReqIncludes [includeLocal "flub.hpp"] $
-  modifyModule' (makeModule "flub" "flubm.hpp" "flubm.cpp") $
-  addModuleExports
+  moduleModify' (makeModule "flub" "flubm.hpp" "flubm.cpp") $
+  moduleAddExports
   [ ExportVariable v_FlubVar
   , ExportVariable v_FlubVarConst
   , ExportEnum e_FlubEnum

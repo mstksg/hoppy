@@ -50,8 +50,8 @@ modules = [testModule]
 
 testModule :: Module
 testModule =
-  modifyModule' (makeModule "basic" "basic.hpp" "basic.cpp") $
-  addModuleExports
+  moduleModify' (makeModule "basic" "basic.hpp" "basic.cpp") $
+  moduleAddExports
   [ -- Is this thing on?
     ExportClass c_IntBox
   , ExportClass c_PtrCtr

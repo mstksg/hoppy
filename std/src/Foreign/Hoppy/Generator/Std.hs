@@ -40,6 +40,6 @@ data ValueConversion =
 
 -- | Include @std::string@.
 mod_std :: Module
-mod_std = modifyModule' (makeModule "std" "std.hpp" "std.cpp") $
-  addModuleExports
+mod_std = moduleModify' (makeModule "std" "std.hpp" "std.cpp") $
+  moduleAddExports
   [ ExportClass c_string ]
