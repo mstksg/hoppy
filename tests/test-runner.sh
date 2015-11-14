@@ -46,12 +46,6 @@ if $doBuild; then
 
     # Build the generator and its dependencies.
     set -x
-    cd "$suiteRoot/../../generator"
-    cabal build
-    cd "$suiteRoot/../../std"
-    cabal build
-    cd "$suiteRoot/../../runtime"
-    cabal build
     cd "$suiteRoot/hs"
     cabal sandbox delete
     cabal sandbox init
