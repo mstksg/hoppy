@@ -35,7 +35,7 @@ data ValueConversion =
   | ConvertValue
     -- ^ A C++ value of type @t@ will convert to a foreign value of type @t@.
     -- For an object type ('TObj'), the class must have conversions
-    -- ('ClassConversions').
+    -- ('ClassConversion').
   deriving (Bounded, Enum, Eq, Ord, Show)
 
 -- | Include @std::string@.

@@ -36,7 +36,7 @@ c_string :: Class
 c_string =
   addReqIncludes [includeStd "string"] $
   classAddFeatures [Assignable, Comparable, Copyable, Equatable] $
-  classModifyConversions
+  classModifyConversion
   (\c -> c { classHaskellConversion =
              Just ClassHaskellConversion
              { classHaskellConversionType = do

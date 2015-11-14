@@ -706,7 +706,7 @@ sayExportClassHsClass doDecls cls cst = do
       indent $ saysLn [hsWithValuePtrName, " = HoppyP.flip ($) . ", hsCastMethodName]
 
     -- When the class has a native Haskell type, also print an instance for it.
-    forM_ (classHaskellConversion $ classConversions cls) $ \conv -> do
+    forM_ (classHaskellConversion $ classConversion cls) $ \conv -> do
       hsType <- classHaskellConversionType conv
       ln
       saysLn ["#if MIN_VERSION_base(4,8,0)"]
@@ -916,7 +916,7 @@ sayExportClassHsSpecialFns mode cls = do
 
   -- Say Encodable and Decodable instances, if the class is encodable and
   -- decodable.
-  forM_ (classHaskellConversion $ classConversions cls) $ \conv -> do
+  forM_ (classHaskellConversion $ classConversion cls) $ \conv -> do
     hsType <- classHaskellConversionType conv
     let hsTypeStr = concat ["(", prettyPrint hsType, ")"]
     case mode of

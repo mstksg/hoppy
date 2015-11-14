@@ -218,7 +218,7 @@ renderImports = map renderModuleImport . M.assocs . getHsImportSet
 --
 -- > "$problem; $context; $moreContext; $evenMoreContext."
 --
--- For example, "Class Foo is not convertible (use classModifyConversions);
+-- For example, "Class Foo is not convertible (use classModifyConversion);
 -- generating function bar; in module baz.".
 --
 -- The main error message given to 'throwError' should be capitalized and should
@@ -628,7 +628,7 @@ cppTypeToHsTypeAndUse side t =
     TObj cls -> case side of
       HsCSide -> cppTypeToHsTypeAndUse side $ TPtr $ TConst t
       HsHsSide ->
-        case classHaskellConversionType <$> classHaskellConversion (classConversions cls) of
+        case classHaskellConversionType <$> classHaskellConversion (classConversion cls) of
           Nothing ->
             throwError $ concat
             ["Expected a Haskell type for ", show cls, " but there isn't one"]

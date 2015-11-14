@@ -128,7 +128,7 @@ testModule =
 c_IntBox :: Class
 c_IntBox =
   addReqIncludes [includeLocal "intbox.hpp"] $
-  classModifyConversions
+  classModifyConversion
   (\c -> c { classHaskellConversion = Just ClassHaskellConversion
              { classHaskellConversionType = do
                addImports $ hsWholeModuleImport "Foreign.Hoppy.Test.Basic.HsBox"

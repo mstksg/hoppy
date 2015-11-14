@@ -99,7 +99,7 @@ module Foreign.Hoppy.Generator.Spec (
   Function, makeFn, fnCName, fnExtName, fnPurity, fnParams, fnReturn, fnUseReqs,
   -- ** Classes
   Class, makeClass, classIdentifier, classExtName, classSuperclasses, classCtors, classMethods,
-  classConversions, classUseReqs, classAddCtors, classAddMethods,
+  classConversion, classUseReqs, classAddCtors, classAddMethods,
   HasClassyExtName (..),
   Ctor, makeCtor, mkCtor, ctorExtName, ctorParams,
   Method,
@@ -113,10 +113,10 @@ module Foreign.Hoppy.Generator.Spec (
   mkProps, mkProp, mkStaticProp, mkBoolIsProp, mkBoolHasProp,
   methodImpl, methodExtName, methodApplicability, methodPurity, methodParams,
   methodReturn, methodConst, methodStatic,
-  -- *** Conversions to and from foreign values
-  ClassConversions (..),
-  classConversionsNone,
-  classModifyConversions,
+  -- *** Conversion to and from foreign values
+  ClassConversion (..),
+  classConversionNone,
+  classModifyConversion,
   ClassHaskellConversion (..),
   -- ** Callbacks
   Callback, makeCallback, callbackExtName, callbackParams, callbackReturn, callbackUseReqs,
@@ -780,7 +780,7 @@ data Type =
   | TObjToHeap Class
     -- ^ A special case of 'TObj' that is only allowed when passing values from
     -- C++ to a foreign language.  Rather than looking at the object's
-    -- 'ClassConversions', the object will be copied to the heap, and a pointer
+    -- 'ClassConversion', the object will be copied to the heap, and a pointer
     -- to the new object will be passed.  The object must be copy-constructable.
     --
     -- __The foreign language owns the pointer, even for callback arguments.__
@@ -1088,7 +1088,7 @@ data Class = Class
     -- ^ The class's constructors.
   , classMethods :: [Method]
     -- ^ The class's methods.
-  , classConversions :: ClassConversions
+  , classConversion :: ClassConversion
     -- ^ Behaviour for converting objects to and from foriegn values.
   , classUseReqs :: Reqs
     -- ^ Requirements for a 'Type' to reference this class.
@@ -1126,7 +1126,7 @@ makeClass identifier maybeExtName supers ctors methods = Class
   , classSuperclasses = supers
   , classCtors = ctors
   , classMethods = methods
-  , classConversions = classConversionsNone
+  , classConversion = classConversionNone
   , classUseReqs = mempty
   , classAddendum = mempty
   }
@@ -1162,18 +1162,18 @@ classAddMethods methods cls =
 -- In foreign code, foreign values can be explicitly converted to new C++ (heap)
 -- objects, and C++ object pointers can be explicitly converted to foreign
 -- values, via special functions generated for the class.
-data ClassConversions = ClassConversions
+data ClassConversion = ClassConversion
   { classHaskellConversion :: Maybe ClassHaskellConversion
     -- ^ Conversions to and from Haskell.
   }
 
 -- | Encoding parameters for a class that is not encodable or decodable.
-classConversionsNone :: ClassConversions
-classConversionsNone = ClassConversions Nothing
+classConversionNone :: ClassConversion
+classConversionNone = ClassConversion Nothing
 
 -- | Modifies classes' 'ClassEncoding' structures with a given function.
-classModifyConversions :: (ClassConversions -> ClassConversions) -> Class -> Class
-classModifyConversions f cls = cls { classConversions = f $ classConversions cls }
+classModifyConversion :: (ClassConversion -> ClassConversion) -> Class -> Class
+classModifyConversion f cls = cls { classConversion = f $ classConversion cls }
 
 -- | Controls how conversions between C++ objects and Haskell values happen in
 -- Haskell bindings.

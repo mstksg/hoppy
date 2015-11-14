@@ -194,7 +194,7 @@ by-value object).  When an object is taken or returned by value, this typically
 indicates a lightweight object that is easy to copy, so Hoppy will convert the
 object to a native Haskell object specified in the class's binding definition.
 Using an object type directly is only allowed if a native Haskell type is
-defined.  See 'ClassConversions' for more on object conversions.
+defined.  See 'ClassConversion' for more on object conversions.
 
 -}
 {- $generators
