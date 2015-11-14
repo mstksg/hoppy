@@ -350,6 +350,10 @@ sayExportFn mode name methodInfo purity paramTypes retType =
       hsHsType <- fnToHsTypeAndUse HsHsSide methodInfo purity paramTypes retType
       saysLn [hsFnName, " :: ", prettyPrint hsHsType]
 
+      case purity of
+        Nonpure -> return ()
+        Pure -> saysLn ["{-# NOINLINE ", hsFnName, " #-}"]
+
       -- Print the function body.
       let argNames = map toArgName [1..length paramTypes]
           argNamesWithThis = (if isJust methodInfo then ("this":) else id) argNames
