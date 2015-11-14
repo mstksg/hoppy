@@ -21,27 +21,27 @@
 # current directory.  Should be sourced by run-test.sh scripts in test
 # directories.  Normally cleans output files after a successful test run.  Can
 # be given the argument "clean" to only clean test outputs without building, and
-# the environment variables "doBuild" and "doClean" can be set to "true" or
-# "false" to control script behaviour (both default to true).
+# the environment variables "doBuild" and "doClean" can be set to non-empty
+# (true) or empty (false) to control script behaviour (both default to true).
 
 # Bash strict mode.
 set -euo pipefail
 
 if test "${1:-}" = clean; then
-    doBuild=false
-    doClean=true
+    doBuild=
+    doClean=y
 fi
 
 declare -r suiteRoot=$PWD
 declare -r suite=$(basename "$suiteRoot")
-declare -r doBuild=${doBuild:-true}
-declare -r doClean=${doClean:-true}
+declare -r doBuild=${doBuild-y}
+declare -r doClean=${doClean-y}
 
 # This variable may be set in individual run-test.sh files to specify additional
 # build outputs to clean up.
 declare -r filesToClean=${filesToClean:-}
 
-if $doBuild; then
+if test -n "$doBuild"; then
     echo "Running tests in $suite."
 
     # Build the generator and its dependencies.
@@ -68,7 +68,7 @@ if $doBuild; then
 fi
 
 # Optionally, and on success, clean up after ourselves.
-if $doClean; then
+if test -n "$doClean"; then
     echo "Cleaning tests in $suite."
     cd hs
     set +e
