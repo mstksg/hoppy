@@ -164,6 +164,7 @@ sayExport sayBody export = case export of
   ExportClass cls -> when sayBody $ do
     let clsPtr = TPtr $ TObj cls
         justClsPtr = Just clsPtr
+    -- TODO Is this redundant for a completely empty class?  (No ctors or methods, private dtor.)
     addReqs $ classUseReqs cls  -- This is needed at least for the delete function.
 
     -- Export each of the class's constructors.
@@ -176,10 +177,11 @@ sayExport sayBody export = case export of
                   sayBody
 
     -- Export a delete function for the class.
-    sayFunction (classDeleteFnCppName cls)
-                ["self"]
-                (TFn [TPtr $ TConst $ TObj cls] TVoid) $
-      Just $ say "delete self;\n"
+    when (classDtorIsPublic cls) $
+      sayFunction (classDeleteFnCppName cls)
+                  ["self"]
+                  (TFn [TPtr $ TConst $ TObj cls] TVoid) $
+        Just $ say "delete self;\n"
 
     -- Export each of the class's methods.
     forM_ (classMethods cls) $ \method -> do

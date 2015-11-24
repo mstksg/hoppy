@@ -24,6 +24,7 @@ module Foreign.Hoppy.Runtime (
   coerceIntegral,
   -- * Objects
   CppPtr (..),
+  Deletable (..),
   Assignable (..),
   Encodable (..),
   encodeAs,
@@ -92,13 +93,16 @@ coerceIntegral a =
           show (typeOf b) ++ " is not idempotent for value " ++ show a ++ "."
 
 -- | An instance of this class represents a pointer to a C++ object.  All C++
--- classes bound by Hoppy have subclasses of @CppPtr@.
+-- classes bound by Hoppy have instances of @CppPtr@.
 class CppPtr this where
-  -- | Deletes the object with the C++ @delete@ operator.
-  delete :: this -> IO ()
-
   -- | Converts to a regular pointer.
   toPtr :: this -> Ptr this
+
+-- | C++ values that can be deleted.  All C++ classes bound by Hoppy have
+-- instances of @Deletable@.
+class Deletable this where
+  -- | Deletes the object with the C++ @delete@ operator.
+  delete :: this -> IO ()
 
 -- | A typeclass for references to C++ values that can be assigned to.  This
 -- includes raw pointers ('Ptr'), as well as pointers to object types that have
@@ -172,7 +176,7 @@ instance Decodable (Ptr (Ptr a)) (Ptr a) where decode = peek
 
 -- | Decodes a C++ object to a Haskell value with 'decode', releases the
 -- original object with 'delete', then returns the Haskell value.
-decodeAndDelete :: (CppPtr cppPtrType, Decodable cppPtrType hsType)
+decodeAndDelete :: (Deletable cppPtrType, Decodable cppPtrType hsType)
                 => cppPtrType -> IO hsType
 decodeAndDelete ptr = do
   result <- decode ptr
@@ -181,13 +185,13 @@ decodeAndDelete ptr = do
 
 -- | Temporarily encodes the Haskell value into a C++ object and passes it to
 -- the given function.  When the function finishes, the C++ object is deleted.
-withCppObj :: (CppPtr cppPtrType, Encodable cppPtrType hsType)
+withCppObj :: (Deletable cppPtrType, Encodable cppPtrType hsType)
            => hsType -> (cppPtrType -> IO a) -> IO a
 withCppObj x = bracket (encode x) delete
 
 -- | @withScopedPtr m f@ runs @m@ to get a pointer, which is given to @f@ to
 -- execute.  When @f@ finishes, the pointer is deleted.
-withScopedPtr :: CppPtr cppPtrType => IO cppPtrType -> (cppPtrType -> IO a) -> IO a
+withScopedPtr :: Deletable cppPtrType => IO cppPtrType -> (cppPtrType -> IO a) -> IO a
 withScopedPtr p = bracket p delete
 
 -- | Containers whose contents can be convered to a list.

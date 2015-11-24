@@ -772,13 +772,17 @@ sayExportClassHsType doDecls cls cst = do
   ln
   if doDecls
     then do saysLn ["instance HoppyFHR.CppPtr ", hsTypeName, " where"]
-            saysLn ["  toPtr (", hsTypeName, " ptr) = ptr"]
-            deleteTail <- case cst of
-              Const -> return []
-              Nonconst -> do addImports $ hsImport1 "Prelude" "(.)"
-                             return [" . ", toHsCastMethodName Const cls]
-            saysLn $ "  delete = " : toHsClassDeleteFnName cls : deleteTail
-    else saysLn ["instance HoppyFHR.CppPtr ", hsTypeName]
+            indent $ saysLn ["toPtr (", hsTypeName, " ptr) = ptr"]
+            when (classDtorIsPublic cls) $ do
+              ln
+              deleteTail <- case cst of
+                Const -> return []
+                Nonconst -> do addImports $ hsImport1 "Prelude" "(.)"
+                               return [" . ", toHsCastMethodName Const cls]
+              saysLn ["instance HoppyFHR.Deletable ", hsTypeName, " where"]
+              indent $ saysLn $ "delete = " : toHsClassDeleteFnName cls : deleteTail
+    else do saysLn ["instance HoppyFHR.CppPtr ", hsTypeName]
+            saysLn ["instance HoppyFHR.Deletable ", hsTypeName]
 
   -- Generate instances for all superclasses' typeclasses.
   genInstances [] cls
@@ -861,7 +865,7 @@ sayExportClassHsSpecialFns mode cls = do
 
   -- Say the delete function.
   case mode of
-    SayExportForeignImports -> do
+    SayExportForeignImports -> when (classDtorIsPublic cls) $ do
       addImports hsImportForPrelude
       saysLn ["foreign import ccall \"", classDeleteFnCppName cls, "\" ",
               toHsClassDeleteFnName cls, " :: ", toHsDataTypeName Const cls,

@@ -98,8 +98,8 @@ module Foreign.Hoppy.Generator.Spec (
   Purity (..),
   Function, makeFn, fnCName, fnExtName, fnPurity, fnParams, fnReturn, fnUseReqs,
   -- ** Classes
-  Class, makeClass, classIdentifier, classExtName, classSuperclasses, classCtors, classMethods,
-  classConversion, classUseReqs, classAddCtors, classAddMethods,
+  Class, makeClass, classIdentifier, classExtName, classSuperclasses, classCtors, classDtorIsPublic,
+  classMethods, classConversion, classUseReqs, classAddCtors, classSetDtorPrivate, classAddMethods,
   HasClassyExtName (..),
   Ctor, makeCtor, mkCtor, ctorExtName, ctorParams,
   Method,
@@ -1086,6 +1086,8 @@ data Class = Class
     -- ^ The class's public superclasses.
   , classCtors :: [Ctor]
     -- ^ The class's constructors.
+  , classDtorIsPublic :: Bool
+    -- ^ Whether the class's destructor has public visibility.
   , classMethods :: [Method]
     -- ^ The class's methods.
   , classConversion :: ClassConversion
@@ -1125,6 +1127,7 @@ makeClass identifier maybeExtName supers ctors methods = Class
   , classExtName = extNameOrIdentifier identifier maybeExtName
   , classSuperclasses = supers
   , classCtors = ctors
+  , classDtorIsPublic = True
   , classMethods = methods
   , classConversion = classConversionNone
   , classUseReqs = mempty
@@ -1135,6 +1138,11 @@ makeClass identifier maybeExtName supers ctors methods = Class
 classAddCtors :: [Ctor] -> Class -> Class
 classAddCtors ctors cls =
   if null ctors then cls else cls { classCtors = classCtors cls ++ ctors }
+
+-- | Marks a class's destructor as private, so that a binding for it won't be
+-- generated.
+classSetDtorPrivate :: Class -> Class
+classSetDtorPrivate cls = cls { classDtorIsPublic = False }
 
 -- | Adds methods to a class.
 classAddMethods :: [Method] -> Class -> Class
