@@ -79,7 +79,7 @@ module Foreign.Hoppy.Documentation.UsersGuide (
 
 import Data.Bits (Bits)
 import Foreign.C (CInt)
-import Foreign.Hoppy.Generator.Language.Haskell.General
+import Foreign.Hoppy.Generator.Language.Haskell
 import Foreign.Hoppy.Generator.Main
 import Foreign.Hoppy.Generator.Spec
 import Foreign.Hoppy.Generator.Version

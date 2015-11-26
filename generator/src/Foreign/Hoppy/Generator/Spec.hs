@@ -165,7 +165,7 @@ import Data.Maybe (fromMaybe)
 import Data.Monoid (Monoid, mappend, mconcat, mempty)
 #endif
 import qualified Data.Set as S
-import {-# SOURCE #-} qualified Foreign.Hoppy.Generator.Language.Haskell.General as Haskell
+import {-# SOURCE #-} qualified Foreign.Hoppy.Generator.Language.Haskell as Haskell
 import Language.Haskell.Syntax (HsType)
 
 -- | Indicates strings that are error messages.

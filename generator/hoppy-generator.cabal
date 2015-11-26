@@ -14,8 +14,8 @@ cabal-version: >=1.10
 
 library
   exposed-modules:
-      Foreign.Hoppy.Generator.Language.Cpp.General
-    , Foreign.Hoppy.Generator.Language.Haskell.General
+      Foreign.Hoppy.Generator.Language.Cpp
+    , Foreign.Hoppy.Generator.Language.Haskell
     , Foreign.Hoppy.Generator.Main
     , Foreign.Hoppy.Generator.Spec
     , Foreign.Hoppy.Generator.Spec.ClassFeature
@@ -23,8 +23,8 @@ library
   other-modules:
       Foreign.Hoppy.Generator.Common
     , Foreign.Hoppy.Generator.Common.Consume
-    , Foreign.Hoppy.Generator.Language.Cpp
-    , Foreign.Hoppy.Generator.Language.Haskell
+    , Foreign.Hoppy.Generator.Language.Cpp.Internal
+    , Foreign.Hoppy.Generator.Language.Haskell.Internal
   default-extensions:
       FlexibleContexts
     , FlexibleInstances

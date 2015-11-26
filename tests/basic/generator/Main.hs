@@ -18,7 +18,7 @@
 module Main (main) where
 
 import Foreign.Hoppy.Generator.Main (run)
-import Foreign.Hoppy.Generator.Language.Haskell.General (addImports, sayLn)
+import Foreign.Hoppy.Generator.Language.Haskell (addImports, sayLn)
 import Foreign.Hoppy.Generator.Spec
 import Language.Haskell.Syntax (
   HsName (HsIdent),

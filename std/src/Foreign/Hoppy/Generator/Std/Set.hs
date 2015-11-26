@@ -30,7 +30,7 @@ import Control.Monad (forM, when)
 #if !MIN_VERSION_base(4,8,0)
 import Data.Monoid (mconcat)
 #endif
-import Foreign.Hoppy.Generator.Language.Haskell.General (
+import Foreign.Hoppy.Generator.Language.Haskell (
   HsTypeSide (HsHsSide),
   addImports,
   cppTypeToHsTypeAndUse,

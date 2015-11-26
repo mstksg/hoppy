@@ -55,8 +55,8 @@ import qualified Data.Map as M
 import Data.Map (Map)
 import Data.Maybe (fromMaybe)
 import Foreign.Hoppy.Generator.Common (writeFileIfDifferent)
-import qualified Foreign.Hoppy.Generator.Language.Cpp as Cpp
-import qualified Foreign.Hoppy.Generator.Language.Haskell as Haskell
+import qualified Foreign.Hoppy.Generator.Language.Cpp.Internal as Cpp
+import qualified Foreign.Hoppy.Generator.Language.Haskell.Internal as Haskell
 import Foreign.Hoppy.Generator.Spec
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist)
 import System.Exit (exitFailure, exitSuccess)

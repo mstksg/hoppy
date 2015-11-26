@@ -17,7 +17,7 @@
 
 {-# LANGUAGE CPP #-}
 
-module Foreign.Hoppy.Generator.Language.Haskell.General (
+module Foreign.Hoppy.Generator.Language.Haskell (
   Generator,
   Output,
   prettyPrint,
