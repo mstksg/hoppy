@@ -92,7 +92,7 @@ instantiate' vectorName t tReqs opts =
         (case optValueConversion opts of
            Nothing -> id
            Just conversion -> addAddendumHaskell $ makeAddendum conversion) $
-        addUseReqs reqs $
+        addReqs reqs $
         classAddFeatures (Assignable : Copyable : optVectorClassFeatures opts) $
         makeClass (ident1T "std" "vector" [t]) (Just $ toExtName vectorName) []
         [ mkCtor "new" []
@@ -128,13 +128,13 @@ instantiate' vectorName t tReqs opts =
         ]
 
       iterator =
-        addUseReqs reqs $
+        addReqs reqs $
         makeRandomIterator Mutable (Just t) TPtrdiff $
         makeClass (identT' [("std", Nothing), ("vector", Just [t]), ("iterator", Nothing)])
         (Just $ toExtName iteratorName) [] [] []
 
       constIterator =
-        addUseReqs reqs $
+        addReqs reqs $
         makeRandomIterator Constant (Just t) TPtrdiff $
         makeClass (identT' [("std", Nothing), ("vector", Just [t]), ("const_iterator", Nothing)])
         (Just $ toExtName constIteratorName) []

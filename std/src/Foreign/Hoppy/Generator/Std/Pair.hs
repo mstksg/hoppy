@@ -69,7 +69,7 @@ instantiate' pairName a b userReqs opts =
              ]
 
       pair =
-        addUseReqs reqs $
+        addReqs reqs $
         classAddFeatures (Assignable : Copyable : optPairClassFeatures opts) $
         makeClass (ident1T "std" "pair" [a, b]) (Just $ toExtName pairName) []
         [ mkCtor "new" []

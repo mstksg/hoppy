@@ -93,7 +93,7 @@ instantiate' setName t tReqs opts =
         (case optValueConversion opts of
            Nothing -> id
            Just conversion -> addAddendumHaskell $ makeAddendum conversion) $
-        addUseReqs reqs $
+        addReqs reqs $
         classAddFeatures (Assignable : Comparable : Copyable : optSetClassFeatures opts) $
         makeClass (ident1T "std" "set" [t]) (Just $ toExtName setName) []
         [ mkCtor "new" []
@@ -122,7 +122,7 @@ instantiate' setName t tReqs opts =
       -- Set iterators are always constant, because modifying elements in place
       -- will break the internal order of the set.
       iterator =
-        addUseReqs reqs $
+        addReqs reqs $
         makeBidirectionalIterator Constant (Just t) $
         makeClass (identT' [("std", Nothing), ("set", Just [t]), ("iterator", Nothing)])
         (Just $ toExtName iteratorName) [] [] []

@@ -59,8 +59,9 @@ addIncludes = lift . lift . tell . S.fromList
 addInclude :: Include -> Generator ()
 addInclude = addIncludes . (:[])
 
-addReqs :: Reqs -> Generator ()
-addReqs = lift . lift . tell . reqsIncludes
+-- Have to call this addReqsM, addReqs is taken by HasReqs.
+addReqsM :: Reqs -> Generator ()
+addReqsM = lift . lift . tell . reqsIncludes
 
 askInterface :: MonadReader Env m => m Interface
 askInterface = liftM envInterface ask
@@ -131,7 +132,7 @@ generate interface =
 sayModuleHeader :: Generator ()
 sayModuleHeader = do
   m <- askModule
-  addReqs $ moduleReqs m
+  addReqsM $ moduleReqs m
   mapM_ (sayExport False) $ M.elems $ moduleExports m
 
 sayModuleSource :: Generator ()
@@ -151,7 +152,7 @@ sayExport sayBody export = case export of
   ExportFn fn ->
     -- Export a single function.
     when sayBody $ do
-      addReqs $ fnUseReqs fn
+      addReqsM $ fnReqs fn
       sayExportFn (fnExtName fn)
                   (case fnCName fn of
                      FnName identifier -> CallFn $ sayIdentifier identifier
@@ -165,7 +166,7 @@ sayExport sayBody export = case export of
     let clsPtr = TPtr $ TObj cls
         justClsPtr = Just clsPtr
     -- TODO Is this redundant for a completely empty class?  (No ctors or methods, private dtor.)
-    addReqs $ classUseReqs cls  -- This is needed at least for the delete function.
+    addReqsM $ classReqs cls  -- This is needed at least for the delete function.
 
     -- Export each of the class's constructors.
     forM_ (classCtors cls) $ \ctor ->
@@ -213,7 +214,7 @@ sayExport sayBody export = case export of
 
   ExportCallback cb -> do
     -- Need <memory> for std::shared_ptr.
-    addReqs $ callbackUseReqs cb `mappend` reqInclude (includeStd "memory")
+    addReqsM $ callbackReqs cb `mappend` reqInclude (includeStd "memory")
     sayExportCallback sayBody cb
 
   where genUpcastFns :: Class -> Class -> Generator ()
@@ -267,7 +268,7 @@ sayExportFn extName callType maybeThisType paramTypes retType sayBody = do
       retCTypeMaybe = typeToCType retType
       retCType = fromMaybe retType retCTypeMaybe
 
-  addReqs . mconcat =<< mapM typeUseReqs (retType:paramTypes)
+  addReqsM . mconcat =<< mapM typeReqs (retType:paramTypes)
 
   sayFunction (externalNameToCpp extName)
               (maybe id (const ("self":)) maybeThisType $
@@ -316,7 +317,7 @@ sayExportFn extName callType maybeThisType paramTypes retType sayBody = do
         (TVoid, Nothing) -> sayCall >> say ";\n"
         (_, Nothing) -> say "return " >> sayCall >> say ";\n"
         (TBitspace b, Just _) -> do
-          addReqs $ bitspaceUseReqs b
+          addReqsM $ bitspaceReqs b
           let convFn = bitspaceFromCppValueFn b
           say "return "
           forM_ convFn $ \f -> says [f, "("]
@@ -344,7 +345,7 @@ sayArgRead dir (n, stripConst . normalizeType -> cppType, maybeCType) = case cpp
                                  ["sayArgRead: Expected ", show b,
                                   " to have a C++ type, but it doesn't."]) $
                       bitspaceCppTypeIdentifier b
-      addReqs $ bitspaceUseReqs b
+      addReqsM $ bitspaceReqs b
       case dir of
         -- Convert from cType to cppType.
         DoDecode -> do
@@ -416,7 +417,7 @@ sayExportCallback sayBody cb = do
   let paramCTypes = zipWith fromMaybe paramTypes $ map typeToCType paramTypes
       retCType = fromMaybe retType $ typeToCType retType
 
-  addReqs . mconcat =<< mapM typeUseReqs (retType:paramTypes)
+  addReqsM . mconcat =<< mapM typeReqs (retType:paramTypes)
 
   let fnCType = TFn paramCTypes retCType
       fnPtrCType = TPtr fnCType
@@ -486,7 +487,7 @@ sayExportCallback sayBody cb = do
           (TVoid, Nothing) -> sayCall >> say ";\n"
           (_, Nothing) -> say "return " >> sayCall >> say ";\n"
           (TBitspace b, Just _) -> do
-            addReqs $ bitspaceUseReqs b
+            addReqsM $ bitspaceReqs b
             let convFn = bitspaceToCppValueFn b
             say "return "
             forM_ convFn $ \f -> says [f, "("]
@@ -542,8 +543,8 @@ typeToCType t = case t of
   TConst t' -> typeToCType t'
   _ -> Nothing
 
-typeUseReqs :: Type -> Generator Reqs
-typeUseReqs t = case t of
+typeReqs :: Type -> Generator Reqs
+typeReqs t = case t of
   TVoid -> return mempty
   TBool -> return mempty
   TChar -> return mempty
@@ -561,22 +562,22 @@ typeUseReqs t = case t of
   TPtrdiff -> return cstddefReqs
   TSize -> return cstddefReqs
   TSSize -> return cstddefReqs
-  TEnum e -> return $ enumUseReqs e
-  TBitspace b -> typeUseReqs $ bitspaceType b
-  TPtr t' -> typeUseReqs t'
-  TRef t' -> typeUseReqs t'
+  TEnum e -> return $ enumReqs e
+  TBitspace b -> typeReqs $ bitspaceType b
+  TPtr t' -> typeReqs t'
+  TRef t' -> typeReqs t'
   TFn paramTypes retType ->
     -- TODO Is the right 'ReqsType' being used recursively here?
-    mconcat <$> mapM typeUseReqs (retType:paramTypes)
+    mconcat <$> mapM typeReqs (retType:paramTypes)
   TCallback cb -> do
     cbClassReqs <- reqInclude . includeLocal . moduleHppPath <$>
                    findExportModule (callbackExtName cb)
     -- TODO Is the right 'ReqsType' being used recursively here?
-    fnTypeReqs <- typeUseReqs $ callbackToTFn cb
+    fnTypeReqs <- typeReqs $ callbackToTFn cb
     return $ cbClassReqs `mappend` fnTypeReqs
-  TObj cls -> return $ classUseReqs cls
-  TObjToHeap cls -> return $ classUseReqs cls
-  TConst t' -> typeUseReqs t'
+  TObj cls -> return $ classReqs cls
+  TObjToHeap cls -> return $ classReqs cls
+  TConst t' -> typeReqs t'
 
 cstddefReqs :: Reqs
 cstddefReqs = reqInclude $ includeStd "cstddef"

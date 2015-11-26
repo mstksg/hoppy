@@ -87,7 +87,7 @@ intBoxReqs = reqInclude intBoxInclude
 -- isn't relying on its value type being encodable.
 c_IntBox :: Class
 c_IntBox =
-  addUseReqs intBoxReqs $
+  addReqs intBoxReqs $
   classAddFeatures [Assignable, Copyable] $
   makeClass (ident "IntBox") Nothing []
   [ mkCtor "new" []
@@ -99,13 +99,13 @@ c_IntBox =
 
 c_IntBoxComparable :: Class
 c_IntBoxComparable =
-  addUseReqs intBoxReqs $
+  addReqs intBoxReqs $
   classAddFeatures [Assignable, Comparable, Copyable] $
   makeClass (ident "IntBoxComparable") Nothing [c_IntBox] [] []
 
 c_IntBoxEquatable :: Class
 c_IntBoxEquatable =
-  addUseReqs intBoxReqs $
+  addReqs intBoxReqs $
   classAddFeatures [Assignable, Copyable, Equatable] $
   makeClass (ident "IntBoxEquatable") Nothing [c_IntBox] [] []
 

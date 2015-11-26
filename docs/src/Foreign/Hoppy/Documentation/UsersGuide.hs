@@ -177,8 +177,7 @@ characters).
 
 C++ bindings for exportable things usually need @#include@s in order to access
 those things.  This is done with 'Include' and 'Reqs'.  All exportable things
-have an instance of 'HasUseReqs' and 'addReqIncludes' can be used to add
-includes.
+have an instance of 'HasReqs' and 'addReqIncludes' can be used to add includes.
 
 C++ identifiers are represented by the 'Identifier' data type and support basic
 template syntax (no metaprogramming).

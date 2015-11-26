@@ -91,7 +91,7 @@ instantiate' listName t tReqs opts =
         (case optValueConversion opts of
            Nothing -> id
            Just conversion -> addAddendumHaskell $ makeAddendum conversion) $
-        addUseReqs reqs $
+        addReqs reqs $
         classAddFeatures features $
         makeClass (ident1T "std" "list" [t]) (Just $ toExtName listName) []
         [ mkCtor "new" []
@@ -138,13 +138,13 @@ instantiate' listName t tReqs opts =
         ]
 
       iterator =
-        addUseReqs reqs $
+        addReqs reqs $
         makeBidirectionalIterator Mutable (Just t) $
         makeClass (identT' [("std", Nothing), ("list", Just [t]), ("iterator", Nothing)])
         (Just $ toExtName iteratorName) [] [] []
 
       constIterator =
-        addUseReqs reqs $
+        addReqs reqs $
         makeBidirectionalIterator Constant (Just t) $
         makeClass (identT' [("std", Nothing), ("list", Just [t]), ("const_iterator", Nothing)])
         (Just $ toExtName constIteratorName)

@@ -58,8 +58,8 @@ module Foreign.Hoppy.Generator.Spec (
   Reqs,
   reqsIncludes,
   reqInclude,
-  HasUseReqs (..),
-  addUseReqs,
+  HasReqs (..),
+  addReqs,
   addReqIncludes,
   -- * Names and exports
   ExtName,
@@ -87,20 +87,20 @@ module Foreign.Hoppy.Generator.Spec (
   normalizeType,
   stripConst,
   -- ** Variables
-  Variable, makeVariable, varIdentifier, varExtName, varType, varUseReqs,
+  Variable, makeVariable, varIdentifier, varExtName, varType, varReqs,
   varIsConst, varGetterExtName, varSetterExtName,
   -- ** Enums
-  CppEnum, makeEnum, enumIdentifier, enumExtName, enumValueNames, enumUseReqs,
+  CppEnum, makeEnum, enumIdentifier, enumExtName, enumValueNames, enumReqs,
   -- ** Bitspaces
   Bitspace, makeBitspace, bitspaceExtName, bitspaceType, bitspaceValueNames, bitspaceEnum,
   bitspaceAddEnum, bitspaceCppTypeIdentifier, bitspaceFromCppValueFn, bitspaceToCppValueFn,
-  bitspaceAddCppType, bitspaceUseReqs,
+  bitspaceAddCppType, bitspaceReqs,
   -- ** Functions
   Purity (..),
-  Function, makeFn, fnCName, fnExtName, fnPurity, fnParams, fnReturn, fnUseReqs,
+  Function, makeFn, fnCName, fnExtName, fnPurity, fnParams, fnReturn, fnReqs,
   -- ** Classes
   Class, makeClass, classIdentifier, classExtName, classSuperclasses, classCtors, classDtorIsPublic,
-  classMethods, classConversion, classUseReqs, classAddCtors, classSetDtorPrivate, classAddMethods,
+  classMethods, classConversion, classReqs, classAddCtors, classSetDtorPrivate, classAddMethods,
   HasClassyExtName (..),
   Ctor, makeCtor, mkCtor, ctorExtName, ctorParams,
   Method,
@@ -120,7 +120,7 @@ module Foreign.Hoppy.Generator.Spec (
   classModifyConversion,
   ClassHaskellConversion (..),
   -- ** Callbacks
-  Callback, makeCallback, callbackExtName, callbackParams, callbackReturn, callbackUseReqs,
+  Callback, makeCallback, callbackExtName, callbackParams, callbackReturn, callbackReqs,
   callbackToTFn,
   -- * Addenda
   Addendum (..),
@@ -308,9 +308,9 @@ instance Ord Module where
 instance Show Module where
   show m = concat ["<Module ", moduleName m, ">"]
 
-instance HasUseReqs Module where
-  getUseReqs = moduleReqs
-  setUseReqs reqs m = m { moduleReqs = reqs }
+instance HasReqs Module where
+  getReqs = moduleReqs
+  setReqs reqs m = m { moduleReqs = reqs }
 
 -- | Creates an empty module, ready to be configured with 'moduleModify'.
 makeModule :: String  -- ^ 'moduleName'
@@ -395,28 +395,28 @@ reqInclude include = mempty { reqsIncludes = S.singleton include }
 
 -- | C++ types that have requirements in order to use them in generated
 -- bindings.
-class HasUseReqs a where
-  {-# MINIMAL getUseReqs, (setUseReqs | modifyUseReqs) #-}
+class HasReqs a where
+  {-# MINIMAL getReqs, (setReqs | modifyReqs) #-}
 
   -- | Returns an object's requirements.
-  getUseReqs :: a -> Reqs
+  getReqs :: a -> Reqs
 
   -- | Replaces an object's requirements with new ones.
-  setUseReqs :: Reqs -> a -> a
-  setUseReqs = modifyUseReqs . const
+  setReqs :: Reqs -> a -> a
+  setReqs = modifyReqs . const
 
   -- | Modifies an object's requirements.
-  modifyUseReqs :: (Reqs -> Reqs) -> a -> a
-  modifyUseReqs f x = setUseReqs (f $ getUseReqs x) x
+  modifyReqs :: (Reqs -> Reqs) -> a -> a
+  modifyReqs f x = setReqs (f $ getReqs x) x
 
 -- | Adds to a object's requirements.
-addUseReqs :: HasUseReqs a => Reqs -> a -> a
-addUseReqs reqs = modifyUseReqs $ mappend reqs
+addReqs :: HasReqs a => Reqs -> a -> a
+addReqs reqs = modifyReqs $ mappend reqs
 
 -- | Adds a list of includes to the requirements of an object.
-addReqIncludes :: HasUseReqs a => [Include] -> a -> a
+addReqIncludes :: HasReqs a => [Include] -> a -> a
 addReqIncludes includes =
-  modifyUseReqs $ mappend mempty { reqsIncludes = S.fromList includes }
+  modifyReqs $ mappend mempty { reqsIncludes = S.fromList includes }
 
 -- | An external name is a string that generated bindings use to uniquely
 -- identify an object at runtime.  An external name must start with an
@@ -840,7 +840,7 @@ data Variable = Variable
   , varType :: Type
     -- ^ The type of the variable.  This may be 'TConst' to indicate that the
     -- variable is read-only.
-  , varUseReqs :: Reqs
+  , varReqs :: Reqs
     -- ^ Requirements for bindings to use this variable.
   , varAddendum :: Addendum
     -- ^ The variable's addendum.
@@ -852,9 +852,9 @@ instance Eq Variable where
 instance Show Variable where
   show v = concat ["<Variable ", show (varExtName v), " ", show (varType v), ">"]
 
-instance HasUseReqs Variable where
-  getUseReqs = varUseReqs
-  setUseReqs reqs v = v { varUseReqs = reqs }
+instance HasReqs Variable where
+  getReqs = varReqs
+  setReqs reqs v = v { varReqs = reqs }
 
 instance HasAddendum Variable where
   getAddendum = varAddendum
@@ -891,7 +891,7 @@ data CppEnum = CppEnum
     -- ^ The numeric values and names of the enum values.  A single value's name
     -- is broken up into words.  How the words and ext name get combined to make
     -- a name in a particular foreign language depends on the language.
-  , enumUseReqs :: Reqs
+  , enumReqs :: Reqs
     -- ^ Requirements for a 'Type' to reference this enum.
   , enumAddendum :: Addendum
     -- ^ The enum's addendum.
@@ -903,9 +903,9 @@ instance Eq CppEnum where
 instance Show CppEnum where
   show e = concat ["<Enum ", show (enumExtName e), " ", show (enumIdentifier e), ">"]
 
-instance HasUseReqs CppEnum where
-  getUseReqs = enumUseReqs
-  setUseReqs reqs e = e { enumUseReqs = reqs }
+instance HasReqs CppEnum where
+  getReqs = enumReqs
+  setReqs reqs e = e { enumReqs = reqs }
 
 instance HasAddendum CppEnum where
   getAddendum = enumAddendum
@@ -956,7 +956,7 @@ data Bitspace = Bitspace
   , bitspaceFromCppValueFn :: Maybe String
     -- ^ The name of a C++ function to convert from the bitspace's C++ type to
     -- 'bitspaceType'.
-  , bitspaceUseReqs :: Reqs
+  , bitspaceReqs :: Reqs
     -- ^ Requirements for emitting the bindings for a bitspace, i.e. what's
     -- necessary to reference 'bitspaceCppTypeIdentifier',
     -- 'bitspaceFromCppValueFn', and 'bitspaceToCppValueFn'.  'bitspaceType' can
@@ -972,9 +972,9 @@ instance Eq Bitspace where
 instance Show Bitspace where
   show e = concat ["<Bitspace ", show (bitspaceExtName e), " ", show (bitspaceType e), ">"]
 
-instance HasUseReqs Bitspace where
-  getUseReqs = bitspaceUseReqs
-  setUseReqs reqs b = b { bitspaceUseReqs = reqs }
+instance HasReqs Bitspace where
+  getReqs = bitspaceReqs
+  setReqs reqs b = b { bitspaceReqs = reqs }
 
 instance HasAddendum Bitspace where
   getAddendum = bitspaceAddendum
@@ -1007,7 +1007,7 @@ bitspaceAddEnum enum bitspace = case bitspaceEnum bitspace of
 -- associates a C++ type (plus optional conversion functions) with a bitspace.
 -- At least one conversion should be specified, otherwise adding the C++ type
 -- will mean nothing.  You should also add use requirements to the bitspace for
--- all of these arguments; see 'HasUseReqs'.
+-- all of these arguments; see 'HasReqs'.
 bitspaceAddCppType :: Identifier -> Maybe String -> Maybe String -> Bitspace -> Bitspace
 bitspaceAddCppType cppTypeId toCppValueFnMaybe fromCppValueFnMaybe b =
   case bitspaceCppTypeIdentifier b of
@@ -1045,7 +1045,7 @@ data Function = Function
     -- ^ The function's parameter types.
   , fnReturn :: Type
     -- ^ The function's return type.
-  , fnUseReqs :: Reqs
+  , fnReqs :: Reqs
     -- ^ Requirements for a binding to call the function.
   , fnAddendum :: Addendum
     -- ^ The function's addendum.
@@ -1056,9 +1056,9 @@ instance Show Function where
     concat ["<Function ", show (fnExtName fn), " ", show (fnCName fn),
             show (fnParams fn), " ", show (fnReturn fn), ">"]
 
-instance HasUseReqs Function where
-  getUseReqs = fnUseReqs
-  setUseReqs reqs fn = fn { fnUseReqs = reqs }
+instance HasReqs Function where
+  getReqs = fnReqs
+  setReqs reqs fn = fn { fnReqs = reqs }
 
 instance HasAddendum Function where
   getAddendum = fnAddendum
@@ -1098,7 +1098,7 @@ data Class = Class
     -- ^ The class's methods.
   , classConversion :: ClassConversion
     -- ^ Behaviour for converting objects to and from foriegn values.
-  , classUseReqs :: Reqs
+  , classReqs :: Reqs
     -- ^ Requirements for a 'Type' to reference this class.
   , classAddendum :: Addendum
     -- ^ The class's addendum.
@@ -1111,9 +1111,9 @@ instance Show Class where
   show cls =
     concat ["<Class ", show (classExtName cls), " ", show (classIdentifier cls), ">"]
 
-instance HasUseReqs Class where
-  getUseReqs = classUseReqs
-  setUseReqs reqs cls = cls { classUseReqs = reqs }
+instance HasReqs Class where
+  getReqs = classReqs
+  setReqs reqs cls = cls { classReqs = reqs }
 
 instance HasAddendum Class where
   getAddendum = classAddendum
@@ -1136,7 +1136,7 @@ makeClass identifier maybeExtName supers ctors methods = Class
   , classDtorIsPublic = True
   , classMethods = methods
   , classConversion = classConversionNone
-  , classUseReqs = mempty
+  , classReqs = mempty
   , classAddendum = mempty
   }
 
@@ -1525,7 +1525,7 @@ data Callback = Callback
     -- ^ The callback's parameter types.
   , callbackReturn :: Type
     -- ^ The callback's return type.
-  , callbackUseReqs :: Reqs
+  , callbackReqs :: Reqs
     -- ^ Requirements for the callback.
   , callbackAddendum :: Addendum
     -- ^ The callback's addendum.
@@ -1539,9 +1539,9 @@ instance Show Callback where
     concat ["<Callback ", show (callbackExtName cb), " ", show (callbackParams cb), " ",
             show (callbackReturn cb)]
 
-instance HasUseReqs Callback where
-  getUseReqs = callbackUseReqs
-  setUseReqs reqs cb = cb { callbackUseReqs = reqs }
+instance HasReqs Callback where
+  getReqs = callbackReqs
+  setReqs reqs cb = cb { callbackReqs = reqs }
 
 instance HasAddendum Callback where
   getAddendum = callbackAddendum

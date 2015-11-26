@@ -106,7 +106,7 @@ instantiate' mapName k v userReqs opts =
               show extName, "), key and value conversions must either both be specified or ",
               "absent; they are, repectively, ", show maybeKeyConv, " and ", show maybeValueConv,
               "."]) $
-        addUseReqs reqs $
+        addReqs reqs $
         classAddFeatures (Assignable : Copyable : optMapClassFeatures opts) $
         makeClass (ident1T "std" "map" [k, v]) (Just extName) []
         [ mkCtor "new" []
@@ -136,7 +136,7 @@ instantiate' mapName k v userReqs opts =
         ]
 
       iterator =
-        addUseReqs reqs $
+        addReqs reqs $
         makeBidirectionalIterator Mutable Nothing $
         makeClass (identT' [("std", Nothing),
                             ("map", Just [k, v]),
@@ -151,7 +151,7 @@ instantiate' mapName k v userReqs opts =
         ]
 
       constIterator =
-        addUseReqs reqs $
+        addReqs reqs $
         makeBidirectionalIterator Constant Nothing $
         makeClass (identT' [("std", Nothing),
                             ("map", Just [k, v]),

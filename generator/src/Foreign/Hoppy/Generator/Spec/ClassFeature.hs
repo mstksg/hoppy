@@ -89,7 +89,7 @@ classAddFeatures :: [ClassFeature] -> Class -> Class
 classAddFeatures features cls =
   foldr (\feature cls' ->
           let (ctors, methods, reqs) = featureContents feature cls'
-          in addUseReqs reqs $
+          in addReqs reqs $
              classAddCtors ctors $
              classAddMethods methods cls')
         cls
