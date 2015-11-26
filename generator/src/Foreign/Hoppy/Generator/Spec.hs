@@ -70,6 +70,7 @@ module Foreign.Hoppy.Generator.Spec (
   Operator (..),
   OperatorType (..),
   operatorPreferredExtName,
+  operatorPreferredExtName',
   operatorType,
   Export (..),
   exportExtName,
@@ -550,7 +551,7 @@ data OperatorType =
   | ArrayOperator  -- ^ @x[y]@, a binary operator with non-infix syntax.
 
 data OperatorInfo = OperatorInfo
-  { operatorPreferredExtName' :: ExtName
+  { operatorPreferredExtName'' :: ExtName
   , operatorType' :: OperatorType
   }
 
@@ -560,10 +561,15 @@ makeOperatorInfo = OperatorInfo . toExtName
 -- | Returns a conventional string to use for the 'ExtName' of an operator.
 operatorPreferredExtName :: Operator -> ExtName
 operatorPreferredExtName op = case M.lookup op operatorInfo of
-  Just info -> operatorPreferredExtName' info
+  Just info -> operatorPreferredExtName'' info
   Nothing ->
     error $ concat
     ["operatorPreferredExtName: Internal error, missing info for operator ", show op, "."]
+
+-- | Returns a conventional name for an operator, as with
+-- 'operatorPreferredExtName', but as a string.
+operatorPreferredExtName' :: Operator -> String
+operatorPreferredExtName' = fromExtName . operatorPreferredExtName
 
 -- | Returns the type of an operator.
 operatorType :: Operator -> OperatorType
