@@ -368,8 +368,8 @@ sayArgRead dir (n, stripConst . normalizeType -> cppType, maybeCType) = case cpp
                    show cb, "."]
     says [callbackClassName cb, " ", toArgName n, "(", toArgNameAlt n, ");\n"]
 
-  TRef t@(TObj _) -> convertObj t
-  TRef t@(TConst (TObj _)) -> convertObj t
+  TRef t -> convertObj t
+
   TObj _ -> convertObj $ TConst cppType
   TObjToHeap cls -> case dir of
     DoDecode -> error $ tObjToHeapWrongDirectionErrorMsg (Just "sayArgRead") cls

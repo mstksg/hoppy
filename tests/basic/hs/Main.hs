@@ -47,7 +47,8 @@ import Foreign.Hoppy.Runtime (
   )
 import Foreign.Hoppy.Test.Basic
 import Foreign.Hoppy.Test.Basic.HsBox
-import Foreign.Storable (peek, sizeOf)
+import Foreign.Marshal.Alloc (alloca)
+import Foreign.Storable (peek, poke, sizeOf)
 import System.Exit (exitFailure)
 import System.Posix.Types (CSsize)
 import Test.HUnit (
@@ -302,6 +303,26 @@ rawPointerTests =
     pp <- getIntBoxPtrPtr
     p <- decode pp
     intBox_get p >>= (@?= 1010)
+
+  , "can pass an int*" ~:
+    alloca $ \p -> do
+      poke p (32 :: CInt)
+      doubleIntPtr p
+      peek p >>= (@?= 64)
+
+  , "can pass an int**" ~:
+    alloca $ \p ->
+    alloca $ \pp -> do
+      poke p (32 :: CInt)
+      poke pp p
+      doubleIntPtrPtr pp
+      peek p >>= (@?= 64)
+
+  , "can pass an int&" ~:
+    alloca $ \p -> do
+      poke p (32 :: CInt)
+      doubleIntRef p
+      peek p >>= (@?= 64)
   ]
 
 inheritanceTests :: Test

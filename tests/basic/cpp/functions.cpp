@@ -240,3 +240,15 @@ IntBox** getIntBoxPtrPtr() {
     static IntBox* ptr = &box;
     return &ptr;
 }
+
+void doubleIntPtr(int* p) {
+    *p *= 2;
+}
+
+void doubleIntPtrPtr(int** p) {
+    **p *= 2;
+}
+
+void doubleIntRef(int& n) {
+    n *= 2;
+}

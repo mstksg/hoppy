@@ -123,15 +123,18 @@ testModule =
   , ExportFn f_doubleInt32
   , ExportFn f_doubleUInt16
   , ExportFn f_doubleUInt64
-    -- Multiple inheritance tests.
-  , ExportClass c_InheritanceA
-  , ExportClass c_InheritanceB
-  , ExportClass c_InheritanceC
     -- Testing raw pointers.
   , ExportFn f_getBoolPtr
   , ExportFn f_getIntPtr
   , ExportFn f_getIntPtrPtr
   , ExportFn f_getIntBoxPtrPtr
+  , ExportFn f_doubleIntPtr
+  , ExportFn f_doubleIntPtrPtr
+  , ExportFn f_doubleIntRef
+    -- Multiple inheritance tests.
+  , ExportClass c_InheritanceA
+  , ExportClass c_InheritanceB
+  , ExportClass c_InheritanceC
   ]
 
 c_IntBox :: Class
@@ -497,6 +500,21 @@ f_getIntBoxPtrPtr :: Function
 f_getIntBoxPtrPtr =
   addReqIncludes [includeLocal "functions.hpp"] $
   makeFn (ident "getIntBoxPtrPtr") Nothing Nonpure [] $ TPtr $ TPtr $ TObj c_IntBox
+
+f_doubleIntPtr :: Function
+f_doubleIntPtr =
+  addReqIncludes [includeLocal "functions.hpp"] $
+  makeFn (ident "doubleIntPtr") Nothing Nonpure [TPtr TInt] TVoid
+
+f_doubleIntPtrPtr :: Function
+f_doubleIntPtrPtr =
+  addReqIncludes [includeLocal "functions.hpp"] $
+  makeFn (ident "doubleIntPtrPtr") Nothing Nonpure [TPtr $ TPtr TInt] TVoid
+
+f_doubleIntRef :: Function
+f_doubleIntRef =
+  addReqIncludes [includeLocal "functions.hpp"] $
+  makeFn (ident "doubleIntRef") Nothing Nonpure [TRef TInt] TVoid
 
 c_InheritanceA :: Class
 c_InheritanceA =
