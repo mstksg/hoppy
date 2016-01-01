@@ -79,6 +79,16 @@ size_t sizeOfPtrdiff();
 size_t sizeOfSize();
 size_t sizeOfSSize();
 
+// Numeric type passing tests.
+int doubleInt(int);
+long doubleLong(long);
+float doubleFloat(float);
+double doubleDouble(double);
+int8_t doubleInt8(int8_t);
+int32_t doubleInt32(int32_t);
+uint16_t doubleUInt16(uint16_t);
+uint64_t doubleUInt64(uint64_t);
+
 // Testing raw pointers.
 bool* getBoolPtr();
 int* getIntPtr();

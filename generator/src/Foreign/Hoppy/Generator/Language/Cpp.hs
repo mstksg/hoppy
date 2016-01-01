@@ -224,6 +224,14 @@ sayType' (normalizeType -> t) maybeParamNames outerPrec unwrappedOuter =
     TULLong -> say "unsigned long long" >> outer
     TFloat -> say "float" >> outer
     TDouble -> say "double" >> outer
+    TInt8 -> say "int8_t" >> outer
+    TInt16 -> say "int16_t" >> outer
+    TInt32 -> say "int32_t" >> outer
+    TInt64 -> say "int64_t" >> outer
+    TWord8 -> say "uint8_t" >> outer
+    TWord16 -> say "uint16_t" >> outer
+    TWord32 -> say "uint32_t" >> outer
+    TWord64 -> say "uint64_t" >> outer
     TPtrdiff -> say "ptrdiff_t" >> outer
     TSize -> say "size_t" >> outer
     TSSize -> say "ssize_t" >> outer

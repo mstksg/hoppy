@@ -559,6 +559,14 @@ typeReqs t = case t of
   TULLong -> return mempty
   TFloat -> return mempty
   TDouble -> return mempty
+  TInt8 -> return cstdintReqs
+  TInt16 -> return cstdintReqs
+  TInt32 -> return cstdintReqs
+  TInt64 -> return cstdintReqs
+  TWord8 -> return cstdintReqs
+  TWord16 -> return cstdintReqs
+  TWord32 -> return cstdintReqs
+  TWord64 -> return cstdintReqs
   TPtrdiff -> return cstddefReqs
   TSize -> return cstddefReqs
   TSSize -> return cstddefReqs
@@ -581,6 +589,9 @@ typeReqs t = case t of
 
 cstddefReqs :: Reqs
 cstddefReqs = reqInclude $ includeStd "cstddef"
+
+cstdintReqs :: Reqs
+cstdintReqs = reqInclude $ includeStd "cstdint"
 
 findExportModule :: ExtName -> Generator Module
 findExportModule extName =

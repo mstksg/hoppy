@@ -114,6 +114,15 @@ testModule =
   , ExportFn f_sizeOfPtrdiff
   , ExportFn f_sizeOfSize
   , ExportFn f_sizeOfSSize
+    -- Numeric type passing tests.
+  , ExportFn f_doubleInt
+  , ExportFn f_doubleLong
+  , ExportFn f_doubleFloat
+  , ExportFn f_doubleDouble
+  , ExportFn f_doubleInt8
+  , ExportFn f_doubleInt32
+  , ExportFn f_doubleUInt16
+  , ExportFn f_doubleUInt64
     -- Multiple inheritance tests.
   , ExportClass c_InheritanceA
   , ExportClass c_InheritanceB
@@ -429,6 +438,66 @@ f_sizeOfSSize =
   addReqIncludes [includeLocal "functions.hpp"] $
   makeFn (ident "sizeOfSSize") Nothing Pure [] TSize
 
+f_doubleInt :: Function
+f_doubleInt =
+  addReqIncludes [includeLocal "functions.hpp"] $
+  makeFn (ident "doubleInt") Nothing Pure [TInt] TInt
+
+f_doubleLong :: Function
+f_doubleLong =
+  addReqIncludes [includeLocal "functions.hpp"] $
+  makeFn (ident "doubleLong") Nothing Pure [TLong] TLong
+
+f_doubleFloat :: Function
+f_doubleFloat =
+  addReqIncludes [includeLocal "functions.hpp"] $
+  makeFn (ident "doubleFloat") Nothing Pure [TFloat] TFloat
+
+f_doubleDouble :: Function
+f_doubleDouble =
+  addReqIncludes [includeLocal "functions.hpp"] $
+  makeFn (ident "doubleDouble") Nothing Pure [TDouble] TDouble
+
+f_doubleInt8 :: Function
+f_doubleInt8 =
+  addReqIncludes [includeLocal "functions.hpp"] $
+  makeFn (ident "doubleInt8") Nothing Pure [TInt8] TInt8
+
+f_doubleInt32 :: Function
+f_doubleInt32 =
+  addReqIncludes [includeLocal "functions.hpp"] $
+  makeFn (ident "doubleInt32") Nothing Pure [TInt32] TInt32
+
+f_doubleUInt16 :: Function
+f_doubleUInt16 =
+  addReqIncludes [includeLocal "functions.hpp"] $
+  makeFn (ident "doubleUInt16") Nothing Pure [TWord16] TWord16
+
+f_doubleUInt64 :: Function
+f_doubleUInt64 =
+  addReqIncludes [includeLocal "functions.hpp"] $
+  makeFn (ident "doubleUInt64") Nothing Pure [TWord64] TWord64
+
+f_getBoolPtr :: Function
+f_getBoolPtr =
+  addReqIncludes [includeLocal "functions.hpp"] $
+  makeFn (ident "getBoolPtr") Nothing Nonpure [] $ TPtr TBool
+
+f_getIntPtr :: Function
+f_getIntPtr =
+  addReqIncludes [includeLocal "functions.hpp"] $
+  makeFn (ident "getIntPtr") Nothing Nonpure [] $ TPtr TInt
+
+f_getIntPtrPtr :: Function
+f_getIntPtrPtr =
+  addReqIncludes [includeLocal "functions.hpp"] $
+  makeFn (ident "getIntPtrPtr") Nothing Nonpure [] $ TPtr $ TPtr TInt
+
+f_getIntBoxPtrPtr :: Function
+f_getIntBoxPtrPtr =
+  addReqIncludes [includeLocal "functions.hpp"] $
+  makeFn (ident "getIntBoxPtrPtr") Nothing Nonpure [] $ TPtr $ TPtr $ TObj c_IntBox
+
 c_InheritanceA :: Class
 c_InheritanceA =
   addReqIncludes [includeLocal "inheritance.hpp"] $
@@ -451,23 +520,3 @@ c_InheritanceC =
   makeClass (ident "InheritanceC") Nothing [c_InheritanceA, c_InheritanceB]
   [ mkCtor "new" [] ]
   []
-
-f_getBoolPtr :: Function
-f_getBoolPtr =
-  addReqIncludes [includeLocal "functions.hpp"] $
-  makeFn (ident "getBoolPtr") Nothing Nonpure [] $ TPtr TBool
-
-f_getIntPtr :: Function
-f_getIntPtr =
-  addReqIncludes [includeLocal "functions.hpp"] $
-  makeFn (ident "getIntPtr") Nothing Nonpure [] $ TPtr TInt
-
-f_getIntPtrPtr :: Function
-f_getIntPtrPtr =
-  addReqIncludes [includeLocal "functions.hpp"] $
-  makeFn (ident "getIntPtrPtr") Nothing Nonpure [] $ TPtr $ TPtr TInt
-
-f_getIntBoxPtrPtr :: Function
-f_getIntBoxPtrPtr =
-  addReqIncludes [includeLocal "functions.hpp"] $
-  makeFn (ident "getIntBoxPtrPtr") Nothing Nonpure [] $ TPtr $ TPtr $ TObj c_IntBox

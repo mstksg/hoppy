@@ -78,6 +78,7 @@ tests =
   , classConversionTests
   , fnMethodTests
   , primitiveTypeSizeTests
+  , numericTypePassingTests
   , rawPointerTests
   , inheritanceTests
   ]
@@ -260,7 +261,20 @@ primitiveTypeSizeTests =
   , "TSSize" ~: fromIntegral sizeOfSSize @?= sizeOf (undefined :: CSsize)
   ]
 
-rawPointerTests:: Test
+numericTypePassingTests :: Test
+numericTypePassingTests =
+  "numeric type passing" ~: TestList
+  [ "TInt" ~: doubleInt 5 @?= 10
+  , "TLong" ~: doubleLong (-5) @?= -10
+  , "TFloat" ~: doubleFloat 0.5 @?= 1
+  , "TDouble" ~: doubleDouble 1867 @?= 3734
+  , "TInt8" ~: doubleInt8 63 @?= 126
+  , "TInt32" ~: doubleInt32 (-1073741824) @?= -2147483648
+  , "TWord16" ~: doubleUInt16 32767 @?= 65534
+  , "TWord64" ~: doubleUInt64 9223372036854775807 @?= 18446744073709551614
+  ]
+
+rawPointerTests :: Test
 rawPointerTests =
   "raw pointers" ~: TestList
   [ "can read and write a bool*" ~: do

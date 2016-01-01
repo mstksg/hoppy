@@ -135,6 +135,8 @@ module Foreign.Hoppy.Generator.Spec (
   makeHsImportSet,
   getHsImportSet,
   hsImportForBits,
+  hsImportForInt,
+  hsImportForWord,
   hsImportForForeign,
   hsImportForForeignC,
   hsImportForPrelude,
@@ -771,6 +773,14 @@ data Type =
   | TULLong  -- ^ C++ @unsigned long long int@, Haskell 'Foreign.C.CULLong'.
   | TFloat  -- ^ C++ @float@, Haskell 'Foreign.C.CFloat'.
   | TDouble  -- ^ C++ @double@, Haskell 'Foreign.C.CDouble'.
+  | TInt8  -- ^ C++ @int8_t@, Haskell 'Data.Int.Int8'.
+  | TInt16  -- ^ C++ @int16_t@, Haskell 'Data.Int.Int16'.
+  | TInt32  -- ^ C++ @int32_t@, Haskell 'Data.Int.Int32'.
+  | TInt64  -- ^ C++ @int64_t@, Haskell 'Data.Int.Int64'.
+  | TWord8  -- ^ C++ @uint8_t@, Haskell 'Data.Word.Word8'.
+  | TWord16  -- ^ C++ @uint16_t@, Haskell 'Data.Word.Word16'.
+  | TWord32  -- ^ C++ @uint32_t@, Haskell 'Data.Word.Word32'.
+  | TWord64  -- ^ C++ @uint64_t@, Haskell 'Data.Word.Word64'.
   | TPtrdiff  -- ^ C++ @ptrdiff_t@, Haskell 'Foreign.C.CPtrdiff'.
   | TSize  -- ^ C++ @size_t@, Haskell 'Foreign.C.CSize'.
   | TSSize  -- ^ C++ @ssize_t@, Haskell 'System.Posix.Types.CSsize'.
@@ -811,6 +821,14 @@ normalizeType t = case t of
   TULLong -> t
   TFloat -> t
   TDouble -> t
+  TInt8 -> t
+  TInt16 -> t
+  TInt32 -> t
+  TInt64 -> t
+  TWord8 -> t
+  TWord16 -> t
+  TWord32 -> t
+  TWord64 -> t
   TPtrdiff -> t
   TSize -> t
   TSSize -> t
@@ -1703,6 +1721,14 @@ hsImports' moduleName values =
 -- | Imports "Data.Bits" qualified as @HoppyDB@.
 hsImportForBits :: HsImportSet
 hsImportForBits = hsQualifiedImport "Data.Bits" "HoppyDB"
+
+-- | Imports "Data.Int" qualified as @HoppyDI@.
+hsImportForInt :: HsImportSet
+hsImportForInt = hsQualifiedImport "Data.Int" "HoppyDI"
+
+-- | Imports "Data.Word" qualified as @HoppyDW@.
+hsImportForWord :: HsImportSet
+hsImportForWord = hsQualifiedImport "Data.Word" "HoppyDW"
 
 -- | Imports "Foreign" qualified as @HoppyF@.
 hsImportForForeign :: HsImportSet

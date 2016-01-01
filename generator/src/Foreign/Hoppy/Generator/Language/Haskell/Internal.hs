@@ -505,6 +505,14 @@ sayArgProcessing dir t fromVar toVar =
     TULLong -> noConversion
     TFloat -> noConversion
     TDouble -> noConversion
+    TInt8 -> noConversion
+    TInt16 -> noConversion
+    TInt32 -> noConversion
+    TInt64 -> noConversion
+    TWord8 -> noConversion
+    TWord16 -> noConversion
+    TWord32 -> noConversion
+    TWord64 -> noConversion
     TPtrdiff -> noConversion
     TSize -> noConversion
     TSSize -> noConversion
@@ -586,6 +594,14 @@ sayCallAndProcessReturn dir t callWords =
     TULLong -> sayCall
     TFloat -> sayCall
     TDouble -> sayCall
+    TInt8 -> sayCall
+    TInt16 -> sayCall
+    TInt32 -> sayCall
+    TInt64 -> sayCall
+    TWord8 -> sayCall
+    TWord16 -> sayCall
+    TWord32 -> sayCall
+    TWord64 -> sayCall
     TPtrdiff -> sayCall
     TSize -> sayCall
     TSSize -> sayCall

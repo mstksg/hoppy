@@ -186,6 +186,39 @@ size_t sizeOfSSize() {
     return sizeof(ssize_t);
 }
 
+int doubleInt(int x) {
+    return x * 2;
+}
+
+long doubleLong(long x) {
+    return x * 2;
+}
+
+float doubleFloat(float x) {
+    return x * 2;
+}
+
+double doubleDouble(double x) {
+    return x * 2;
+}
+
+int8_t doubleInt8(int8_t x) {
+    return x * 2;
+}
+
+int32_t doubleInt32(int32_t x) {
+    return x * 2;
+}
+
+uint16_t doubleUInt16(uint16_t x) {
+    return x * 2;
+}
+
+uint64_t doubleUInt64(uint64_t x) {
+    return x * 2;
+}
+
+
 bool* getBoolPtr() {
     static bool data = false;
     return &data;
