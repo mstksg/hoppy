@@ -281,7 +281,7 @@ numericTypePassingTests =
   , "TFloat" ~: doubleFloat 0.5 @?= 1
   , "TDouble" ~: doubleDouble 1867 @?= 3734
   , "TInt8" ~: doubleInt8 63 @?= 126
-  , "TInt32" ~: doubleInt32 (-1073741824) @?= -2147483648
+  , "TInt32" ~: doubleInt32 (-1073741824) @?= minBound -- -2147483648
   , "TWord16" ~: doubleUInt16 32767 @?= 65534
   , "TWord64" ~: doubleUInt64 9223372036854775807 @?= 18446744073709551614
   ]
