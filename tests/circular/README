@@ -4,7 +4,7 @@ A unit test for referring to types in modules with circular dependencies.
 
 This file is part of Hoppy.
 
-Copyright 2015 Bryan Gardiner <bog@khumba.net>
+Copyright 2015-2016 Bryan Gardiner <bog@khumba.net>
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as published by
