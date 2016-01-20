@@ -451,8 +451,6 @@ const and non-const pointers to @Zipper@ objects:
 @
 newtype Zipper
 newtype ZipperConst
-
-zipper_null :: Zipper
 @
 
 These types will have instances of 'CppPtr'.  There will also be some

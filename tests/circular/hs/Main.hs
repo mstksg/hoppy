@@ -20,7 +20,7 @@ module Main (main) where
 import Control.Monad (when)
 import Data.Bits ((.|.))
 import Foreign.C (castCCharToChar, castCharToCChar)
-import Foreign.Hoppy.Runtime (toPtr)
+import Foreign.Hoppy.Runtime (nullptr, toPtr)
 import Foreign.Hoppy.Test.Flob
 import Foreign.Hoppy.Test.Flub
 import System.Exit (exitFailure)
@@ -52,7 +52,7 @@ tests =
     flubObj <- flubClass_new
     takesFlobValues flobObj
     takesFlubValues flubObj FlubEnum_OptionA flubBitspace_OptionB
-    fmap toPtr returnsFlubClass >>= (@?= toPtr flubClass_null)
+    fmap toPtr returnsFlubClass >>= (@?= toPtr nullptr)
     returnsFlubEnum >>= (@?= FlubEnum_OptionB)
     returnsFlubBitspace >>= (@?= flubBitspace_OptionA .|. flubBitspace_OptionC)
   ]

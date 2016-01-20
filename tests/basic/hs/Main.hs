@@ -42,12 +42,15 @@ import Foreign.Hoppy.Runtime (
   delete,
   encode,
   encodeAs,
+  nullptr,
+  toPtr,
   withCppObj,
   withScopedPtr,
   )
 import Foreign.Hoppy.Test.Basic
 import Foreign.Hoppy.Test.Basic.HsBox
 import Foreign.Marshal.Alloc (alloca)
+import Foreign.Ptr (nullPtr)
 import Foreign.Storable (peek, poke, sizeOf)
 import System.Exit (exitFailure)
 import System.Posix.Types (CSsize)
@@ -56,6 +59,7 @@ import Test.HUnit (
   Test (TestList),
   (~:),
   (@?=),
+  assert,
   errors,
   failures,
   runTestTT,
@@ -106,6 +110,13 @@ objectTests =
     box <- intBox_newWithValue (-1)
     assertBox (-1) box
     delete box
+
+  , "null pointers are in fact null" ~: do
+    toPtr (nullptr :: IntBox) @?= nullPtr
+    toPtr (nullptr :: IntBoxConst) @?= nullPtr
+
+  , "non-null pointers in fact aren't null" ~:
+    withScopedPtr intBox_new $ assert . (nullPtr /=) . toPtr
   ]
 
 

@@ -58,8 +58,8 @@ module Foreign.Hoppy.Generator.Language.Haskell (
   toHsPtrClassName,
   toHsCastMethodName,
   toHsCastPrimitiveName,
+  toHsConstCastFnName,
   toHsDataTypeName,
-  toHsClassNullName,
   toHsClassDeleteFnName,
   toHsMethodName,
   toHsMethodName',
@@ -501,15 +501,20 @@ toHsCastPrimitiveName :: Class -> Class -> String
 toHsCastPrimitiveName from to =
   concat ["cast", toHsDataTypeName Nonconst from, "To", toHsDataTypeName Nonconst to]
 
+-- | The name of one of the functions that add/remove const to/from a class's
+-- pointer type.  Given 'Const', it will return the function that adds const,
+-- and given 'Nonconst', it will return the function that removes const.
+toHsConstCastFnName :: Constness -> Class -> String
+toHsConstCastFnName cst cls =
+  concat ["cast", toHsDataTypeName Nonconst cls,
+          case cst of
+            Const -> "ToConst"
+            Nonconst -> "ToNonconst"]
+
 -- | The name of the data type that represents a pointer to an object of the
 -- given class and constness.
 toHsDataTypeName :: Constness -> Class -> String
 toHsDataTypeName cst cls = toHsTypeName cst $ classExtName cls
-
--- | The name of the variable that holds a null pointer of the specific class
--- type.
-toHsClassNullName :: Class -> String
-toHsClassNullName cls = toHsFnName (classExtName cls) ++ "_null"
 
 -- | The name of the foreign function import wrapping @delete@ for the given
 -- class type.  This is in internal to the binding; normal users should use

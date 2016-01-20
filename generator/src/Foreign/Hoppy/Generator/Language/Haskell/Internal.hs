@@ -664,7 +664,6 @@ sayExportClass mode cls = do
       sayExportClassHsType True cls Const
       sayExportClassHsType True cls Nonconst
 
-      sayExportClassHsNull cls
       sayExportClassHsCtors mode cls
 
     SayExportBoot -> do
@@ -763,21 +762,21 @@ sayExportClassHsStaticMethods cls =
 
 sayExportClassHsType :: Bool -> Class -> Constness -> Generator ()
 sayExportClassHsType doDecls cls cst = do
-  addImports $ mconcat [hsImportForForeign, hsImportForRuntime]
+  addImports $ mconcat [hsImportForForeign, hsImportForPrelude, hsImportForRuntime]
   -- Unfortunately, we must export the data constructor, so that GHC can marshal
   -- it in foreign calls in other modules.
   addExport' hsTypeName
   ln
   saysLn ["newtype ", hsTypeName, " = ", hsTypeName, " (HoppyF.Ptr ", hsTypeName, ")"]
   if doDecls
-    then indent $ sayLn "deriving (HoppyF.Storable)"
+    then indent $ sayLn "deriving (HoppyP.Eq, HoppyF.Storable)"
     else saysLn ["instance HoppyF.Storable ", hsTypeName]
 
   -- Generate const_cast functions:
   --   castFooToConst :: Foo -> FooConst
   --   castFooToNonconst :: FooConst -> Foo
   ln
-  let constCastFnName = toHsConstCastFn cst cls
+  let constCastFnName = toHsConstCastFnName cst cls
   addExport constCastFnName
   saysLn [constCastFnName, " :: ", toHsDataTypeName (constNegate cst) cls, " -> ", hsTypeName]
   when doDecls $ do
@@ -787,8 +786,11 @@ sayExportClassHsType doDecls cls cst = do
   -- Generate an instance of CppPtr.
   ln
   if doDecls
-    then do saysLn ["instance HoppyFHR.CppPtr ", hsTypeName, " where"]
-            indent $ saysLn ["toPtr (", hsTypeName, " ptr) = ptr"]
+    then do addImports hsImportForForeign
+            saysLn ["instance HoppyFHR.CppPtr ", hsTypeName, " where"]
+            indent $ do
+              saysLn ["nullptr = ", toHsDataTypeName cst cls, " HoppyF.nullPtr"]
+              saysLn ["toPtr (", hsTypeName, " ptr) = ptr"]
             when (classDtorIsPublic cls) $ do
               ln
               deleteTail <- case cst of
@@ -826,7 +828,7 @@ sayExportClassHsType doDecls cls cst = do
                           else return x) $
                    catMaybes
                    [ if castToSelf then Nothing else Just $ toHsCastPrimitiveName cls ancestorCls
-                   , if convertToConst then Just $ toHsConstCastFn Const cls else Nothing
+                   , if convertToConst then Just $ toHsConstCastFnName Const cls else Nothing
                    ]
             case fns of
               _:_:_ -> addImports $ hsImport1 "Prelude" "(.)"
@@ -846,27 +848,11 @@ sayExportClassHsType doDecls cls cst = do
                       saysLn [name, " = HoppyP.id"]
               else do addImports $ hsImport1 "Prelude" "(.)"
                       saysLn [name, " = ",
-                              toHsConstCastFn Nonconst ancestorCls, " . ",
+                              toHsConstCastFnName Nonconst ancestorCls, " . ",
                               toHsCastPrimitiveName cls ancestorCls, " . ",
-                              toHsConstCastFn Const cls]
+                              toHsConstCastFnName Const cls]
 
           forM_ (classSuperclasses ancestorCls) $ genInstances path'
-
-        toHsConstCastFn :: Constness -> Class -> String
-        toHsConstCastFn cst' cls' =
-          concat ["cast", toHsDataTypeName Nonconst cls',
-                  case cst' of
-                    Const -> "ToConst"
-                    Nonconst -> "ToNonconst"]
-
-sayExportClassHsNull :: Class -> Generator ()
-sayExportClassHsNull cls = do
-  let clsHsNullName = toHsClassNullName cls
-  addImports hsImportForForeign
-  addExport clsHsNullName
-  ln
-  saysLn [clsHsNullName, " :: ", toHsDataTypeName Nonconst cls]
-  saysLn [clsHsNullName, " = ", toHsDataTypeName Nonconst cls, " HoppyF.nullPtr"]
 
 sayExportClassHsCtors :: SayExportMode -> Class -> Generator ()
 sayExportClassHsCtors mode cls =

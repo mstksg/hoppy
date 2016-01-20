@@ -95,6 +95,9 @@ coerceIntegral a =
 -- | An instance of this class represents a pointer to a C++ object.  All C++
 -- classes bound by Hoppy have instances of @CppPtr@.
 class CppPtr this where
+  -- | Polymorphic null pointer.
+  nullptr :: this
+
   -- | Converts to a regular pointer.
   toPtr :: this -> Ptr this
 
