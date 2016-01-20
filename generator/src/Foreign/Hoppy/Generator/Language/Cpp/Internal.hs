@@ -211,6 +211,9 @@ sayExport sayBody export = case export of
 
     -- Export upcast functions for the class to its direct superclasses.
     forM_ (classSuperclasses cls) $ genUpcastFns cls
+    -- Export downcast functions from the class's direct and indirect
+    -- superclasses to it.
+    forM_ (classSuperclasses cls) $ genDowncastFns cls
 
   ExportCallback cb -> do
     -- Need <memory> for std::shared_ptr.
@@ -224,6 +227,18 @@ sayExport sayBody export = case export of
                       (TFn [TPtr $ TConst $ TObj cls] $ TPtr $ TConst $ TObj ancestorCls)
                       (Just $ say "return self;\n")
           forM_ (classSuperclasses ancestorCls) $ genUpcastFns cls
+
+        genDowncastFns :: Class -> Class -> Generator ()
+        genDowncastFns cls ancestorCls = do
+          let clsPtr = TPtr $ TConst $ TObj cls
+              ancestorPtr = TPtr $ TConst $ TObj ancestorCls
+          sayFunction (classCastFnCppName ancestorCls cls)
+                      ["self"]
+                      (TFn [ancestorPtr] clsPtr) $ Just $ do
+            say "return dynamic_cast<"
+            sayType Nothing clsPtr
+            say ">(self);\n"
+          forM_ (classSuperclasses ancestorCls) $ genDowncastFns cls
 
 sayExportVariable :: Variable -> Generator ()
 sayExportVariable v = do

@@ -84,7 +84,8 @@ import Foreign.Hoppy.Generator.Main
 import Foreign.Hoppy.Generator.Spec
 import Foreign.Hoppy.Generator.Version
 import Foreign.Hoppy.Runtime
-import Foreign.Ptr (castPtr)
+import Foreign.Ptr (Ptr)
+import Foreign.Storable (Storable)
 import Language.Haskell.Syntax (HsType)
 import System.IO.Unsafe (unsafePerformIO)
 
@@ -453,8 +454,21 @@ newtype Zipper
 newtype ZipperConst
 @
 
-These types will have instances of 'CppPtr'.  There will also be some
-typeclasses generated, for types that represent @Zipper@ objects:
+Several typeclass instances are generated for both types:
+
+- 'Eq', 'Ord', 'Show', and 'Storable' are all derived automatically from the
+underlying 'Ptr'.
+
+- 'CppPtr' and 'Deletable' instances provide object management.
+
+- If the class -- @Zipper@ in this case -- has an @operator=@ method that takes
+either a @'TObj' zipper@ or a @'TRef' ('TConst' ('TObj' zipper))@, then an
+instance @ZipperValue a => 'Assignable' Zipper a@ is generated to allow
+assigning of general zipper-like values to @Zipper@ objects; see below for an
+explanation of @ZipperValue@.  This instance is for the non-const @Zipper@ only.
+
+There will also be some typeclasses generated, for types that represent @Zipper@
+objects:
 
 @
 class ZipperValue a where
@@ -480,7 +494,7 @@ typeclasses for all of the C++ class's superclasses (or just 'CppPtr' if this
 list is empty).  The non-const typeclass has as superclasses the non-const
 typeclasses for all of the C++ class's superclasses, plus the current const
 typeclass.  Instances will be generated for all of the appropriate typeclasses
-for 'Zipper' and 'ZipperConst', all the way up to 'CppPtr'.
+for @Zipper@ and @ZipperConst@, all the way up to 'CppPtr'.
 
 The @ZipperValue@ class represents general @Zipper@ values, of which pointers
 are one type (hence the first @instance@ above).  Values of these types can be
@@ -490,10 +504,34 @@ be generated for that type.  This second instance in this case is overlapping,
 and the above instance is overlappable.  These typeclasses allow for mixing
 pointer, reference, and object types when calling C++ functions.
 
+For downcasting, separate const and non-const typeclasses are generated with
+instances for all direct and indirect superclasses of @Zipper@:
+
+@
+-- Enables downcasting from any non-const superclass of Zipper.
+class ZipperSuper a where
+  downToZipper :: a -> Zipper
+
+-- Enables downcasting from any const superclass of Zipper.
+class ZipperSuperConst a where
+  downToZipperConst :: a -> ZipperConst
+
+instance ZipperSuper Compressor
+... instances for other non-const superclasses ...
+instance ZipperSuperConst CompressorConst
+... instances for other const superclasses ...
+@
+
+The downcast functions are wrappers around @dynamic_cast@, and will return a
+null pointer if the argument is not a supertype of the target type.
+
 Finally, Haskell functions are generated for all of the class's constructors and
 methods.  These work much the same as function exports, but non-static methods
-take a @this@ object as the first argument.  No specialized deletion method is
-needed; 'delete' is generic.
+take a @this@ object as the first argument.  Const methods take a @ZipperValue@
+on the assumption that it's safe to create a temporary C++ object from a Haskell
+value if necessary to call a const method.  Non-const methods take a
+@ZipperPtr@, since it's potentially a mistake to perform side-effects on a
+temporary object that is thrown away immediately.
 
 @
 zipper_new :: 'IO' Zipper
@@ -501,17 +539,6 @@ zipper_canZip :: 'IO' 'Bool'
 zipper_hasZipped :: ZipperValue this => this -> 'IO' 'Bool'
 zipper_zip :: ZipperPtr this => this -> 'IO' 'Bool'
 @
-
-Downcasting pointers is not currently supported.  Beware that the obvious
-approach of
-
-@
-compressorToZipper :: Compressor -> Zipper
-compressorToZipper = Zipper . 'castPtr' . 'toPtr'
-@
-
-doesn't work in the presence of multiple inheritance, where casting requires
-pointer arithmetic.
 
 -}
 {- $generators-hs-module-dependencies

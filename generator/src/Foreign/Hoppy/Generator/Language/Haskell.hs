@@ -57,6 +57,8 @@ module Foreign.Hoppy.Generator.Language.Haskell (
   toHsWithValuePtrName,
   toHsPtrClassName,
   toHsCastMethodName,
+  toHsDownCastClassName,
+  toHsDownCastMethodName,
   toHsCastPrimitiveName,
   toHsConstCastFnName,
   toHsDataTypeName,
@@ -495,8 +497,23 @@ toHsPtrClassName cst cls = toHsDataTypeName cst cls ++ "Ptr"
 toHsCastMethodName :: Constness -> Class -> String
 toHsCastMethodName cst cls = "to" ++ toHsDataTypeName cst cls
 
+-- | The name of the typeclass that provides a method to downcast to a specific
+-- class type.  See 'toHsDownCastMethodName'.
+toHsDownCastClassName :: Constness -> Class -> String
+toHsDownCastClassName cst cls =
+  concat [toHsDataTypeName Nonconst cls,
+          "Super",
+          case cst of
+            Const -> "Const"
+            Nonconst -> ""]
+
+-- | The name of the function that downcasts pointers to the specific class type
+-- and constness.
+toHsDownCastMethodName :: Constness -> Class -> String
+toHsDownCastMethodName cst cls = "downTo" ++ toHsDataTypeName cst cls
+
 -- | The import name for the foreign function that casts between two specific
--- pointer types.
+-- pointer types.  Used for upcasting and downcasting.
 toHsCastPrimitiveName :: Class -> Class -> String
 toHsCastPrimitiveName from to =
   concat ["cast", toHsDataTypeName Nonconst from, "To", toHsDataTypeName Nonconst to]

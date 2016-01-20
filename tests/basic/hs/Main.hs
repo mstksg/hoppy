@@ -344,4 +344,15 @@ inheritanceTests =
     inheritanceA_aFoo c >>= (@?= 1)  -- From the first superclass.
     inheritanceA_aBar c >>= (@?= 20)  -- From the first superclass, overridden.
     inheritanceB_bFoo c >>= (@?= 30)  -- From the second superclass, overridden.
+
+  , "upcasting" ~: withScopedPtr inheritanceC_new $ \c -> do
+    let ca = toInheritanceA c
+        cb = toInheritanceBConst c
+    inheritanceA_aFoo ca >>= (@?= 1)
+    inheritanceA_aBar ca >>= (@?= 20)
+    inheritanceB_bFoo cb >>= (@?= 30)
+    let cac = downToInheritanceC ca
+        cbc = downToInheritanceCConst cb
+    cac @?= c
+    cbc @?= castInheritanceCToConst c
   ]

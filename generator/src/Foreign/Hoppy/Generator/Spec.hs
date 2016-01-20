@@ -1316,11 +1316,11 @@ data MethodImpl =
 -- | How a method is associated to its class.  A method may be static, const, or
 -- neither (a regular method).
 data MethodApplicability = MNormal | MStatic | MConst
-                         deriving (Eq, Show)
+                         deriving (Bounded, Enum, Eq, Show)
 
 -- | Whether or not a method is const.
 data Constness = Nonconst | Const
-               deriving (Eq, Show)
+               deriving (Bounded, Enum, Eq, Show)
 
 -- | Returns the opposite constness value.
 constNegate :: Constness -> Constness
@@ -1329,7 +1329,7 @@ constNegate Const = Nonconst
 
 -- | Whether or not a method is static.
 data Staticness = Nonstatic | Static
-               deriving (Eq, Show)
+               deriving (Bounded, Enum, Eq, Show)
 
 -- | Returns the constness of a method, based on its 'methodApplicability'.
 methodConst :: Method -> Constness

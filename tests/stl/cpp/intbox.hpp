@@ -22,6 +22,8 @@ class IntBox {
 public:
     IntBox() : n_(0) {}
     IntBox(int n) : n_(n) {}
+    virtual ~IntBox() {}
+
     int get() const { return n_; }
     void set(int n) { n_ = n; }
 
