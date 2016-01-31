@@ -213,7 +213,8 @@ sayExport sayBody export = case export of
     forM_ (classSuperclasses cls) $ genUpcastFns cls
     -- Export downcast functions from the class's direct and indirect
     -- superclasses to it.
-    forM_ (classSuperclasses cls) $ genDowncastFns cls
+    unless (classIsSubclassOfMonomorphic cls) $
+      forM_ (classSuperclasses cls) $ genDowncastFns cls
 
   ExportCallback cb -> do
     -- Need <memory> for std::shared_ptr.
@@ -229,7 +230,7 @@ sayExport sayBody export = case export of
           forM_ (classSuperclasses ancestorCls) $ genUpcastFns cls
 
         genDowncastFns :: Class -> Class -> Generator ()
-        genDowncastFns cls ancestorCls = do
+        genDowncastFns cls ancestorCls = unless (classIsMonomorphicSuperclass ancestorCls) $ do
           let clsPtr = TPtr $ TConst $ TObj cls
               ancestorPtr = TPtr $ TConst $ TObj ancestorCls
           sayFunction (classCastFnCppName ancestorCls cls)

@@ -966,50 +966,58 @@ sayExportClassCastPrimitives :: SayExportMode -> Class -> Generator ()
 sayExportClassCastPrimitives mode cls = do
   let clsType = toHsDataTypeName Const cls
   case mode of
-    SayExportForeignImports -> do
+    SayExportForeignImports ->
       forAncestors cls $ \super -> do
         let hsCastFnName = toHsCastPrimitiveName cls super
             hsDownCastFnName = toHsCastPrimitiveName super cls
             superType = toHsDataTypeName Const super
-        addExports [hsCastFnName, hsDownCastFnName]
+        addExport hsCastFnName
         saysLn [ "foreign import ccall \"", classCastFnCppName cls super
                , "\" ", hsCastFnName, " :: ", clsType, " -> ", superType
                ]
-        saysLn [ "foreign import ccall \"", classCastFnCppName super cls
-               , "\" ", hsDownCastFnName, " :: ", superType, " -> ", clsType
-               ]
+        unless (classIsSubclassOfMonomorphic cls || classIsMonomorphicSuperclass super) $ do
+          addExport hsDownCastFnName
+          saysLn [ "foreign import ccall \"", classCastFnCppName super cls
+                 , "\" ", hsDownCastFnName, " :: ", superType, " -> ", clsType
+                 ]
+        return True
 
-    SayExportDecls -> forM_ [minBound..] $ \cst -> do
+    SayExportDecls ->
       -- Generate a downcast typeclass and instances for all ancestor classes
       -- for the current constness.  These don't need to be in the boot file,
       -- since they're not used by other generated bindings.
-      let downCastClassName = toHsDownCastClassName cst cls
-          downCastMethodName = toHsDownCastMethodName cst cls
-      addExport' downCastClassName
-      ln
-      saysLn ["class ", downCastClassName, " a where"]
-      indent $ saysLn [downCastMethodName, " :: ",
-                       prettyPrint $ HsTyFun (HsTyVar $ HsIdent "a") $
-                       HsTyCon $ UnQual $ HsIdent $ toHsDataTypeName cst cls]
-      ln
-      forAncestors cls $ \super -> do
-        let superTypeName = toHsDataTypeName cst super
-            primitiveCastFn = toHsCastPrimitiveName super cls
-        saysLn ["instance ", downCastClassName, " ", superTypeName, " where"]
-        -- If Foo is a superclass of Bar:
-        --
-        -- instance BarSuper Foo where
-        --   downToBar = castFooToNonconst . castFooToBar . castFooToConst
-        --
-        -- instance BarSuperConst FooConst where
-        --   downToBarConst = constFooToBar
-        indent $ saysLn $
-          downCastMethodName : " = " :
-          case cst of
-            Const -> [primitiveCastFn]
-            Nonconst -> [toHsConstCastFnName Nonconst cls, " . ",
-                         primitiveCastFn, " . ",
-                         toHsConstCastFnName Const super]
+      unless (classIsSubclassOfMonomorphic cls) $
+      forM_ [minBound..] $ \cst -> do
+        let downCastClassName = toHsDownCastClassName cst cls
+            downCastMethodName = toHsDownCastMethodName cst cls
+        addExport' downCastClassName
+        ln
+        saysLn ["class ", downCastClassName, " a where"]
+        indent $ saysLn [downCastMethodName, " :: ",
+                         prettyPrint $ HsTyFun (HsTyVar $ HsIdent "a") $
+                         HsTyCon $ UnQual $ HsIdent $ toHsDataTypeName cst cls]
+        ln
+        forAncestors cls $ \super -> case classIsMonomorphicSuperclass super of
+          True -> return False
+          False -> do
+            let superTypeName = toHsDataTypeName cst super
+                primitiveCastFn = toHsCastPrimitiveName super cls
+            saysLn ["instance ", downCastClassName, " ", superTypeName, " where"]
+            -- If Foo is a superclass of Bar:
+            --
+            -- instance BarSuper Foo where
+            --   downToBar = castFooToNonconst . castFooToBar . castFooToConst
+            --
+            -- instance BarSuperConst FooConst where
+            --   downToBarConst = constFooToBar
+            indent $ saysLn $
+              downCastMethodName : " = " :
+              case cst of
+                Const -> [primitiveCastFn]
+                Nonconst -> [toHsConstCastFnName Nonconst cls, " . ",
+                             primitiveCastFn, " . ",
+                             toHsConstCastFnName Const super]
+            return True
 
     SayExportBoot -> do
       forAncestors cls $ \super -> do
@@ -1017,11 +1025,12 @@ sayExportClassCastPrimitives mode cls = do
             superType = toHsDataTypeName Const super
         addExport hsCastFnName
         saysLn [hsCastFnName, " :: ", clsType, " -> ", superType]
+        return True
 
-  where forAncestors :: Class -> (Class -> Generator ()) -> Generator ()
+  where forAncestors :: Class -> (Class -> Generator Bool) -> Generator ()
         forAncestors cls' f = forM_ (classSuperclasses cls') $ \super -> do
-          f super
-          forAncestors super f
+          recur <- f super
+          when recur $ forAncestors super f
 
 fnToHsTypeAndUse :: HsTypeSide
                  -> Maybe (Constness, Class)

@@ -101,6 +101,8 @@ module Foreign.Hoppy.Generator.Spec (
   -- ** Classes
   Class, makeClass, classIdentifier, classExtName, classSuperclasses, classCtors, classDtorIsPublic,
   classMethods, classConversion, classReqs, classAddCtors, classSetDtorPrivate, classAddMethods,
+  classIsMonomorphicSuperclass, classSetMonomorphicSuperclass,
+  classIsSubclassOfMonomorphic, classSetSubclassOfMonomorphic,
   HasClassyExtName (..),
   Ctor, makeCtor, mkCtor, ctorExtName, ctorParams,
   Method,
@@ -1120,6 +1122,12 @@ data Class = Class
     -- ^ Requirements for a 'Type' to reference this class.
   , classAddendum :: Addendum
     -- ^ The class's addendum.
+  , classIsMonomorphicSuperclass :: Bool
+    -- ^ This is true for classes passed through
+    -- 'classSetMonomorphicSuperclass'.
+  , classIsSubclassOfMonomorphic :: Bool
+    -- ^ This is true for classes passed through
+    -- 'classSetSubclassOfMonomorphic'.
   }
 
 instance Eq Class where
@@ -1156,6 +1164,8 @@ makeClass identifier maybeExtName supers ctors methods = Class
   , classConversion = classConversionNone
   , classReqs = mempty
   , classAddendum = mempty
+  , classIsMonomorphicSuperclass = False
+  , classIsSubclassOfMonomorphic = False
   }
 
 -- | Adds constructors to a class.
@@ -1167,6 +1177,22 @@ classAddCtors ctors cls =
 -- generated.
 classSetDtorPrivate :: Class -> Class
 classSetDtorPrivate cls = cls { classDtorIsPublic = False }
+
+-- | Explicitly marks a class as being monomorphic (i.e. not having any
+-- virtual methods or destructors).  By default, Hoppy assumes that a class that
+-- is derived is also polymorphic, but it can happen that this is not the case.
+-- Downcasting with @dynamic_cast@ from such classes is not available.  See also
+-- 'classSetSubclassOfMonomorphic'.
+classSetMonomorphicSuperclass :: Class -> Class
+classSetMonomorphicSuperclass cls = cls { classIsMonomorphicSuperclass = True }
+
+-- | Marks a class as being derived from some monomorphic superclass.  This
+-- prevents any downcasting to this class.  Generally it is better to use
+-- 'classSetMonomorphicSuperclass' on the specific superclasses that are
+-- monomorphic, but in cases where this is not possible, this function can be
+-- applied to the subclass instead.
+classSetSubclassOfMonomorphic :: Class -> Class
+classSetSubclassOfMonomorphic cls = cls { classIsSubclassOfMonomorphic = True }
 
 -- | Adds methods to a class.
 classAddMethods :: [Method] -> Class -> Class
