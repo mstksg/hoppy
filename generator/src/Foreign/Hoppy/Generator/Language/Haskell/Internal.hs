@@ -580,7 +580,7 @@ sayCallAndProcessReturn dir t callWords =
       case dir of
         ToCpp -> do addImports $ mconcat [hsImport1 "Prelude" "(/=)", hsImportForPrelude]
                     sayLn "HoppyP.fmap (/= 0)"
-        FromCpp -> sayLn "(\\x -> if x then 1 else 0)"
+        FromCpp -> sayLn "HoppyP.fmap (\\x -> if x then 1 else 0)"
       sayCall
     TChar -> sayCall
     TUChar -> sayCall
