@@ -131,6 +131,7 @@ module Foreign.Hoppy.Generator.Spec (
   -- * Haskell imports
   HsModuleName, HsImportSet, HsImportKey (..), HsImportSpecs (..), HsImportName, HsImportVal (..),
   hsWholeModuleImport, hsQualifiedImport, hsImport1, hsImport1', hsImports, hsImports',
+  hsImportSetMakeSource,
   -- * Internal to Hoppy
   stringOrIdentifier,
   -- ** Haskell imports
@@ -1662,6 +1663,12 @@ addAddendumHaskell gen = modifyAddendum $ \addendum ->
 -- | Constructor for an import set.
 makeHsImportSet :: M.Map HsImportKey HsImportSpecs -> HsImportSet
 makeHsImportSet = HsImportSet
+
+-- | Sets all of the import specifications in an import set to be
+-- @{-#SOURCE#-}@ imports.
+hsImportSetMakeSource :: HsImportSet -> HsImportSet
+hsImportSetMakeSource (HsImportSet m) =
+  HsImportSet $ M.map (\specs -> specs { hsImportSource = True }) m
 
 -- | A Haskell module name.
 type HsModuleName = String
