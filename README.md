@@ -41,20 +41,20 @@ Hoppy consists of four Cabal packages:
 - `docs/` contains documentation written using Haddock.  It depends on the
   previous packages for hyperlinks.
 
-There is a user's guide written using Haddock at
-`docs/src/Foreign/Hoppy/Documentation.hs`.  You can read it as is, or build it
-with
+It can be built and installed with:
 
     # Build the generator library documentation.
-    cd generator && cabal configure && cabal haddock && cabal install
+    (cd generator && cabal configure && cabal haddock && cabal install)
     # Build the standard library interface documentation.
-    cd std && cabal configure && cabal haddock && cabal install
+    (cd std && cabal configure && cabal haddock && cabal install)
     # Build the runtime documentation.
-    cd runtime && cabal configure && cabal haddock && cabal install
+    (cd runtime && cabal configure && cabal haddock && cabal install)
     # Build the documentation.
-    cd docs && cabal configure && cabal haddock
+    (cd docs && cabal configure && cabal haddock)
 
-and browse the HTML files in `docs/dist/doc`.
+There is a user's guide written using Haddock at
+`docs/src/Foreign/Hoppy/Documentation.hs`.  You can read it as is, or browse the
+HTML files in `docs/dist/doc` after building.
 
 ## Developing
 
@@ -64,4 +64,4 @@ try to ensure that your changes compile cleanly without warnings when `-W` is
 used, pass the unit tests in the `tests/` directory, add new tests as
 appropriate, and follow the style guide at:
 
-http://khumba.net/projects/haskell-style
+https://gitlab.com/khumba/haskell-style/blob/master/haskell-style.md
