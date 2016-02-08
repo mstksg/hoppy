@@ -1,16 +1,19 @@
 name: hoppy-generator
 version: 0.1.0
-synopsis: C++ FFI generator for Haskell - Code generator
--- description:
+synopsis: C++ FFI generator - Code generator
 homepage: http://khumba.net/projects/hoppy
 license: AGPL-3
 license-file: LICENSE
 author: Bryan Gardiner <bog@khumba.net>
 maintainer: Bryan Gardiner <bog@khumba.net>
 copyright: Copyright 2015-2016 Bryan Gardiner
-category: Language
+category: Foreign
 build-type: Simple
 cabal-version: >=1.10
+description:
+    Hoppy generates Haskell bindings to C++ libraries.
+    .
+    This package is the code generator.
 
 library
   exposed-modules:
