@@ -16,8 +16,8 @@ The `LICENSE` file contains information about Hoppy's license.
 ## Dependencies
 
 - GHC 7.8-7.10
-- haskell-src 1.0-1.1 (for binding development only)
-- mtl 2.1-2.3 (for binding development only)
+- haskell-src (for binding development only)
+- mtl (for binding development only)
 
 If you just want to install Hoppy to use it as a dependency of another project,
 then all you need to do is build and install the Cabal package in `runtime/`.
