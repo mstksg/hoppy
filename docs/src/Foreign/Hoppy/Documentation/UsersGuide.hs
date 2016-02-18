@@ -210,8 +210,8 @@ generator behaviour.
 
 The C++ code generator generates C++ bindings that other languages' bindings
 will link against.  This generator lives in
-"Foreign.Hoppy.Generator.Language.Cpp", with public parts in
-"Foreign.Hoppy.Generator.Language.Cpp.General".
+"Foreign.Hoppy.Generator.Language.Cpp", with internal parts in
+"Foreign.Hoppy.Generator.Language.Cpp.Internal".
 
 -}
 {- $generators-cpp-module-structure
@@ -304,7 +304,7 @@ the when the temporary F object is destructed, the G object will get deleted.
 {- $generators-hs
 
 The Haskell code generator lives in "Foreign.Hoppy.Generator.Language.Haskell",
-with public parts in "Foreign.Hoppy.Generator.Language.Haskell.General".
+with internal parts in "Foreign.Hoppy.Generator.Language.Haskell.Internal".
 
 Central to generated Haskell bindings is the idea of type sidedness and the
 'HsTypeSide' enum.  When a value is passed to or from C++, it needs to be

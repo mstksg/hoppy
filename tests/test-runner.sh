@@ -47,7 +47,7 @@ if test -n "$doBuild"; then
     # Build the generator and its dependencies.
     set -x
     cd "$suiteRoot/hs"
-    cabal sandbox delete
+    cabal sandbox delete || true  # Cabal 1.18 fails when sandbox doesn't exist.
     cabal sandbox init
     cabal install ../../../{generator,std,runtime}
     cabal install ../generator
