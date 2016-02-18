@@ -90,7 +90,7 @@ coerceIntegral a =
   in if a' == a
      then b
      else error $ "Conversion from " ++ show (typeOf a) ++ " to " ++
-          show (typeOf b) ++ " is not idempotent for value " ++ show a ++ "."
+          show (typeOf b) ++ " does not preserve the value " ++ show a ++ "."
 
 -- | An instance of this class represents a pointer to a C++ object.  All C++
 -- classes bound by Hoppy have instances of @CppPtr@.
