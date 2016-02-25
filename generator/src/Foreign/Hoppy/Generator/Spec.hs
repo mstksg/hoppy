@@ -148,6 +148,8 @@ module Foreign.Hoppy.Generator.Spec (
   hsImportForUnsafeIO,
   -- ** Error messages
   tObjToHeapWrongDirectionErrorMsg,
+  tToGcInvalidFormErrorMessage,
+  tToGcWrongDirectionErrorMsg,
   ) where
 
 #if !MIN_VERSION_base(4,8,0)
@@ -797,12 +799,27 @@ data Type =
   | TCallback Callback  -- ^ A handle for calling foreign code from C++.
   | TObj Class  -- ^ An instance of a class.
   | TObjToHeap Class
-    -- ^ A special case of 'TObj' that is only allowed when passing values from
+    -- ^ A special case of 'TObj' that is only allowed when passing objects from
     -- C++ to a foreign language.  Rather than looking at the object's
     -- 'ClassConversion', the object will be copied to the heap, and a pointer
-    -- to the new object will be passed.  The object must be copy-constructable.
+    -- to the heap object will be passed.  The object must be
+    -- copy-constructable.
     --
     -- __The foreign language owns the pointer, even for callback arguments.__
+  | TToGc Type
+    -- ^ This type transfers ownership of the object to the foreign language's
+    -- garbage collector, and results in a managed pointer in the foreign
+    -- language.  This may only be used in one of the forms below, when passing
+    -- data from C++ to a foreign language (i.e. in a C++ function return type
+    -- or in a callback argument).  In the first case, the temporary object is
+    -- copied to the heap, and the result is a managed pointer to the heap
+    -- object instead of the temporary.
+    --
+    -- - @TToGc (TObj cls)@
+    -- - @TToGc (TRef (TConst (TObj cls)))@
+    -- - @TToGc (TRef (TObj cls))@
+    -- - @TToGc (TPtr (TConst (TObj cls)))@
+    -- - @TToGc (TPtr (TObj cls))@
   | TConst Type  -- ^ A @const@ version of another type.
   deriving (Eq, Show)
 
@@ -843,6 +860,7 @@ normalizeType t = case t of
   TCallback _ -> t
   TObj _ -> t
   TObjToHeap _ -> t
+  TToGc _ -> t
   TConst (TConst t') -> normalizeType $ TConst t'
   TConst _ -> t
 
@@ -1788,9 +1806,25 @@ hsImportForUnsafeIO :: HsImportSet
 hsImportForUnsafeIO = hsQualifiedImport "System.IO.Unsafe" "HoppySIU"
 
 -- | Returns an error message indicating that 'TObjToHeap' is used where data is
--- going from a foreign langauge into C++.
+-- going from a foreign language into C++.
 tObjToHeapWrongDirectionErrorMsg :: Maybe String -> Class -> String
 tObjToHeapWrongDirectionErrorMsg maybeCaller cls =
   concat [maybe "" (++ ": ") maybeCaller,
           "(TObjToHeap ", show cls, ") cannot be passed into C++",
+          maybe "" (const ".") maybeCaller]
+
+-- | Returns an error message indicating that 'TObjToHeap' is used where data is
+-- going from a foreign language into C++.
+tToGcInvalidFormErrorMessage :: Maybe String -> Type -> String
+tToGcInvalidFormErrorMessage maybeCaller typeArg =
+  concat [maybe "" (++ ": ") maybeCaller,
+          "(", show (TToGc typeArg), ") is an invalid form for TToGc.",
+          maybe "" (const ".") maybeCaller]
+
+-- | Returns an error message indicating that 'TToGc' is used where data is
+-- going from a foreign language into C++.
+tToGcWrongDirectionErrorMsg :: Maybe String -> Type -> String
+tToGcWrongDirectionErrorMsg maybeCaller typeArg =
+  concat [maybe "" (++ ": ") maybeCaller,
+          "(", show (TToGc typeArg), ") cannot be passed into C++",
           maybe "" (const ".") maybeCaller]

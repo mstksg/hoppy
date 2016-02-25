@@ -93,13 +93,40 @@ coerceIntegral a =
           show (typeOf b) ++ " does not preserve the value " ++ show a ++ "."
 
 -- | An instance of this class represents a pointer to a C++ object.  All C++
--- classes bound by Hoppy have instances of @CppPtr@.
+-- classes bound by Hoppy have instances of @CppPtr@.  The lifetime of such an
+-- object can optionally be managed by the Haskell garbage collector.  Pointers
+-- returned from constructors are unmanaged, and 'toGcPtr' converts an unmanaged
+-- pointer to a managed one.  'delete' must not be called on managed pointers.
 class CppPtr this where
   -- | Polymorphic null pointer.
   nullptr :: this
 
-  -- | Converts to a regular pointer.
+  -- | Converts a pointer to one managed by the garbage collector.  A __new__
+  -- managed pointer is returned, and existing pointers __including__ the
+  -- argument remain unmanaged, becoming invalid once all managed pointers are
+  -- unreachable.  Calling this on an already managed pointer has no effect and
+  -- the argument is simply returned.  It is no longer safe to call 'delete' on
+  -- the given object after calling this function.  It is also not safe to call
+  -- this function on unmanaged pointers for a single object multiple times: the
+  -- object will get deleted more than once.
+  toGcPtr :: this -> IO this
+
+  -- | Runs an IO action on the 'Ptr' underlying this pointer.  Equivalent to
+  -- 'Foreign.ForeignPtr.withForeignPtr' for managed pointers: the 'Ptr' is only
+  -- guaranteed to be valid until the action returns.  There is no such
+  -- restriction for unmanaged pointers.
+  withCppPtr :: this -> (Ptr this -> IO a) -> IO a
+
+  -- | Converts to a regular pointer.  For objects managed by the garbage
+  -- collector, this comes with the warnings associated with
+  -- 'Foreign.ForeignPtr.Unsafe.unsafeForeignPtrToPtr', namely that the object
+  -- may be collected immediately after this function returns unless there is a
+  -- 'touchCppPtr' call later on.
   toPtr :: this -> Ptr this
+
+  -- | Equivalent to 'Foreign.ForeignPtr.touchForeignPtr' for managed object
+  -- pointers.  Has no effect on unmanaged pointers.
+  touchCppPtr :: this -> IO ()
 
 -- | C++ values that can be deleted.  All C++ classes bound by Hoppy have
 -- instances of @Deletable@.

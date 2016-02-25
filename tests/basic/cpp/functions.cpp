@@ -241,6 +241,11 @@ IntBox** getIntBoxPtrPtr() {
     return &ptr;
 }
 
+void doubleIntBoxPtrPtr(IntBox** p) {
+    IntBox& box = **p;
+    box.set(box.get() * 2);
+}
+
 void doubleIntPtr(int* p) {
     *p *= 2;
 }

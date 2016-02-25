@@ -15,7 +15,7 @@
 -- You should have received a copy of the GNU Affero General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-{-# LANGUAGE CPP, ScopedTypeVariables #-}
+{-# LANGUAGE CPP, ScopedTypeVariables, ViewPatterns #-}
 
 module Main (main) where
 
@@ -23,6 +23,7 @@ module Main (main) where
 import Control.Applicative ((<$>), (<*>))
 #endif
 import Control.Monad (when)
+import Data.Void (Void)
 import Foreign.C (
   CChar,
   CDouble,
@@ -34,8 +35,9 @@ import Foreign.C (
   CShort,
   CSize,
   )
+import Foreign.ForeignPtr (ForeignPtr, castForeignPtr, withForeignPtr)
 import Foreign.Hoppy.Runtime (
-  CBool (CBool),
+  CBool,
   assign,
   decode,
   decodeAndDelete,
@@ -43,6 +45,7 @@ import Foreign.Hoppy.Runtime (
   encode,
   encodeAs,
   nullptr,
+  toGcPtr,
   toPtr,
   withCppObj,
   withScopedPtr,
@@ -50,9 +53,10 @@ import Foreign.Hoppy.Runtime (
 import Foreign.Hoppy.Test.Basic
 import Foreign.Hoppy.Test.Basic.HsBox
 import Foreign.Marshal.Alloc (alloca)
-import Foreign.Ptr (nullPtr)
+import Foreign.Ptr (Ptr, nullPtr)
 import Foreign.Storable (peek, poke, sizeOf)
 import System.Exit (exitFailure)
+import System.Mem (performGC)
 import System.Posix.Types (CSsize)
 import Test.HUnit (
   Assertion,
@@ -60,6 +64,7 @@ import Test.HUnit (
   (~:),
   (@?=),
   assert,
+  assertFailure,
   errors,
   failures,
   runTestTT,
@@ -78,6 +83,7 @@ tests =
   TestList
   [ functionTests
   , objectTests
+  , objectGcTests
   , conversionTests
   , tObjToHeapTests
   , classConversionTests
@@ -119,6 +125,92 @@ objectTests =
     withScopedPtr intBox_new $ assert . (nullPtr /=) . toPtr
   ]
 
+objectGcTests :: Test
+objectGcTests =
+  "object garbage collection" ~: TestList
+  [ "objects are not collected by default" ~: do
+    ptrCtr_resetCounters
+    withScopedPtr ptrCtr_new $ \p -> do
+      ptrCtr_redButton p
+      performGC
+      readCounts >>= (@?= (1, 0))
+    readCounts >>= (@?= (1, 1))
+
+  , "toGcPtr creates collectable pointers" ~: do
+    ptrCtr_resetCounters
+    p <- toGcPtr =<< ptrCtr_new
+    ptrCtr_redButton p
+    performGC
+    readCounts >>= (@?= (1, 1))
+
+  , "(TToGc . TObj) creates collectable pointers" ~: do
+    ptrCtr_resetCounters
+    p <- ptrCtr_newGcedObj
+    ptrCtr_redButton p
+    performGC
+    (news, dels) <- readCounts
+    dels @?= news
+
+  , "(TToGc . TRef . TConst . TObj) creates collectable pointers" ~: do
+    ptrCtr_resetCounters
+    p <- ptrCtr_newGcedRefConst
+    ptrCtr_redButton p
+    performGC
+    readCounts >>= (@?= (1, 1))
+
+  , "(TToGc . TRef . TObj) creates collectable pointers" ~: do
+    ptrCtr_resetCounters
+    p <- ptrCtr_newGcedRef
+    ptrCtr_redButton p
+    performGC
+    readCounts >>= (@?= (1, 1))
+
+  , "(TToGc . TPtr . TConst . TObj) creates collectable pointers" ~: do
+    ptrCtr_resetCounters
+    p <- ptrCtr_newGcedPtrConst
+    ptrCtr_redButton p
+    performGC
+    readCounts >>= (@?= (1, 1))
+
+  , "(TToGc . TPtr . TObj) creates collectable pointers" ~: do
+    ptrCtr_resetCounters
+    p <- ptrCtr_newGcedPtr
+    ptrCtr_redButton p
+    performGC
+    readCounts >>= (@?= (1, 1))
+
+  , "casted ForeignPtrs contribute to an object's lifetime" ~: do
+    ptrCtr_resetCounters
+    p <- ptrCtr_newGcedPtr
+    case p of
+      PtrCtrGc (castForeignPtr -> fptr :: ForeignPtr Void) _ -> do
+        withForeignPtr fptr $ \_ -> do
+          performGC
+          -- p is collectable now, but fptr should be keeping the counter alive.
+          -- If you replace "withForeignPtr" with "flip ($)", this read returns
+          -- (1, 1) instead of (1, 0).
+          readCounts >>= (@?= (1, 0))
+        performGC
+        readCounts >>= (@?= (1, 1))
+      _ -> assertFailure $
+           concat ["Expected a managed pointer, not ", show p, "."]
+
+  , "managed and unmanaged pointers are equatable" ~: do
+    unmanaged <- ptrCtr_new
+    managed <- toGcPtr unmanaged
+    managed @?= unmanaged
+
+  , "managed and unmanaged pointers aren't ordered by state" ~: do
+    unmanaged0 <- ptrCtr_new
+    managed0 <- toGcPtr unmanaged0
+    unmanaged1 <- ptrCtr_new
+    managed1 <- toGcPtr unmanaged1
+    compare unmanaged0 managed0 @?= EQ
+    compare unmanaged1 managed1 @?= EQ
+    compare unmanaged0 managed1 @?= compare managed0 unmanaged1
+    compare unmanaged1 managed0 @?= compare managed1 unmanaged0
+  ]
+  where readCounts = (,) <$> ptrCtr_getConstructionCount <*> ptrCtr_getDestructionCount
 
 conversionTests :: Test
 conversionTests =
@@ -290,15 +382,15 @@ rawPointerTests :: Test
 rawPointerTests =
   "raw pointers" ~: TestList
   [ "can read and write a bool*" ~: do
-    p <- getBoolPtr
-    peek p >>= (@?= CBool 0)
+    p <- getBoolPtr :: IO (Ptr CBool)
+    peek p >>= (@?= 0)
     decode p >>= (@?= False)
     assign p True
-    peek p >>= (@?= CBool 1)
+    peek p >>= (@?= 1)
     decode p >>= (@?= True)
 
   , "can read and write an int*" ~: do
-    p <- getIntPtr
+    p <- getIntPtr :: IO (Ptr CInt)
     peek p >>= (@?= 23)
     decode p >>= (@?= 23)
     assign p (34 :: CInt)
@@ -306,14 +398,21 @@ rawPointerTests =
     decode p >>= (@?= 34)
 
   , "can read an int**" ~: do
-    pp <- getIntPtrPtr
+    pp <- getIntPtrPtr :: IO (Ptr (Ptr CInt))
     p <- decode pp
     decode p >>= (@?= 1234)
 
   , "can read a IntBox**" ~: do
-    pp <- getIntBoxPtrPtr
-    p <- decode pp
+    pp <- getIntBoxPtrPtr :: IO (Ptr (Ptr IntBox))
+    p <- decode =<< decode pp
     intBox_get p >>= (@?= 1010)
+
+  , "can pass an IntBox**" ~:
+    withScopedPtr (intBox_newWithValue 3) $ \box ->
+    alloca $ \(p :: Ptr (Ptr IntBox)) -> do
+      poke p $ toPtr box
+      doubleIntBoxPtrPtr p
+      intBox_get box >>= (@?= 6)
 
   , "can pass an int*" ~:
     alloca $ \p -> do

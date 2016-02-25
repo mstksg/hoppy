@@ -299,8 +299,8 @@ sayExportFn extName callType maybeThisType paramTypes retType sayBody = do
       -- Convert arguments that aren't passed in directly.
       mapM_ (sayArgRead DoDecode) $ zip3 [1..] paramTypes paramCTypeMaybes
 
-      -- Determine how to call the exported function or method.
-      let sayCall = case callType of
+      let -- Determines how to call the exported function or method.
+          sayCall = case callType of
             CallOp op -> do
               say "("
               let effectiveParamCount = paramCount + if isJust maybeThisType then 1 else 0
@@ -328,25 +328,30 @@ sayExportFn extName callType maybeThisType paramTypes retType sayBody = do
             VarRead identifier -> sayIdentifier identifier
             VarWrite identifier -> sayIdentifier identifier >> says [" = ", toArgName 1]
 
-      -- Write the call, transforming the return value if necessary.
-      case (retType, retCTypeMaybe) of
-        (TVoid, Nothing) -> sayCall >> say ";\n"
-        (_, Nothing) -> say "return " >> sayCall >> say ";\n"
-        (TBitspace b, Just _) -> do
-          addReqsM $ bitspaceReqs b
-          let convFn = bitspaceFromCppValueFn b
-          say "return "
-          forM_ convFn $ \f -> says [f, "("]
-          sayCall
-          when (isJust convFn) $ say ")"
-          say ";\n";
-        (TRef cls, Just (TPtr cls')) | cls == cls' -> say "return &(" >> sayCall >> say ");\n"
-        (TObj cls, Just (TPtr (TConst (TObj cls')))) | cls == cls' -> sayReturnNewCopy cls sayCall
-        (TObjToHeap cls, Just (TPtr (TObj cls'))) | cls == cls' -> sayReturnNewCopy cls sayCall
-        ts -> abort $ concat ["sayExportFn: Unexpected return types ", show ts,
-                              "while generating binding for ", show extName, "."]
+          -- Writes the call, transforming the return value if necessary.
+          -- These translations should be kept in sync with typeToCType.
+          sayCallAndReturn retType' retCTypeMaybe' = case (retType', retCTypeMaybe') of
+            (TVoid, Nothing) -> sayCall >> say ";\n"
+            (_, Nothing) -> say "return " >> sayCall >> say ";\n"
+            (TBitspace b, Just _) -> do
+              addReqsM $ bitspaceReqs b
+              let convFn = bitspaceFromCppValueFn b
+              say "return "
+              forM_ convFn $ \f -> says [f, "("]
+              sayCall
+              when (isJust convFn) $ say ")"
+              say ";\n";
+            (TRef cls, Just (TPtr cls')) | cls == cls' -> say "return &(" >> sayCall >> say ");\n"
+            (TObj cls, Just (TPtr (TConst (TObj cls')))) | cls == cls' -> sayReturnNew cls sayCall
+            (TObjToHeap cls, Just (TPtr (TObj cls'))) | cls == cls' -> sayReturnNew cls sayCall
+            (TToGc (TObj cls), Just (TPtr (TObj cls'))) | cls == cls' -> sayReturnNew cls sayCall
+            (TToGc retType'', _) -> sayCallAndReturn retType'' retCTypeMaybe'
+            ts -> abort $ concat ["sayExportFn: Unexpected return types ", show ts,
+                                  "while generating binding for ", show extName, "."]
 
-  where sayReturnNewCopy cls sayCall =
+      sayCallAndReturn retType retCTypeMaybe
+
+  where sayReturnNew cls sayCall =
           say "return new" >> sayIdentifier (classIdentifier cls) >> say "(" >>
           sayCall >> say ");\n"
 
@@ -387,6 +392,7 @@ sayArgRead dir (n, stripConst . normalizeType -> cppType, maybeCType) = case cpp
   TRef t -> convertObj t
 
   TObj _ -> convertObj $ TConst cppType
+
   TObjToHeap cls -> case dir of
     DoDecode -> error $ tObjToHeapWrongDirectionErrorMsg (Just "sayArgRead") cls
     DoEncode -> do
@@ -394,6 +400,16 @@ sayArgRead dir (n, stripConst . normalizeType -> cppType, maybeCType) = case cpp
       says ["* ", toArgName n, " = new "]
       sayIdentifier $ classIdentifier cls
       says ["(", toArgNameAlt n, ");\n"]
+
+  TToGc t' -> case dir of
+    DoDecode -> error $ tToGcWrongDirectionErrorMsg (Just "sayArgRead") t'
+    DoEncode -> do
+      let newCppType = case t' of
+            -- In the case of (TToGc (TObj _)), we copy the temporary object to
+            -- the heap and let the foreign language manage that value.
+            TObj cls -> TObjToHeap cls
+            _ -> t'
+      sayArgRead dir (n, cppType, typeToCType newCppType)
 
   -- Primitive types don't need to be encoded/decoded.  But if maybeCType is a
   -- Just, then we're expected to do some encoding/decoding, so something is
@@ -556,6 +572,8 @@ typeToCType t = case t of
   TRef t' -> Just $ TPtr t'
   TObj _ -> Just $ TPtr $ TConst t
   TObjToHeap cls -> Just $ TPtr $ TObj cls
+  TToGc t'@(TObj _) -> Just $ TPtr t'
+  TToGc t' -> typeToCType t'
   TConst t' -> typeToCType t'
   _ -> Nothing
 
@@ -601,6 +619,7 @@ typeReqs t = case t of
     return $ cbClassReqs `mappend` fnTypeReqs
   TObj cls -> return $ classReqs cls
   TObjToHeap cls -> return $ classReqs cls
+  TToGc t' -> typeReqs t'
   TConst t' -> typeReqs t'
 
 cstddefReqs :: Reqs

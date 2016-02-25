@@ -20,6 +20,7 @@
 -- | Shared portion of the Haskell code generator.  Usable by binding
 -- definitions.
 module Foreign.Hoppy.Generator.Language.Haskell (
+  Managed (..),
   getModuleName,
   toModuleName,
   -- * Code generators
@@ -62,7 +63,9 @@ module Foreign.Hoppy.Generator.Language.Haskell (
   toHsCastPrimitiveName,
   toHsConstCastFnName,
   toHsDataTypeName,
+  toHsDataCtorName,
   toHsClassDeleteFnName,
+  toHsClassDeleteFnPtrName,
   toHsMethodName,
   toHsMethodName',
   toHsCallbackCtorName,
@@ -105,6 +108,15 @@ import Language.Haskell.Syntax (
   HsSpecialCon (HsUnitCon),
   HsType (HsTyApp, HsTyCon, HsTyFun),
   )
+
+-- | Indicates who is managing the lifetime of an object via an object pointer.
+data Managed =
+    Unmanaged
+    -- ^ The object's lifetime is being managed manually.
+  | Managed
+    -- ^ The object's lifetime is being managed by the Haskell garbage
+    -- collector.
+  deriving (Bounded, Enum, Eq, Ord)
 
 -- | Returns the complete Haskell module name for a 'Module' in an 'Interface',
 -- taking into account the 'interfaceHaskellModuleBase' and the
@@ -533,11 +545,25 @@ toHsConstCastFnName cst cls =
 toHsDataTypeName :: Constness -> Class -> String
 toHsDataTypeName cst cls = toHsTypeName cst $ classExtName cls
 
+-- | The name of a data constructor for one of the object pointer types.
+toHsDataCtorName :: Managed -> Constness -> Class -> String
+toHsDataCtorName m cst cls = case m of
+  Unmanaged -> base
+  Managed -> base ++ "Gc"
+  where base = toHsDataTypeName cst cls
+
 -- | The name of the foreign function import wrapping @delete@ for the given
 -- class type.  This is in internal to the binding; normal users should use
 -- 'Foreign.Hoppy.Runtime.delete'.
 toHsClassDeleteFnName :: Class -> String
 toHsClassDeleteFnName cls = 'd':'e':'l':'e':'t':'e':'\'':toHsDataTypeName Nonconst cls
+
+-- | The name of the foreign import that imports the same function as
+-- 'toHsClassDeleteFnName', but as a 'Foreign.Ptr.FunPtr' rather than an actual
+-- function.
+toHsClassDeleteFnPtrName :: Class -> String
+toHsClassDeleteFnPtrName cls =
+  'd':'e':'l':'e':'t':'e':'P':'t':'r':'\'':toHsDataTypeName Nonconst cls
 
 -- | Returns the name of the Haskell function that invokes the given method.
 --
@@ -619,12 +645,24 @@ cppTypeToHsTypeAndUse side t =
       HsCSide -> cppTypeToHsTypeAndUse side $ bitspaceType b
       HsHsSide -> importHsModuleForExtName (bitspaceExtName b) $>
                   HsTyCon (UnQual $ HsIdent $ toHsBitspaceTypeName b)
-    TPtr (TObj cls) ->
-      importHsModuleForExtName (classExtName cls) $>
-      HsTyCon (UnQual $ HsIdent $ toHsTypeName Nonconst $ classExtName cls)
-    TPtr (TConst (TObj cls)) ->
-      importHsModuleForExtName (classExtName cls) $>
-      HsTyCon (UnQual $ HsIdent $ toHsTypeName Const $ classExtName cls)
+    TPtr (TObj cls) -> do
+      -- Same as TPtr (TConst (TObj cls)), but nonconst.
+      importHsModuleForExtName (classExtName cls)
+      let dataType = HsTyCon $ UnQual $ HsIdent $ toHsTypeName Nonconst $ classExtName cls
+      case side of
+        HsCSide -> do
+          addImports hsImportForForeign
+          return $ HsTyApp (HsTyCon $ UnQual $ HsIdent "HoppyF.Ptr") dataType
+        HsHsSide -> return dataType
+    TPtr (TConst (TObj cls)) -> do
+      -- Same as TPtr (TObj cls), but const.
+      importHsModuleForExtName (classExtName cls)
+      let dataType = HsTyCon $ UnQual $ HsIdent $ toHsTypeName Const $ classExtName cls
+      case side of
+        HsCSide -> do
+          addImports hsImportForForeign
+          return $ HsTyApp (HsTyCon $ UnQual $ HsIdent "HoppyF.Ptr") dataType
+        HsHsSide -> return dataType
     TPtr (TFn paramTypes retType) -> do
       paramHsTypes <- mapM (cppTypeToHsTypeAndUse side) paramTypes
       retHsType <- cppTypeToHsTypeAndUse side retType
@@ -637,9 +675,8 @@ cppTypeToHsTypeAndUse side t =
         foldr HsTyFun (HsTyApp (HsTyCon $ UnQual $ HsIdent "HoppyP.IO") retHsType) paramHsTypes
     TPtr t' -> do
       addImports hsImportForForeign
-      -- Pointers to other types (i.e. primitive number types) point to the raw
-      -- C++ value, so we need to use the C-side type of the pointer target
-      -- here.
+      -- Pointers to types not covered above point to raw C++ values, so we need
+      -- to use the C-side type of the pointer target here.
       HsTyApp (HsTyCon $ UnQual $ HsIdent "HoppyF.Ptr") <$> cppTypeToHsTypeAndUse HsCSide t'
     TRef t' -> cppTypeToHsTypeAndUse side $ TPtr t'
     TFn paramTypes retType -> do
@@ -664,6 +701,11 @@ cppTypeToHsTypeAndUse side t =
             ["Expected a Haskell type for ", show cls, " but there isn't one"]
           Just t' -> t'
     TObjToHeap cls -> cppTypeToHsTypeAndUse side $ TPtr $ TObj cls
+    TToGc t' -> case t' of
+      TRef _ -> cppTypeToHsTypeAndUse side t'  -- References behave the same as pointers.
+      TPtr _ -> cppTypeToHsTypeAndUse side t'
+      TObj cls -> cppTypeToHsTypeAndUse side $ TPtr $ TObj cls
+      _ -> throwError $ tToGcInvalidFormErrorMessage Nothing t'
     TConst t' -> cppTypeToHsTypeAndUse side t'
 
 -- | Prints a value like 'P.prettyPrint', but removes newlines so that they

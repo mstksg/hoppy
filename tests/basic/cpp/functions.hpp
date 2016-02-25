@@ -94,6 +94,7 @@ bool* getBoolPtr();
 int* getIntPtr();
 int** getIntPtrPtr();
 IntBox** getIntBoxPtrPtr();
+void doubleIntBoxPtrPtr(IntBox**);
 void doubleIntPtr(int*);
 void doubleIntPtrPtr(int**);
 void doubleIntRef(int&);

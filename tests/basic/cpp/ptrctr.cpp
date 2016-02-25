@@ -37,6 +37,26 @@ PtrCtr::~PtrCtr() {
     ++destructions_;
 }
 
+PtrCtr PtrCtr::newGcedObj() {
+    return PtrCtr();
+}
+
+const PtrCtr& PtrCtr::newGcedRefConst() {
+    return *new PtrCtr();
+}
+
+PtrCtr& PtrCtr::newGcedRef() {
+    return *new PtrCtr();
+}
+
+const PtrCtr* PtrCtr::newGcedPtrConst() {
+    return new PtrCtr();
+}
+
+PtrCtr* PtrCtr::newGcedPtr() {
+    return new PtrCtr();
+}
+
 int PtrCtr::resetCounters() {
     constructions_ = 0;
     destructions_ = 0;
@@ -49,3 +69,5 @@ int PtrCtr::getConstructionCount() {
 int PtrCtr::getDestructionCount() {
     return destructions_;
 }
+
+void PtrCtr::redButton() const {}
