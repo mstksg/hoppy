@@ -1073,14 +1073,17 @@ sayExportClassHsSpecialFns mode cls = do
                             hsImportForPrelude,
                             hsImportForRuntime]
       ln
-      saysLn ["instance HoppyFHR.Decodable (HoppyF.Ptr ", typeName, ") ", typeName, " where"]
-      indent $ saysLn ["decode = HoppyP.return . ", toHsDataCtorName Unmanaged Nonconst cls]
+      saysLn ["instance HoppyFHR.Decodable (HoppyF.Ptr (HoppyF.Ptr ",
+              typeName, ")) ", typeName, " where"]
+      indent $
+        saysLn ["decode = HoppyP.fmap ",
+                toHsDataCtorName Unmanaged Nonconst cls, " . HoppyF.peek"]
 
     SayExportBoot -> do
       addImports $ mconcat [hsImportForForeign, hsImportForRuntime]
       ln
       -- TODO Encodable.
-      saysLn ["instance HoppyFHR.Decodable (HoppyF.Ptr ", typeName, ") ", typeName]
+      saysLn ["instance HoppyFHR.Decodable (HoppyF.Ptr (HoppyF.Ptr ", typeName, ")) ", typeName]
 
   -- Say Encodable and Decodable instances, if the class is encodable and
   -- decodable.
@@ -1203,8 +1206,9 @@ sayExportClassCastPrimitives mode cls = do
       forAncestors cls $ \super -> do
         let hsCastFnName = toHsCastPrimitiveName cls super
             superType = toHsDataTypeName Const super
+        addImports $ hsImportForForeign
         addExport hsCastFnName
-        saysLn [hsCastFnName, " :: ", clsType, " -> ", superType]
+        saysLn [hsCastFnName, " :: HoppyF.Ptr ", clsType, " -> HoppyF.Ptr ", superType]
         return True
 
   where forAncestors :: Class -> (Class -> Generator Bool) -> Generator ()

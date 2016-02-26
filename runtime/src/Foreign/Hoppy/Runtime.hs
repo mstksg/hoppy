@@ -41,7 +41,9 @@ module Foreign.Hoppy.Runtime (
   ) where
 
 import Control.Exception (bracket)
+import Data.Int (Int8, Int16, Int32, Int64)
 import Data.Typeable (Typeable, typeOf)
+import Data.Word (Word8, Word16, Word32, Word64)
 import Foreign (FunPtr, Ptr, Storable, freeHaskellFunPtr, peek, poke)
 import Foreign.C (
   CChar,
@@ -50,6 +52,7 @@ import Foreign.C (
   CInt,
   CLLong,
   CLong,
+  CPtrdiff,
   CShort,
   CSize,
   CUChar (CUChar),
@@ -59,6 +62,7 @@ import Foreign.C (
   CUShort,
   )
 import System.IO.Unsafe (unsafePerformIO)
+import System.Posix.Types (CSsize)
 
 foreign import ccall "wrapper" newFreeHaskellFunPtrFunPtr
   :: (FunPtr (IO ()) -> IO ())
@@ -200,9 +204,44 @@ instance Decodable (Ptr CLLong) CLLong where decode = peek
 instance Decodable (Ptr CULLong) CULLong where decode = peek
 instance Decodable (Ptr CFloat) CFloat where decode = peek
 instance Decodable (Ptr CDouble) CDouble where decode = peek
+instance Decodable (Ptr Int8) Int8 where decode = peek
+instance Decodable (Ptr Int16) Int16 where decode = peek
+instance Decodable (Ptr Int32) Int32 where decode = peek
+instance Decodable (Ptr Int64) Int64 where decode = peek
+instance Decodable (Ptr Word8) Word8 where decode = peek
+instance Decodable (Ptr Word16) Word16 where decode = peek
+instance Decodable (Ptr Word32) Word32 where decode = peek
+instance Decodable (Ptr Word64) Word64 where decode = peek
+instance Decodable (Ptr CPtrdiff) CPtrdiff where decode = peek
 instance Decodable (Ptr CSize) CSize where decode = peek
+instance Decodable (Ptr CSsize) CSsize where decode = peek
 
-instance Decodable (Ptr (Ptr a)) (Ptr a) where decode = peek
+instance Decodable (Ptr (Ptr CBool)) (Ptr CBool) where decode = peek
+instance Decodable (Ptr (Ptr CChar)) (Ptr CChar) where decode = peek
+instance Decodable (Ptr (Ptr CUChar)) (Ptr CUChar) where decode = peek
+instance Decodable (Ptr (Ptr CShort)) (Ptr CShort) where decode = peek
+instance Decodable (Ptr (Ptr CUShort)) (Ptr CUShort) where decode = peek
+instance Decodable (Ptr (Ptr CInt)) (Ptr CInt) where decode = peek
+instance Decodable (Ptr (Ptr CUInt)) (Ptr CUInt) where decode = peek
+instance Decodable (Ptr (Ptr CLong)) (Ptr CLong) where decode = peek
+instance Decodable (Ptr (Ptr CULong)) (Ptr CULong) where decode = peek
+instance Decodable (Ptr (Ptr CLLong)) (Ptr CLLong) where decode = peek
+instance Decodable (Ptr (Ptr CULLong)) (Ptr CULLong) where decode = peek
+instance Decodable (Ptr (Ptr CFloat)) (Ptr CFloat) where decode = peek
+instance Decodable (Ptr (Ptr CDouble)) (Ptr CDouble) where decode = peek
+instance Decodable (Ptr (Ptr Int8)) (Ptr Int8) where decode = peek
+instance Decodable (Ptr (Ptr Int16)) (Ptr Int16) where decode = peek
+instance Decodable (Ptr (Ptr Int32)) (Ptr Int32) where decode = peek
+instance Decodable (Ptr (Ptr Int64)) (Ptr Int64) where decode = peek
+instance Decodable (Ptr (Ptr Word8)) (Ptr Word8) where decode = peek
+instance Decodable (Ptr (Ptr Word16)) (Ptr Word16) where decode = peek
+instance Decodable (Ptr (Ptr Word32)) (Ptr Word32) where decode = peek
+instance Decodable (Ptr (Ptr Word64)) (Ptr Word64) where decode = peek
+instance Decodable (Ptr (Ptr CPtrdiff)) (Ptr CPtrdiff) where decode = peek
+instance Decodable (Ptr (Ptr CSize)) (Ptr CSize) where decode = peek
+instance Decodable (Ptr (Ptr CSsize)) (Ptr CSsize) where decode = peek
+
+instance Decodable (Ptr (Ptr (Ptr a))) (Ptr (Ptr a)) where decode = peek
 
 -- | Decodes a C++ object to a Haskell value with 'decode', releases the
 -- original object with 'delete', then returns the Haskell value.
