@@ -862,23 +862,10 @@ sayExportClassHsType doDecls cls cst = do
   -- Generate an instance of CppPtr.
   ln
   if doDecls
-    then do addImports $ hsImports "Prelude" ["($)", "(==)"]
+    then do addImports $ hsImport1 "Prelude" "($)"
             saysLn ["instance HoppyFHR.CppPtr ", hsTypeName, " where"]
             indent $ do
               saysLn ["nullptr = ", toHsDataCtorName Unmanaged cst cls, " HoppyF.nullPtr"]
-              ln
-              saysLn ["toGcPtr this'@(", hsCtor, " ptr') = ",
-                      -- No sense in creating a ForeignPtr for a null pointer.
-                      "if ptr' == HoppyF.nullPtr then HoppyP.return this' else HoppyP.fmap ",
-                      "(HoppyP.flip ", hsCtorGc, " ptr') $ ",
-                      "HoppyF.newForeignPtr ",
-                      -- The foreign delete function takes a const pointer; we cast it to
-                      -- take a Ptr () to match up with the ForeignPtr () we're creating,
-                      -- assuming that data pointers have the same representation.
-                      "(HoppyF.castFunPtr ", toHsClassDeleteFnPtrName cls,
-                      " :: HoppyF.FunPtr (HoppyF.Ptr () -> HoppyP.IO ())) ",
-                      "(HoppyF.castPtr ptr' :: HoppyF.Ptr ())"]
-              saysLn ["toGcPtr this'@(", hsCtorGc, " {}) = HoppyP.return this'"]
               ln
               saysLn ["withCppPtr (", hsCtor, " ptr') f' = f' ptr'"]
               saysLn ["withCppPtr (", hsCtorGc,
@@ -890,6 +877,7 @@ sayExportClassHsType doDecls cls cst = do
               saysLn ["touchCppPtr (", hsCtor, " _) = HoppyP.return ()"]
               saysLn ["touchCppPtr (", hsCtorGc, " fptr' _) = HoppyF.touchForeignPtr fptr'"]
             when (classDtorIsPublic cls) $ do
+              addImports $ hsImport1 "Prelude" "(==)"
               ln
               saysLn ["instance HoppyFHR.Deletable ", hsTypeName, " where"]
               indent $ do
@@ -904,6 +892,19 @@ sayExportClassHsType doDecls cls cst = do
                         " _ _) = HoppyP.fail $ HoppyP.concat ",
                         "[\"Deletable.delete: Trying to delete GC-managed \", ",
                         show hsTypeName, ", \" object.\"]"]
+                ln
+                saysLn ["toGcPtr this'@(", hsCtor, " ptr') = ",
+                        -- No sense in creating a ForeignPtr for a null pointer.
+                        "if ptr' == HoppyF.nullPtr then HoppyP.return this' else HoppyP.fmap ",
+                        "(HoppyP.flip ", hsCtorGc, " ptr') $ ",
+                        "HoppyF.newForeignPtr ",
+                        -- The foreign delete function takes a const pointer; we cast it to
+                        -- take a Ptr () to match up with the ForeignPtr () we're creating,
+                        -- assuming that data pointers have the same representation.
+                        "(HoppyF.castFunPtr ", toHsClassDeleteFnPtrName cls,
+                        " :: HoppyF.FunPtr (HoppyF.Ptr () -> HoppyP.IO ())) ",
+                        "(HoppyF.castPtr ptr' :: HoppyF.Ptr ())"]
+                saysLn ["toGcPtr this'@(", hsCtorGc, " {}) = HoppyP.return this'"]
     else do saysLn ["instance HoppyFHR.CppPtr ", hsTypeName]
             saysLn ["instance HoppyFHR.Deletable ", hsTypeName]
 

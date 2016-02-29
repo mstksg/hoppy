@@ -105,16 +105,6 @@ class CppPtr this where
   -- | Polymorphic null pointer.
   nullptr :: this
 
-  -- | Converts a pointer to one managed by the garbage collector.  A __new__
-  -- managed pointer is returned, and existing pointers __including__ the
-  -- argument remain unmanaged, becoming invalid once all managed pointers are
-  -- unreachable.  Calling this on an already managed pointer has no effect and
-  -- the argument is simply returned.  It is no longer safe to call 'delete' on
-  -- the given object after calling this function.  It is also not safe to call
-  -- this function on unmanaged pointers for a single object multiple times: the
-  -- object will get deleted more than once.
-  toGcPtr :: this -> IO this
-
   -- | Runs an IO action on the 'Ptr' underlying this pointer.  Equivalent to
   -- 'Foreign.ForeignPtr.withForeignPtr' for managed pointers: the 'Ptr' is only
   -- guaranteed to be valid until the action returns.  There is no such
@@ -137,6 +127,16 @@ class CppPtr this where
 class Deletable this where
   -- | Deletes the object with the C++ @delete@ operator.
   delete :: this -> IO ()
+
+  -- | Converts a pointer to one managed by the garbage collector.  A __new__
+  -- managed pointer is returned, and existing pointers __including__ the
+  -- argument remain unmanaged, becoming invalid once all managed pointers are
+  -- unreachable.  Calling this on an already managed pointer has no effect and
+  -- the argument is simply returned.  It is no longer safe to call 'delete' on
+  -- the given object after calling this function.  It is also not safe to call
+  -- this function on unmanaged pointers for a single object multiple times: the
+  -- object will get deleted more than once.
+  toGcPtr :: this -> IO this
 
 -- | A typeclass for references to C++ values that can be assigned to.  This
 -- includes raw pointers ('Ptr'), as well as pointers to object types that have

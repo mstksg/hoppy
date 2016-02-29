@@ -123,6 +123,10 @@ objectTests =
 
   , "non-null pointers in fact aren't null" ~:
     withScopedPtr intBox_new $ assert . (nullPtr /=) . toPtr
+
+  , "undeletable instances compile" ~: do
+    x <- undeletable_getInstance
+    assert $ x /= nullptr
   ]
 
 objectGcTests :: Test
