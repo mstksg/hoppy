@@ -585,7 +585,7 @@ sayArgProcessing dir t fromVar toVar =
       FromCpp -> do
         addImports $ mconcat [hsImport1 "Prelude" "(>>=)",
                               hsImportForRuntime]
-        saysLn ["HoppyFHR.toGcPtr ", fromVar, " >>= \\", toVar, " ->"]
+        saysLn ["HoppyFHR.toGc ", fromVar, " >>= \\", toVar, " ->"]
     TConst t' -> sayArgProcessing dir t' fromVar toVar
   where noConversion = saysLn ["let ", toVar, " = ", fromVar, " in"]
         bitspaceConvFn dir = case dir of
@@ -694,7 +694,7 @@ sayCallAndProcessReturn dir t callWords =
       ToCpp -> do
         addImports $ mconcat [hsImport1 "Prelude" "(=<<)",
                               hsImportForRuntime]
-        sayLn "HoppyFHR.toGcPtr =<<"
+        sayLn "HoppyFHR.toGc =<<"
         -- TToGc (TObj _) should create a pointer rather than decoding, so we
         -- change the TObj _ into a TPtr (TObj _).
         case t' of
@@ -893,7 +893,7 @@ sayExportClassHsType doDecls cls cst = do
                         "[\"Deletable.delete: Trying to delete GC-managed \", ",
                         show hsTypeName, ", \" object.\"]"]
                 ln
-                saysLn ["toGcPtr this'@(", hsCtor, " ptr') = ",
+                saysLn ["toGc this'@(", hsCtor, " ptr') = ",
                         -- No sense in creating a ForeignPtr for a null pointer.
                         "if ptr' == HoppyF.nullPtr then HoppyP.return this' else HoppyP.fmap ",
                         "(HoppyP.flip ", hsCtorGc, " ptr') $ ",
@@ -904,7 +904,7 @@ sayExportClassHsType doDecls cls cst = do
                         "(HoppyF.castFunPtr ", toHsClassDeleteFnPtrName cls,
                         " :: HoppyF.FunPtr (HoppyF.Ptr () -> HoppyP.IO ())) ",
                         "(HoppyF.castPtr ptr' :: HoppyF.Ptr ())"]
-                saysLn ["toGcPtr this'@(", hsCtorGc, " {}) = HoppyP.return this'"]
+                saysLn ["toGc this'@(", hsCtorGc, " {}) = HoppyP.return this'"]
     else do saysLn ["instance HoppyFHR.CppPtr ", hsTypeName]
             saysLn ["instance HoppyFHR.Deletable ", hsTypeName]
 

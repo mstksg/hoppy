@@ -45,7 +45,7 @@ import Foreign.Hoppy.Runtime (
   encode,
   encodeAs,
   nullptr,
-  toGcPtr,
+  toGc,
   toPtr,
   withCppObj,
   withScopedPtr,
@@ -140,9 +140,9 @@ objectGcTests =
       readCounts >>= (@?= (1, 0))
     readCounts >>= (@?= (1, 1))
 
-  , "toGcPtr creates collectable pointers" ~: do
+  , "toGc creates collectable pointers" ~: do
     ptrCtr_resetCounters
-    p <- toGcPtr =<< ptrCtr_new
+    p <- toGc =<< ptrCtr_new
     ptrCtr_redButton p
     performGC
     readCounts >>= (@?= (1, 1))
@@ -201,14 +201,14 @@ objectGcTests =
 
   , "managed and unmanaged pointers are equatable" ~: do
     unmanaged <- ptrCtr_new
-    managed <- toGcPtr unmanaged
+    managed <- toGc unmanaged
     managed @?= unmanaged
 
   , "managed and unmanaged pointers aren't ordered by state" ~: do
     unmanaged0 <- ptrCtr_new
-    managed0 <- toGcPtr unmanaged0
+    managed0 <- toGc unmanaged0
     unmanaged1 <- ptrCtr_new
-    managed1 <- toGcPtr unmanaged1
+    managed1 <- toGc unmanaged1
     compare unmanaged0 managed0 @?= EQ
     compare unmanaged1 managed1 @?= EQ
     compare unmanaged0 managed1 @?= compare managed0 unmanaged1

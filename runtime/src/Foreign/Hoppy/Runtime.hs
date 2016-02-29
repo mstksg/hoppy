@@ -99,7 +99,7 @@ coerceIntegral a =
 -- | An instance of this class represents a pointer to a C++ object.  All C++
 -- classes bound by Hoppy have instances of @CppPtr@.  The lifetime of such an
 -- object can optionally be managed by the Haskell garbage collector.  Pointers
--- returned from constructors are unmanaged, and 'toGcPtr' converts an unmanaged
+-- returned from constructors are unmanaged, and 'toGc' converts an unmanaged
 -- pointer to a managed one.  'delete' must not be called on managed pointers.
 class CppPtr this where
   -- | Polymorphic null pointer.
@@ -136,7 +136,7 @@ class Deletable this where
   -- the given object after calling this function.  It is also not safe to call
   -- this function on unmanaged pointers for a single object multiple times: the
   -- object will get deleted more than once.
-  toGcPtr :: this -> IO this
+  toGc :: this -> IO this
 
 -- | A typeclass for references to C++ values that can be assigned to.  This
 -- includes raw pointers ('Ptr'), as well as pointers to object types that have

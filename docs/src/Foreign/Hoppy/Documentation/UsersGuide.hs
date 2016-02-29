@@ -624,7 +624,7 @@ collected) or unmanaged pointers in their runtime representation.  The APIs that
 bindings expose to Haskell users should generally not require them to be
 concerned about object lifetimes, and also having separate data types for
 managed pointers would balloon the size of bindings.  Unmanaged objects can be
-converted to managed objects with 'toGcPtr', after which its return value should
-always be used in place of any existing pointers.
+converted to managed objects with 'toGc'; after calling this function, the value
+it returns should always be used in place of any existing pointers.
 
 -}
