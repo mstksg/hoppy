@@ -890,7 +890,7 @@ sayExportClassHsType doDecls cls cst = do
                                  toHsDataTypeName Const cls, ")"]
                 saysLn ["delete (", toHsDataCtorName Managed cst cls,
                         " _ _) = HoppyP.fail $ HoppyP.concat ",
-                        "[\"Deletable.delete: Trying to delete GC-managed \", ",
+                        "[\"Deletable.delete: Asked to delete a GC-managed \", ",
                         show hsTypeName, ", \" object.\"]"]
                 ln
                 saysLn ["toGc this'@(", hsCtor, " ptr') = ",
