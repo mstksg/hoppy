@@ -102,20 +102,18 @@ instantiate' vectorName t tReqs opts =
         , just $ mkConstMethod' "at" "atConst" [TSize] $ TRef $ TConst t
         , just $ mkMethod' "back" "back" [] $ TRef t
         , just $ mkConstMethod' "back" "backConst" [] $ TRef $ TConst t
-        , just $ mkMethod' "begin" "begin" [] $ TObjToHeap iterator
-        , just $ mkConstMethod' "begin" "beginConst" [] $ TObjToHeap constIterator
+        , just $ mkMethod' "begin" "begin" [] $ TToGc $ TObj iterator
+        , just $ mkConstMethod' "begin" "beginConst" [] $ TToGc $ TObj constIterator
         , just $ mkConstMethod "capacity" [] TSize
         , just $ mkMethod "clear" [] TVoid
         , just $ mkConstMethod "empty" [] TBool
-        , just $ mkMethod' "end" "end" [] $ TObjToHeap iterator
-        , just $ mkConstMethod' "end" "endConst" [] $ TObjToHeap constIterator
+        , just $ mkMethod' "end" "end" [] $ TToGc $ TObj iterator
+        , just $ mkConstMethod' "end" "endConst" [] $ TToGc $ TObj constIterator
         , just $ mkMethod' "erase" "erase" [TObj iterator] TVoid
         , just $ mkMethod' "erase" "eraseRange" [TObj iterator, TObj iterator] TVoid
         , just $ mkMethod' "front" "front" [] $ TRef t
         , just $ mkConstMethod' "front" "frontConst" [] $ TRef $ TConst t
-        , just $ mkMethod' "insert" "insert" [TObj iterator, TRef $ TConst t] TVoid
-        , just $ mkMethod' "insert" "insertAndGetIterator"
-          [TObj iterator, t] $ TObjToHeap iterator
+        , just $ mkMethod "insert" [TObj iterator, t] $ TToGc $ TObj iterator
         , just $ mkConstMethod' "max_size" "maxSize" [] TSize
         , just $ mkMethod' "pop_back" "popBack" [] TVoid
         , just $ mkMethod' "push_back" "pushBack" [t] TVoid
@@ -141,7 +139,7 @@ instantiate' vectorName t tReqs opts =
         [ mkCtor "newFromNonconst" [TObj iterator]
         ]
         [ makeFnMethod (ident2 "hoppy" "iterator" "deconst") "deconst" MConst Nonpure
-          [TObj constIterator, TRef $ TObj vector] $ TObjToHeap iterator
+          [TObj constIterator, TRef $ TObj vector] $ TToGc $ TObj iterator
         ]
 
       -- The addendum for the vector class contains HasContents and FromContents

@@ -99,19 +99,17 @@ instantiate' listName t tReqs opts =
         collect
         [ just $ mkMethod' "back" "back" [] $ TRef t
         , just $ mkConstMethod' "back" "backConst" [] $ TRef $ TConst t
-        , just $ mkMethod' "begin" "begin" [] $ TObjToHeap iterator
-        , just $ mkConstMethod' "begin" "beginConst" [] $ TObjToHeap constIterator
+        , just $ mkMethod' "begin" "begin" [] $ TToGc $ TObj iterator
+        , just $ mkConstMethod' "begin" "beginConst" [] $ TToGc $ TObj constIterator
         , just $ mkMethod "clear" [] TVoid
         , just $ mkConstMethod "empty" [] TBool
-        , just $ mkMethod' "end" "end" [] $ TObjToHeap iterator
-        , just $ mkConstMethod' "end" "endConst" [] $ TObjToHeap constIterator
+        , just $ mkMethod' "end" "end" [] $ TToGc $ TObj iterator
+        , just $ mkConstMethod' "end" "endConst" [] $ TToGc $ TObj constIterator
         , just $ mkMethod' "erase" "erase" [TObj iterator] TVoid
         , just $ mkMethod' "erase" "eraseRange" [TObj iterator, TObj iterator] TVoid
         , just $ mkMethod' "front" "front" [] $ TRef t
         , just $ mkConstMethod' "front" "frontConst" [] $ TRef $ TConst t
-        , just $ mkMethod' "insert" "insert" [TObj iterator, t] TVoid
-        , just $ mkMethod' "insert" "insertAndGetIterator"
-          [TObj iterator, t] $ TObjToHeap iterator
+        , just $ mkMethod "insert" [TObj iterator, t] $ TToGc $ TObj iterator
         , just $ mkConstMethod' "max_size" "maxSize" [] TSize
         , test (elem Comparable features) $ mkMethod "merge" [TRef $ TObj list] TVoid
           -- TODO merge(list&, Comparator)
@@ -152,7 +150,7 @@ instantiate' listName t tReqs opts =
         [ mkCtor "newFromConst" [TObj iterator]
         ]
         [ makeFnMethod (ident2 "hoppy" "iterator" "deconst") "deconst" MConst Nonpure
-          [TObj constIterator, TRef $ TObj list] $ TObjToHeap iterator
+          [TObj constIterator, TRef $ TObj list] $ TToGc $ TObj iterator
         ]
 
       -- The addendum for the list class contains HasContents and FromContents
@@ -195,12 +193,10 @@ instantiate' listName t tReqs opts =
                     Const -> "getConst"
                     Nonconst -> "get"
               saysLn ["empty' <- ", toHsMethodName' list "empty", " this'"]
-              sayLn "if empty' then HoppyP.return [] else"
+              sayLn "if empty' then HoppyP.return [] else do"
               indent $ do
-                saysLn ["HoppyFHR.withScopedPtr (", toHsMethodName' list listBegin,
-                        " this') $ \\begin' ->"]
-                saysLn ["HoppyFHR.withScopedPtr (", toHsMethodName' list listEnd,
-                        " this') $ \\iter' ->"]
+                saysLn ["begin' <- ", toHsMethodName' list listBegin, " this'"]
+                saysLn ["iter' <- ", toHsMethodName' list listEnd, " this'"]
                 sayLn "go' iter' begin' []"
               sayLn "where"
               indent $ do

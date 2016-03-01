@@ -98,20 +98,21 @@ instantiate' setName t tReqs opts =
         makeClass (ident1T "std" "set" [t]) (Just $ toExtName setName) []
         [ mkCtor "new" []
         ]
-        [ mkConstMethod "begin" [] $ TObjToHeap iterator
+        [ mkConstMethod "begin" [] $ TToGc $ TObj iterator
         , mkMethod "clear" [] TVoid
         , mkConstMethod "count" [t] TSize
           -- TODO count
         , mkConstMethod "empty" [] TBool
-        , mkConstMethod "end" [] $ TObjToHeap iterator
+        , mkConstMethod "end" [] $ TToGc $ TObj iterator
           -- equalRange: find is good enough.
         , mkMethod' "erase" "erase" [TObj iterator] TVoid
         , mkMethod' "erase" "eraseRange" [TObj iterator, TObj iterator] TVoid
-        , mkMethod "find" [t] $ TObjToHeap iterator
+        , mkMethod "find" [t] $ TToGc $ TObj iterator
+          -- TODO Replace these with a single version that returns a (TToGc std::pair).
         , makeFnMethod (ident2 "hoppy" "set" "insert") "insert"
           MNormal Nonpure [TRef $ TObj set, t] TBool
         , makeFnMethod (ident2 "hoppy" "set" "insertAndGetIterator") "insertAndGetIterator"
-          MNormal Nonpure [TRef $ TObj set, t] $ TObjToHeap iterator
+          MNormal Nonpure [TRef $ TObj set, t] $ TToGc $ TObj iterator
           -- lower_bound: find is good enough.
         , mkConstMethod' "max_size" "maxSize" [] TSize
         , mkConstMethod "size" [] TSize
@@ -155,12 +156,10 @@ instantiate' setName t tReqs opts =
           sayLn "toContents this' = do"
           indent $ do
             saysLn ["empty' <- ", toHsMethodName' set "empty", " this'"]
-            sayLn "if empty' then HoppyP.return [] else"
+            sayLn "if empty' then HoppyP.return [] else do"
             indent $ do
-              saysLn ["HoppyFHR.withScopedPtr (", toHsMethodName' set "begin",
-                      " this') $ \\begin' ->"]
-              saysLn ["HoppyFHR.withScopedPtr (", toHsMethodName' set "end",
-                      " this') $ \\iter' ->"]
+              saysLn ["begin' <- ", toHsMethodName' set "begin", " this'"]
+              saysLn ["iter' <- ", toHsMethodName' set "end", " this'"]
               sayLn "go' iter' begin' []"
             sayLn "where"
             indent $ do

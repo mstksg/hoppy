@@ -113,19 +113,19 @@ instantiate' mapName k v userReqs opts =
         ]
         [ mkMethod' "at" "at" [k] $ TRef v
         , mkConstMethod' "at" "atConst" [k] $ TRef $ TConst v
-        , mkMethod' "begin" "begin" [] $ TObjToHeap iterator
-        , mkConstMethod' "begin" "beginConst" [] $ TObjToHeap constIterator
+        , mkMethod' "begin" "begin" [] $ TToGc $ TObj iterator
+        , mkConstMethod' "begin" "beginConst" [] $ TToGc $ TObj constIterator
         , mkMethod "clear" [] TVoid
         , mkConstMethod "count" [k] TSize
         , mkConstMethod "empty" [] TBool
-        , mkMethod' "end" "end" [] $ TObjToHeap iterator
-        , mkConstMethod' "end" "endConst" [] $ TObjToHeap constIterator
+        , mkMethod' "end" "end" [] $ TToGc $ TObj iterator
+        , mkConstMethod' "end" "endConst" [] $ TToGc $ TObj constIterator
           -- equal_range: find is good enough.
         , mkMethod' "erase" "erase" [TObj iterator] TVoid
         , mkMethod' "erase" "eraseKey" [k] TSize
         , mkMethod' "erase" "eraseRange" [TObj iterator, TObj iterator] TVoid
-        , mkMethod' "find" "find" [k] $ TObjToHeap iterator
-        , mkConstMethod' "find" "findConst" [k] $ TObjToHeap constIterator
+        , mkMethod' "find" "find" [k] $ TToGc $ TObj iterator
+        , mkConstMethod' "find" "findConst" [k] $ TToGc $ TObj constIterator
           -- TODO insert
           -- lower_bound: find is good enough.
         , mkConstMethod' "max_size" "maxSize" [] TSize
@@ -161,7 +161,7 @@ instantiate' mapName k v userReqs opts =
         [ mkCtor "newFromConst" [TObj iterator]
         ]
         [ makeFnMethod (ident2 "hoppy" "iterator" "deconst") "deconst" MConst Nonpure
-          [TObj constIterator, TRef $ TObj map] $ TObjToHeap iterator
+          [TObj constIterator, TRef $ TObj map] $ TToGc $ TObj iterator
         , makeFnMethod getIteratorKeyIdent "getKey" MConst Nonpure
           [TObj constIterator] $ TRef $ TConst k
         , makeFnMethod getIteratorValueIdent "getValueConst" MConst Nonpure
@@ -214,12 +214,10 @@ instantiate' mapName k v userReqs opts =
                     Const -> "getValueConst"
                     Nonconst -> "getValue"
               saysLn ["empty' <- ", toHsMethodName' map "empty", " this'"]
-              sayLn "if empty' then HoppyP.return [] else"
+              sayLn "if empty' then HoppyP.return [] else do"
               indent $ do
-                saysLn ["HoppyFHR.withScopedPtr (", toHsMethodName' map mapBegin,
-                        " this') $ \\begin' ->"]
-                saysLn ["HoppyFHR.withScopedPtr (", toHsMethodName' map mapEnd,
-                        " this') $ \\iter' ->"]
+                saysLn ["begin' <- ", toHsMethodName' map mapBegin, " this'"]
+                saysLn ["iter' <- ", toHsMethodName' map mapEnd, " this'"]
                 sayLn "go' iter' begin' []"
               sayLn "where"
               indent $ do

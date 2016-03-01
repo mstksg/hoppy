@@ -23,7 +23,7 @@ import Control.Monad ((>=>), forM_, when)
 import Foreign (peek)
 import Foreign.C (castCCharToChar, withCString)
 import Foreign.Hoppy.Runtime (
-  HasContents, assign, decode, encode, fromContents, toContents, withCppObj, withScopedPtr)
+  HasContents, assign, decode, encode, fromContents, toContents, toGc, withCppObj, withScopedPtr)
 import Foreign.Hoppy.Test.Std
 import Foreign.Hoppy.Test.Stl
 import System.Exit (exitFailure)
@@ -81,9 +81,9 @@ listIntTests =
 
   , "contents conversion" ~: do
     let input = [1, 2, 4, 8]
-    withScopedPtr (fromContents input :: IO ListInt) $ \l -> do
-      listInt_size l >>= (@?= 4)
-      toContents l >>= (@?= input)
+    l <- toGc =<< fromContents input :: IO ListInt
+    listInt_size l >>= (@?= 4)
+    toContents l >>= (@?= input)
 
   , "pushing, popping, clearing" ~: withScopedPtr listInt_new $ \l -> do
     listInt_pushFront l 1
@@ -98,18 +98,18 @@ listIntTests =
     listInt_clear l
     assertList [] l
 
-  , "iterating" ~:
-    withScopedPtr (fromContents [1, 5] :: IO ListInt) $ \l ->
-    withScopedPtr (listInt_end l) $ \end -> do
-      withScopedPtr (listInt_begin l) $ \it -> do
-        listIntIterator_get it >>= peek >>= (@?= 1)
-        listIntIterator_put it 2
-        _ <- listIntIterator_next it
-        listIntIterator_get it >>= peek >>= (@?= 5)
-        listIntIterator_EQ it end >>= (@?= False)
-        _ <- listIntIterator_next it
-        listIntIterator_EQ it end >>= (@?= True)
-      listInt_front l >>= peek >>= (@?= 2)
+  , "iterating" ~: do
+    l <- toGc =<< fromContents [1, 5] :: IO ListInt
+    end <- listInt_end l
+    it <- listInt_begin l
+    listIntIterator_get it >>= peek >>= (@?= 1)
+    listIntIterator_put it 2
+    _ <- listIntIterator_next it
+    listIntIterator_get it >>= peek >>= (@?= 5)
+    listIntIterator_EQ it end >>= (@?= False)
+    _ <- listIntIterator_next it
+    listIntIterator_EQ it end >>= (@?= True)
+    listInt_front l >>= peek >>= (@?= 2)
   ]
 
 vectorTests :: Test
