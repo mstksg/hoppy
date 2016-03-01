@@ -23,7 +23,7 @@ let gen = hoppy-tests-basic-generator; in
 
 mkDerivation {
   pname = "hoppy-tests-basic";
-  version = "0.1.0";
+  version = "0.2.0";
   src = ./.;
   executableHaskellDepends = [ base hoppy ];
   executableSystemDepends = [ hoppy-tests-basic-cpp ];

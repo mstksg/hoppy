@@ -23,7 +23,7 @@ let gen = hoppy-tests-circular-generator; in
 
 mkDerivation {
   pname = "hoppy-tests-circular";
-  version = "0.1.0";
+  version = "0.2.0";
   src = ./.;
   executableHaskellDepends = [ base hoppy ];
   executableSystemDepends = [ hoppy-tests-circular-cpp ];

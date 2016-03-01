@@ -23,7 +23,7 @@ let gen = hoppy-tests-stl-generator;
 in
 
 stdenv.mkDerivation {
-  name = "${name}-cpp-0.1.0";
+  name = "${name}-cpp-0.2.0";
   src = ./.;
   buildInputs = [ gen ];
 
@@ -38,7 +38,7 @@ stdenv.mkDerivation {
     install -m 444 *.cpp *.hpp $out/src
 
     mkdir -p $out/lib
-    install ${libName} $out/lib/${libName}.0.1.0
+    install ${libName} $out/lib/${libName}.0.2.0
     cd $out/lib
     ln -s ${libName}.0.1{.0,}
     ln -s ${libName}.0{.1,}
