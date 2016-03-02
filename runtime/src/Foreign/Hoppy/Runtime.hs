@@ -41,7 +41,9 @@ module Foreign.Hoppy.Runtime (
   ) where
 
 import Control.Exception (bracket)
+import Data.Int (Int8, Int16, Int32, Int64)
 import Data.Typeable (Typeable, typeOf)
+import Data.Word (Word8, Word16, Word32, Word64)
 import Foreign (FunPtr, Ptr, Storable, freeHaskellFunPtr, peek, poke)
 import Foreign.C (
   CChar,
@@ -50,6 +52,7 @@ import Foreign.C (
   CInt,
   CLLong,
   CLong,
+  CPtrdiff,
   CShort,
   CSize,
   CUChar (CUChar),
@@ -59,6 +62,7 @@ import Foreign.C (
   CUShort,
   )
 import System.IO.Unsafe (unsafePerformIO)
+import System.Posix.Types (CSsize)
 
 foreign import ccall "wrapper" newFreeHaskellFunPtrFunPtr
   :: (FunPtr (IO ()) -> IO ())
@@ -93,19 +97,46 @@ coerceIntegral a =
           show (typeOf b) ++ " does not preserve the value " ++ show a ++ "."
 
 -- | An instance of this class represents a pointer to a C++ object.  All C++
--- classes bound by Hoppy have instances of @CppPtr@.
+-- classes bound by Hoppy have instances of @CppPtr@.  The lifetime of such an
+-- object can optionally be managed by the Haskell garbage collector.  Pointers
+-- returned from constructors are unmanaged, and 'toGc' converts an unmanaged
+-- pointer to a managed one.  'delete' must not be called on managed pointers.
 class CppPtr this where
   -- | Polymorphic null pointer.
   nullptr :: this
 
-  -- | Converts to a regular pointer.
+  -- | Runs an IO action on the 'Ptr' underlying this pointer.  Equivalent to
+  -- 'Foreign.ForeignPtr.withForeignPtr' for managed pointers: the 'Ptr' is only
+  -- guaranteed to be valid until the action returns.  There is no such
+  -- restriction for unmanaged pointers.
+  withCppPtr :: this -> (Ptr this -> IO a) -> IO a
+
+  -- | Converts to a regular pointer.  For objects managed by the garbage
+  -- collector, this comes with the warnings associated with
+  -- 'Foreign.ForeignPtr.Unsafe.unsafeForeignPtrToPtr', namely that the object
+  -- may be collected immediately after this function returns unless there is a
+  -- 'touchCppPtr' call later on.
   toPtr :: this -> Ptr this
+
+  -- | Equivalent to 'Foreign.ForeignPtr.touchForeignPtr' for managed object
+  -- pointers.  Has no effect on unmanaged pointers.
+  touchCppPtr :: this -> IO ()
 
 -- | C++ values that can be deleted.  All C++ classes bound by Hoppy have
 -- instances of @Deletable@.
 class Deletable this where
   -- | Deletes the object with the C++ @delete@ operator.
   delete :: this -> IO ()
+
+  -- | Converts a pointer to one managed by the garbage collector.  A __new__
+  -- managed pointer is returned, and existing pointers __including__ the
+  -- argument remain unmanaged, becoming invalid once all managed pointers are
+  -- unreachable.  Calling this on an already managed pointer has no effect and
+  -- the argument is simply returned.  It is no longer safe to call 'delete' on
+  -- the given object after calling this function.  It is also not safe to call
+  -- this function on unmanaged pointers for a single object multiple times: the
+  -- object will get deleted more than once.
+  toGc :: this -> IO this
 
 -- | A typeclass for references to C++ values that can be assigned to.  This
 -- includes raw pointers ('Ptr'), as well as pointers to object types that have
@@ -173,9 +204,44 @@ instance Decodable (Ptr CLLong) CLLong where decode = peek
 instance Decodable (Ptr CULLong) CULLong where decode = peek
 instance Decodable (Ptr CFloat) CFloat where decode = peek
 instance Decodable (Ptr CDouble) CDouble where decode = peek
+instance Decodable (Ptr Int8) Int8 where decode = peek
+instance Decodable (Ptr Int16) Int16 where decode = peek
+instance Decodable (Ptr Int32) Int32 where decode = peek
+instance Decodable (Ptr Int64) Int64 where decode = peek
+instance Decodable (Ptr Word8) Word8 where decode = peek
+instance Decodable (Ptr Word16) Word16 where decode = peek
+instance Decodable (Ptr Word32) Word32 where decode = peek
+instance Decodable (Ptr Word64) Word64 where decode = peek
+instance Decodable (Ptr CPtrdiff) CPtrdiff where decode = peek
 instance Decodable (Ptr CSize) CSize where decode = peek
+instance Decodable (Ptr CSsize) CSsize where decode = peek
 
-instance Decodable (Ptr (Ptr a)) (Ptr a) where decode = peek
+instance Decodable (Ptr (Ptr CBool)) (Ptr CBool) where decode = peek
+instance Decodable (Ptr (Ptr CChar)) (Ptr CChar) where decode = peek
+instance Decodable (Ptr (Ptr CUChar)) (Ptr CUChar) where decode = peek
+instance Decodable (Ptr (Ptr CShort)) (Ptr CShort) where decode = peek
+instance Decodable (Ptr (Ptr CUShort)) (Ptr CUShort) where decode = peek
+instance Decodable (Ptr (Ptr CInt)) (Ptr CInt) where decode = peek
+instance Decodable (Ptr (Ptr CUInt)) (Ptr CUInt) where decode = peek
+instance Decodable (Ptr (Ptr CLong)) (Ptr CLong) where decode = peek
+instance Decodable (Ptr (Ptr CULong)) (Ptr CULong) where decode = peek
+instance Decodable (Ptr (Ptr CLLong)) (Ptr CLLong) where decode = peek
+instance Decodable (Ptr (Ptr CULLong)) (Ptr CULLong) where decode = peek
+instance Decodable (Ptr (Ptr CFloat)) (Ptr CFloat) where decode = peek
+instance Decodable (Ptr (Ptr CDouble)) (Ptr CDouble) where decode = peek
+instance Decodable (Ptr (Ptr Int8)) (Ptr Int8) where decode = peek
+instance Decodable (Ptr (Ptr Int16)) (Ptr Int16) where decode = peek
+instance Decodable (Ptr (Ptr Int32)) (Ptr Int32) where decode = peek
+instance Decodable (Ptr (Ptr Int64)) (Ptr Int64) where decode = peek
+instance Decodable (Ptr (Ptr Word8)) (Ptr Word8) where decode = peek
+instance Decodable (Ptr (Ptr Word16)) (Ptr Word16) where decode = peek
+instance Decodable (Ptr (Ptr Word32)) (Ptr Word32) where decode = peek
+instance Decodable (Ptr (Ptr Word64)) (Ptr Word64) where decode = peek
+instance Decodable (Ptr (Ptr CPtrdiff)) (Ptr CPtrdiff) where decode = peek
+instance Decodable (Ptr (Ptr CSize)) (Ptr CSize) where decode = peek
+instance Decodable (Ptr (Ptr CSsize)) (Ptr CSsize) where decode = peek
+
+instance Decodable (Ptr (Ptr (Ptr a))) (Ptr (Ptr a)) where decode = peek
 
 -- | Decodes a C++ object to a Haskell value with 'decode', releases the
 -- original object with 'delete', then returns the Haskell value.

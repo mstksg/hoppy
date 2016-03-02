@@ -131,6 +131,9 @@ testModule =
   , ExportFn f_doubleIntPtr
   , ExportFn f_doubleIntPtrPtr
   , ExportFn f_doubleIntRef
+  , ExportFn f_doubleIntBoxPtrPtr
+    -- Classes with private destructors.
+  , ExportClass c_Undeletable
     -- Multiple inheritance tests.
   , ExportClass c_InheritanceA
   , ExportClass c_InheritanceB
@@ -164,9 +167,15 @@ c_PtrCtr =
   addReqIncludes [includeLocal "ptrctr.hpp"] $
   makeClass (ident "PtrCtr") Nothing []
   [ mkCtor "new" [] ]
-  [ mkStaticMethod "resetCounters" [] TVoid
+  [ mkStaticMethod "newGcedObj" [] $ TToGc $ TObj c_PtrCtr
+  , mkStaticMethod "newGcedRefConst" [] $ TToGc $ TRef $ TConst $ TObj c_PtrCtr
+  , mkStaticMethod "newGcedRef" [] $ TToGc $ TRef $ TObj c_PtrCtr
+  , mkStaticMethod "newGcedPtrConst" [] $ TToGc $ TPtr $ TConst $ TObj c_PtrCtr
+  , mkStaticMethod "newGcedPtr" [] $ TToGc $ TPtr $ TObj c_PtrCtr
+  , mkStaticMethod "resetCounters" [] TVoid
   , mkStaticMethod "getConstructionCount" [] TInt
   , mkStaticMethod "getDestructionCount" [] TInt
+  , mkConstMethod "redButton" [] TVoid
   ]
 
 f_piapprox :: Function
@@ -515,6 +524,20 @@ f_doubleIntRef :: Function
 f_doubleIntRef =
   addReqIncludes [includeLocal "functions.hpp"] $
   makeFn (ident "doubleIntRef") Nothing Nonpure [TRef TInt] TVoid
+
+f_doubleIntBoxPtrPtr :: Function
+f_doubleIntBoxPtrPtr =
+  addReqIncludes [includeLocal "functions.hpp"] $
+  makeFn (ident "doubleIntBoxPtrPtr") Nothing Nonpure [TPtr $ TPtr $ TObj c_IntBox] TVoid
+
+c_Undeletable :: Class
+c_Undeletable =
+  addReqIncludes [includeLocal "undeletable.hpp"] $
+  classSetDtorPrivate $
+  makeClass (ident "Undeletable") Nothing []
+  []
+  [ mkStaticMethod "getInstance" [] $ TRef $ TObj c_Undeletable
+  ]
 
 c_InheritanceA :: Class
 c_InheritanceA =

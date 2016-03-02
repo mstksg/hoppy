@@ -40,7 +40,7 @@ import Foreign.Hoppy.Generator.Spec (
     OpSubtract,
     OpSubtractAssign),
   Purity (Nonpure),
-  Type (TConst, TObj, TObjToHeap, TPtr, TRef, TVoid),
+  Type (TConst, TObj, TPtr, TRef, TToGc, TVoid),
   addReqIncludes,
   classAddCtors,
   classAddMethods,
@@ -130,11 +130,11 @@ makeBidirectionalIterator mutability valueTypeMaybe cls =
 --
 -- * __operator+=:__ @add :: this -> distanceType -> 'TRef' ('TObj' cls)@.
 --
--- * __operator+:__ @plusNew :: this -> distanceType -> 'TObjToHeap' cls@.
+-- * __operator+:__ @plus :: this -> distanceType -> 'TToGc' cls@.
 --
 -- * __operator-=:__ @subtract :: distanceType -> 'TRef' ('TObj' cls)@.
 --
--- * __operator-:__ @minusNew :: distanceType -> 'TObjToHeap' cls@.
+-- * __operator-:__ @minus :: distanceType -> 'TToGc' cls@.
 --
 -- * __operator-:__ @difference :: this -> this -> distanceType@.
 --
@@ -149,9 +149,9 @@ makeRandomIterator mutable valueTypeMaybe distanceType cls =
   makeBidirectionalIterator mutable valueTypeMaybe cls
   where methods =
           catMaybes
-          [ Just $ mkMethod' OpAdd "plusNew" [distanceType] $ TObjToHeap cls
+          [ Just $ mkMethod' OpAdd "plus" [distanceType] $ TToGc $ TObj cls
           , Just $ mkMethod' OpAddAssign "add" [distanceType] $ TRef $ TObj cls
-          , Just $ mkMethod' OpSubtract "minusNew" [distanceType] $ TObjToHeap cls
+          , Just $ mkMethod' OpSubtract "minus" [distanceType] $ TToGc $ TObj cls
           , Just $ mkMethod' OpSubtract "difference" [TObj cls] distanceType
           , Just $ mkMethod' OpSubtractAssign "subtract" [distanceType] $ TRef $ TObj cls
           , do valueType <- valueTypeMaybe

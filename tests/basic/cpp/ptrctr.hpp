@@ -27,9 +27,16 @@ public:
     PtrCtr(PtrCtr&&);
     ~PtrCtr();
 
+    static PtrCtr newGcedObj();
+    static const PtrCtr& newGcedRefConst();
+    static PtrCtr& newGcedRef();
+    static const PtrCtr* newGcedPtrConst();
+    static PtrCtr* newGcedPtr();
     static int resetCounters();
     static int getConstructionCount();
     static int getDestructionCount();
+
+    void redButton() const;
 
 private:
     static int constructions_;

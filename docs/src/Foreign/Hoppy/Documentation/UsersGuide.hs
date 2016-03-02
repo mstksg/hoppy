@@ -85,7 +85,6 @@ import Foreign.Hoppy.Generator.Spec
 import Foreign.Hoppy.Generator.Version
 import Foreign.Hoppy.Runtime
 import Foreign.Ptr (Ptr)
-import Foreign.Storable (Storable)
 import Language.Haskell.Syntax (HsType)
 import System.IO.Unsafe (unsafePerformIO)
 
@@ -258,6 +257,33 @@ heap, and return a pointer to the object which the caller owns; a callback
 returning a @'TObj' _@ will internally create a C++ object from a foreign value,
 and hand that object off to the C++ side (which will return it and free the
 temporary).
+
+Object lifetimes can be managed by a foreign language's garbage collector.
+'TToGc' is a special type that is only allowed in certain forms, and only when
+passing a value from C++ to a foreign language (i.e. returning from a C++
+function, or C++ invoking a foreign callback), to put the object under the
+collector's management.  Only object types are allowed:
+
+1. @'TToGc' ('TObj' cls)@
+2. @'TToGc' ('TRef' ('TConst' ('TObj' cls)))@
+3. @'TToGc' ('TRef' ('TObj' cls))@
+4. @'TToGc' ('TPtr' ('TConst' ('TObj' cls)))@
+5. @'TToGc' ('TPtr' ('TObj' cls))@
+
+Cases 2-5 are straightforward: the existing object is given to the collector.
+Case 1 without the 'TToGc' would cause the object to be converted, but instead
+here the (temporary) object gets copied to the heap, and a managed pointer to
+the heap object is returned.  Case 1 is useful when you want to pass a handle
+that has a non-trivial C++ representation (so you don't define a conversion for
+it), but it's still a temporary that you don't want users to have to delete
+manually.
+
+Objects are always managed manually unless given to a garbage collector.  In
+particular, constructors always return unmanaged pointers.  When a managed
+pointer is passed into C++, that it is managed is lost in the FFI conversion,
+and if this pointer is then passed back into the foreign language, it will
+arrive in an unmanaged state (although the object is still managed, and it
+should not be assigned to the collector a second time).
 
 -}
 {- $generators-cpp-callbacks
@@ -450,16 +476,24 @@ Let's focus on @zipper@.  Two data types will be generated that represent
 const and non-const pointers to @Zipper@ objects:
 
 @
-newtype Zipper
-newtype ZipperConst
+data Zipper
+data ZipperConst
 @
+
+Internally, these types hold 'Ptr's, and they can be converted to 'Ptr's with
+'toPtr' (though this conversion is lossy for pointers managed by the garbage
+collector, see the section on object passing).
 
 Several typeclass instances are generated for both types:
 
-- 'Eq', 'Ord', 'Show', and 'Storable' are all derived automatically from the
-underlying 'Ptr'.
+- 'Eq', 'Ord', and 'Show' compare and render based on the underlying pointer
+address.
 
 - 'CppPtr' and 'Deletable' instances provide object management.
+
+- A single @'Decodable' ('Ptr' Zipper) Zipper@ instance is generated for
+converting raw 'Ptr's into object handles.  This is the opposite operation of
+'toPtr'.
 
 - If the class -- @Zipper@ in this case -- has an @operator=@ method that takes
 either a @'TObj' zipper@ or a @'TRef' ('TConst' ('TObj' zipper))@, then an
@@ -584,5 +618,13 @@ value implicitly; 'withCppObj' can be used for this.
 For values returned from C++, and for arguments and return values in callbacks,
 the 'HsCSide' column above is the exposed type; polymorphism as in the
 'HsHsSide' column is not provided.
+
+Object pointer types in Haskell hide whether they are managed (garbage
+collected) or unmanaged pointers in their runtime representation.  The APIs that
+bindings expose to Haskell users should generally not require them to be
+concerned about object lifetimes, and also having separate data types for
+managed pointers would balloon the size of bindings.  Unmanaged objects can be
+converted to managed objects with 'toGc'; after calling this function, the value
+it returns should always be used in place of any existing pointers.
 
 -}
