@@ -1034,7 +1034,8 @@ sayExportClassHsSpecialFns mode cls = do
                             hsImportForRuntime]
       ln
       saysLn ["instance HoppyFHR.Assignable (HoppyF.Ptr (HoppyF.Ptr ", typeName, ")) ",
-              typeName, " where assign ptr' value' = HoppyF.poke ptr' $ HoppyFHR.toPtr value'"]
+              typeName, " where"]
+      indent $ sayLn "assign ptr' value' = HoppyF.poke ptr' $ HoppyFHR.toPtr value'"
     SayExportBoot -> return ()
 
   -- If the class has an assignment operator that takes its own type, then
