@@ -23,7 +23,6 @@ module Main (main) where
 import Control.Applicative ((<$>), (<*>))
 #endif
 import Control.Monad (when)
-import Data.Void (Void)
 import Foreign.C (
   CChar,
   CDouble,
@@ -187,7 +186,7 @@ objectGcTests =
     ptrCtr_resetCounters
     p <- ptrCtr_newGcedPtr
     case p of
-      PtrCtrGc (castForeignPtr -> fptr :: ForeignPtr Void) _ -> do
+      PtrCtrGc (castForeignPtr -> fptr :: ForeignPtr ()) _ -> do
         withForeignPtr fptr $ \_ -> do
           performGC
           -- p is collectable now, but fptr should be keeping the counter alive.
