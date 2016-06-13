@@ -15,24 +15,21 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-{ mkDerivation, base, hoppy, stdenv, HUnit
-, hoppy-tests-basic-generator, hoppy-tests-basic-cpp
+{ mkDerivation, base, HUnit, stdenv
+, hoppy-runtime, hoppy-tests-basic-cpp, hoppy-tests-basic-generator
 }:
-
-let gen = hoppy-tests-basic-generator; in
-
 mkDerivation {
   pname = "hoppy-tests-basic";
   version = "0.2.0";
   src = ./.;
-  executableHaskellDepends = [ base hoppy ];
-  executableSystemDepends = [ hoppy-tests-basic-cpp ];
-  testHaskellDepends = [ base HUnit ];
+  libraryHaskellDepends = [ base hoppy-runtime ];
+  librarySystemDepends = [ hoppy-tests-basic-cpp ];
+  testHaskellDepends = [ base hoppy-runtime HUnit ];
   license = stdenv.lib.licenses.agpl3Plus;
   doCheck = true;
   doHaddock = false;
 
   prePatch = ''
-    ${gen}/bin/generator --gen-hs .
+    ${hoppy-tests-basic-generator}/bin/generator --gen-hs .
   '';
 }

@@ -1,6 +1,6 @@
 # This file is part of Hoppy.
 #
-# Copyright 2015-2016 Bryan Gardiner <bog@khumba.net>
+# Copyright 2016 Bryan Gardiner <bog@khumba.net>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
@@ -15,21 +15,24 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-{ mkDerivation, base, HUnit, stdenv
-, hoppy-runtime, hoppy-tests-circular-cpp, hoppy-tests-circular-generator
+{ mkDerivation, base, haskell-src, hoppy-generator, hoppy-runtime
+, stdenv, lib
+, enableSplitObjs ? null
+, forceParallelBuilding ? false
 }:
-mkDerivation {
-  pname = "hoppy-tests-circular";
+mkDerivation ({
+  pname = "hoppy-docs";
   version = "0.2.0";
   src = ./.;
-  libraryHaskellDepends = [ base hoppy-runtime ];
-  librarySystemDepends = [ hoppy-tests-circular-cpp ];
-  testHaskellDepends = [ base hoppy-runtime HUnit ];
+  libraryHaskellDepends = [
+    base haskell-src hoppy-generator hoppy-runtime
+  ];
+  homepage = "http://khumba.net/projects/hoppy";
+  description = "C++ FFI generator - Documentation";
   license = stdenv.lib.licenses.agpl3Plus;
-  doCheck = true;
-  doHaddock = false;
 
-  prePatch = ''
-    ${hoppy-tests-circular-generator}/bin/generator --gen-hs .
-  '';
-}
+  preConfigure =
+    if forceParallelBuilding
+    then "configureFlags+=\" --ghc-option=-j$NIX_BUILD_CORES\""
+    else null;
+} // lib.filterAttrs (k: v: v != null) { inherit enableSplitObjs; })

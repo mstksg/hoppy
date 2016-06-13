@@ -15,7 +15,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-{ stdenv, hoppy, hoppy-tests-basic-generator }:
+{ stdenv, hoppy-generator, hoppy-tests-basic-generator }:
 
 let gen = hoppy-tests-basic-generator;
     name = "hoppy-tests-basic";
@@ -31,7 +31,7 @@ stdenv.mkDerivation {
     ${gen}/bin/generator --gen-cpp .
   '';
 
-  CXXFLAGS = "-I${hoppy}/include";
+  CXXFLAGS = "-I${hoppy-generator}/include";
 
   installPhase = ''
     mkdir -p $out/src
@@ -40,8 +40,8 @@ stdenv.mkDerivation {
     mkdir -p $out/lib
     install ${libName} $out/lib/${libName}.0.2.0
     cd $out/lib
-    ln -s ${libName}.0.1{.0,}
-    ln -s ${libName}.0{.1,}
+    ln -s ${libName}.0.2{.0,}
+    ln -s ${libName}.0{.2,}
     ln -s ${libName}{.0,}
   '';
 

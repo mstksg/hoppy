@@ -31,7 +31,10 @@ let
 
   haskellOverrides = haskellOptions: {
     overrides = self: super: {
-      hoppy = self.callPackage (hoppyDir + /hoppy) haskellOptions;
+      hoppy-generator = self.callPackage (hoppyDir + /generator) haskellOptions;
+      hoppy-std = self.callPackage (hoppyDir + /std) haskellOptions;
+      hoppy-runtime = self.callPackage (hoppyDir + /runtime) haskellOptions;
+      hoppy-docs = self.callPackage (hoppyDir + /docs) haskellOptions;
 
       hoppy-tests-basic-generator =
         self.callPackage (hoppyDir + /tests/basic/generator) {};
@@ -52,15 +55,15 @@ let
 
   packageOverrides = pkgs: rec {
     hoppy-tests-basic-cpp = pkgs.callPackage (hoppyDir + /tests/basic/cpp) {
-      inherit (haskellPackages) hoppy hoppy-tests-basic-generator;
+      inherit (haskellPackages) hoppy-generator hoppy-tests-basic-generator;
     };
 
     hoppy-tests-circular-cpp = pkgs.callPackage (hoppyDir + /tests/circular/cpp) {
-      inherit (haskellPackages) hoppy hoppy-tests-circular-generator;
+      inherit (haskellPackages) hoppy-generator hoppy-tests-circular-generator;
     };
 
     hoppy-tests-stl-cpp = pkgs.callPackage (hoppyDir + /tests/stl/cpp) {
-      inherit (haskellPackages) hoppy hoppy-tests-stl-generator;
+      inherit (haskellPackages) hoppy-generator hoppy-tests-stl-generator;
     };
 
     haskellPackages =

@@ -15,13 +15,13 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-{ mkDerivation, stdenv, base, hoppy, haskell-src }:
+{ mkDerivation, base, haskell-src, hoppy-generator, stdenv }:
 mkDerivation {
   pname = "hoppy-tests-basic-generator";
   version = "0.2.0";
   src = ./.;
   isLibrary = false;
   isExecutable = true;
-  executableHaskellDepends = [ base haskell-src hoppy ];
+  executableHaskellDepends = [ base haskell-src hoppy-generator ];
   license = stdenv.lib.licenses.agpl3Plus;
 }

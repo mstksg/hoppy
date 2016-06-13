@@ -26,6 +26,6 @@ pkgs.stdenv.mkDerivation {
     pkgs.hoppy-tests-stl-cpp h.hoppy-tests-stl
   ];
   meta = {
-    license = stdenv.lib.licenses.agpl3Plus;
+    license = pkgs.stdenv.lib.licenses.agpl3Plus;
   };
 }
