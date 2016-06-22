@@ -562,21 +562,28 @@ sayArgProcessing dir t fromVar toVar =
         importHsModuleForExtName $ callbackExtName cb
         saysLn [toHsCallbackCtorName cb, " ", fromVar, " >>= \\", toVar, " ->"]
       FromCpp -> throwError "Can't receive a callback from C++"
-    TObj cls -> do
-      addImportForClass cls
-      case dir of
-        ToCpp -> do
-          -- Same as the (TPtr (TConst (TObj _))), ToPtr case.
-          addImports $ mconcat [hsImport1 "Prelude" "($)",
-                                hsImportForPrelude,
-                                hsImportForRuntime]
-          saysLn [toHsWithValuePtrName cls, " ", fromVar,
-                  " $ HoppyP.flip HoppyFHR.withCppPtr $ \\", toVar, " ->"]
-        FromCpp -> do
+    TObj cls -> case dir of
+      ToCpp -> do
+        -- Same as the (TPtr (TConst (TObj _))), ToPtr case.
+        addImportForClass cls
+        addImports $ mconcat [hsImport1 "Prelude" "($)",
+                              hsImportForPrelude,
+                              hsImportForRuntime]
+        saysLn [toHsWithValuePtrName cls, " ", fromVar,
+                " $ HoppyP.flip HoppyFHR.withCppPtr $ \\", toVar, " ->"]
+      FromCpp -> case classHaskellConversion $ classConversion cls of
+        ClassConversionNone ->
+          throwError $ concat
+          ["Can't pass a TObj of ", show cls,
+           " from C++ to Haskell because no class conversion is defined"]
+        ClassConversionManual _ -> do
+          addImportForClass cls
           addImports $ mconcat [hsImport1 "Prelude" "(>>=)",
                                 hsImportForRuntime]
           saysLn ["HoppyFHR.decode (", toHsDataCtorName Unmanaged Const cls, " ",
                   fromVar, ") >>= \\", toVar, " ->"]
+        ClassConversionToHeap -> sayArgProcessing dir (TObjToHeap cls) fromVar toVar
+        ClassConversionToGc -> sayArgProcessing dir (TToGc t) fromVar toVar
     TObjToHeap cls -> case dir of
       ToCpp -> throwError $ tObjToHeapWrongDirectionErrorMsg Nothing cls
       FromCpp -> sayArgProcessing dir (TPtr $ TObj cls) fromVar toVar
@@ -676,17 +683,27 @@ sayCallAndProcessReturn dir t callWords =
         importHsModuleForExtName $ callbackExtName cb
         saysLn [toHsCallbackCtorName cb, "=<<"]
         sayCall
-    TObj cls -> do
-      addImports $ mconcat [hsImports "Prelude" ["(.)", "(=<<)"],
-                            hsImportForRuntime]
-      case dir of
-        ToCpp ->
-          saysLn ["(HoppyFHR.decodeAndDelete . ",
-                  toHsDataCtorName Unmanaged Const cls, ") =<<"]
-        FromCpp -> do
-          addImports hsImportForPrelude
-          sayLn "(HoppyP.fmap (HoppyFHR.toPtr) . HoppyFHR.encode) =<<"
-      sayCall
+    TObj cls -> case dir of
+      ToCpp -> case classHaskellConversion $ classConversion cls of
+        ClassConversionNone ->
+          throwError $ concat
+          ["Can't return a TObj of ", show cls,
+           " from C++ to Haskell because no class conversion is defined"]
+        ClassConversionManual _ -> do
+          addImportForClass cls
+          addImports $ mconcat [hsImports "Prelude" ["(.)", "(=<<)"],
+                                hsImportForRuntime]
+          saysLn ["(HoppyFHR.decodeAndDelete . ", toHsDataCtorName Unmanaged Const cls, ") =<<"]
+          sayCall
+        ClassConversionToHeap -> sayCallAndProcessReturn dir (TObjToHeap cls) callWords
+        ClassConversionToGc -> sayCallAndProcessReturn dir (TToGc t) callWords
+      FromCpp -> do
+        addImportForClass cls
+        addImports $ mconcat [hsImports "Prelude" ["(.)", "(=<<)"],
+                              hsImportForPrelude,
+                              hsImportForRuntime]
+        sayLn "(HoppyP.fmap (HoppyFHR.toPtr) . HoppyFHR.encode) =<<"
+        sayCall
     TObjToHeap cls -> case dir of
       ToCpp -> sayCallAndProcessReturn dir (TPtr $ TObj cls) callWords
       FromCpp -> throwError $ tObjToHeapWrongDirectionErrorMsg Nothing cls
@@ -785,7 +802,7 @@ sayExportClassHsClass doDecls cls cst = do
       indent $ saysLn [hsWithValuePtrName, " = HoppyP.flip ($) . ", hsCastMethodName]
 
     -- When the class has a native Haskell type, also print an instance for it.
-    forM_ (classHaskellConversion $ classConversion cls) $ \conv -> do
+    forM_ (getClassHaskellConversion cls) $ \conv -> do
       hsType <- classHaskellConversionType conv
       ln
       saysLn ["#if MIN_VERSION_base(4,8,0)"]
@@ -1089,7 +1106,7 @@ sayExportClassHsSpecialFns mode cls = do
 
   -- Say Encodable and Decodable instances, if the class is encodable and
   -- decodable.
-  forM_ (classHaskellConversion $ classConversion cls) $ \conv -> do
+  forM_ (getClassHaskellConversion cls) $ \conv -> do
     hsType <- classHaskellConversionType conv
     let hsTypeStr = concat ["(", prettyPrint hsType, ")"]
     case mode of
@@ -1218,6 +1235,9 @@ sayExportClassCastPrimitives mode cls = do
           recur <- f super
           when recur $ forAncestors super f
 
+-- | Implements special logic on top of 'cppTypeToHsTypeAndUse', that computes
+-- the Haskell __qualified__ type for a function, including typeclass
+-- constraints.
 fnToHsTypeAndUse :: HsTypeSide
                  -> Maybe (Constness, Class)
                  -> Purity
@@ -1234,12 +1254,27 @@ fnToHsTypeAndUse side methodInfo purity paramTypes returnType = do
             zip (map toArgName [1..]) paramTypes
   let context = mapMaybe fst params :: HsContext
       hsParams = map snd params
-  hsReturn <- cppTypeToHsTypeAndUse side returnType
+
+  -- Determine the 'HsHsSide' return type for the function.  If the function is
+  -- returning a 'TObj' of a class that uses 'ClassConversionToHeap' or
+  -- 'ClassConversionToGc', then first we wrap the return type.  Then we do the
+  -- conversion to a Haskell type, and wrap the result in 'IO' if the function
+  -- is impure.  (HsCSide types always get wrapped in IO.)
+  returnForGc <- case returnType of
+    TObj cls -> case classHaskellConversion $ classConversion cls of
+      ClassConversionNone ->
+        throwError $ concat ["Expected ", show cls, " to be returnable from a C++ function"]
+      ClassConversionManual _ -> return returnType
+      ClassConversionToHeap -> return $ TObjToHeap cls
+      ClassConversionToGc -> return $ TToGc returnType
+    _ -> return returnType
+  hsReturnForGc <- cppTypeToHsTypeAndUse side returnForGc
   hsReturnForPurity <- case (purity, side) of
-    (Pure, HsHsSide) -> return hsReturn
+    (Pure, HsHsSide) -> return hsReturnForGc
     _ -> do
       addImports hsImportForPrelude
-      return $ HsTyApp (HsTyCon $ UnQual $ HsIdent "HoppyP.IO") hsReturn
+      return $ HsTyApp (HsTyCon $ UnQual $ HsIdent "HoppyP.IO") hsReturnForGc
+
   return $ HsQualType context $ foldr HsTyFun hsReturnForPurity hsParams
 
   where contextForParam :: (String, Type) -> Generator (Maybe HsAsst, HsType)

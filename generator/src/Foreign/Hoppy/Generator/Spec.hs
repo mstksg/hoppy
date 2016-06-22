@@ -118,8 +118,13 @@ module Foreign.Hoppy.Generator.Spec (
   methodReturn, methodConst, methodStatic,
   -- *** Conversion to and from foreign values
   ClassConversion (..),
+  ClassConversionMode (..),
   classConversionNone,
   classModifyConversion,
+  classSetConversion,
+  classSetConversionToHeap,
+  classSetConversionToGc,
+  classSetHaskellConversion,
   ClassHaskellConversion (..),
   -- ** Callbacks
   Callback, makeCallback, callbackExtName, callbackParams, callbackReturn, callbackReqs,
@@ -1240,17 +1245,68 @@ classAddMethods methods cls =
 -- objects, and C++ object pointers can be explicitly converted to foreign
 -- values, via special functions generated for the class.
 data ClassConversion = ClassConversion
-  { classHaskellConversion :: Maybe ClassHaskellConversion
+  { classHaskellConversion :: ClassConversionMode ClassHaskellConversion
     -- ^ Conversions to and from Haskell.
+
+    -- NOTE!  When adding new languages here, add the language to
+    -- 'classSetConversionToHeap', and 'classSetConversionToGc' as well if the
+    -- language supports garbage collection.
   }
+
+-- | Specifies whether (and if so, how) objects of a class get converted to and
+-- from values in a specific foreign language.
+data ClassConversionMode a =
+    ClassConversionNone
+    -- ^ Indicates that a class __is not__ convertible for a language.  Passing
+    -- raw 'TObj' values into and out of C++ is not allowed.
+  | ClassConversionManual a
+    -- ^ Indicates that a class __is__ convertible for a language.  Passing raw
+    -- 'TObj' values into and out of C++ is allowed, and the attached structure
+    -- describes how to perform the conversions.
+  | ClassConversionToHeap
+    -- ^ Indicates that a class __is not__ convertible for a language.
+    -- Nevertheless, passing an object from C++ to the foreign language via a
+    -- type of @'TObj' cls@ is allowed, and behaves as though the type were
+    -- @'TObjToHeap' cls@ instead.
+  | ClassConversionToGc
+    -- ^ Indicates that a class __is not__ convertible for a language.
+    -- Nevertheless, passing an object from C++ to the foreign language via a
+    -- type of @'TObj' cls@ is allowed, and behaves as though the type were
+    -- @'TToGc' ('TObj' cls)@ instead.
+    --
+    -- This should be used for value objects so that you can simply use @'TObj'
+    -- cls@ in return types, and also write on @'mkProp' "..." ('TObj' cls)@.
 
 -- | Encoding parameters for a class that is not encodable or decodable.
 classConversionNone :: ClassConversion
-classConversionNone = ClassConversion Nothing
+classConversionNone = ClassConversion ClassConversionNone
 
--- | Modifies classes' 'ClassEncoding' structures with a given function.
+-- | Modifies a class's 'ClassConversion' structure with a given function.
 classModifyConversion :: (ClassConversion -> ClassConversion) -> Class -> Class
 classModifyConversion f cls = cls { classConversion = f $ classConversion cls }
+
+-- | Replaces a class's 'ClassConversion' structure.
+classSetConversion :: ClassConversion -> Class -> Class
+classSetConversion c cls = cls { classConversion = c }
+
+-- | Modifies a class's 'ClassConversion' structure by setting all languages
+-- to use 'ClassConversionToHeap'.
+classSetConversionToHeap :: Class -> Class
+classSetConversionToHeap cls = flip classModifyConversion cls $ \c ->
+  c { classHaskellConversion = ClassConversionToHeap
+    }
+
+-- | Modifies a class's 'ClassConversion' structure by setting all languages
+-- that support garbage collection to use 'ClassConversionToGc'.
+classSetConversionToGc :: Class -> Class
+classSetConversionToGc cls = flip classModifyConversion cls $ \c ->
+  c { classHaskellConversion = ClassConversionToGc
+    }
+
+-- | Replaces a class's 'classHaskellConversion' with a given value.
+classSetHaskellConversion :: ClassHaskellConversion -> Class -> Class
+classSetHaskellConversion conv = classModifyConversion $ \c ->
+  c { classHaskellConversion = ClassConversionManual conv }
 
 -- | Controls how conversions between C++ objects and Haskell values happen in
 -- Haskell bindings.

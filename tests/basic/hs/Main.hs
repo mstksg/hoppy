@@ -46,6 +46,7 @@ import Foreign.Hoppy.Runtime (
   nullptr,
   toGc,
   toPtr,
+  touchCppPtr,
   withCppObj,
   withScopedPtr,
   )
@@ -331,6 +332,27 @@ classConversionTests =
     , "by constant pointer" ~:
       makeBoxByPtrConstCallbackDriver (fmap toIntBoxConst . intBox_newWithValue) 5 >>= (@?= 5)
     ]
+
+  , "ClassConversionToHeap" ~: do
+    let readCounts = (,) <$>
+                     ptrCtrWithToHeapConversion_getConstructionCount <*>
+                     ptrCtrWithToHeapConversion_getDestructionCount
+    ptrCtrWithToHeapConversion_resetCounters
+    p <- ptrCtrWithToHeapConversion_newHeapObj
+    readCounts >>= (@?= (2, 1))
+    delete p
+    readCounts >>= (@?= (2, 2))
+
+  , "ClassConversionToGc" ~: do
+    let readCounts = (,) <$>
+                     ptrCtrWithToGcConversion_getConstructionCount <*>
+                     ptrCtrWithToGcConversion_getDestructionCount
+    ptrCtrWithToGcConversion_resetCounters
+    p <- ptrCtrWithToGcConversion_newGcedObj
+    readCounts >>= (@?= (2, 1))
+    touchCppPtr p
+    performGC
+    readCounts >>= (@?= (2, 2))
   ]
 
 fnMethodTests :: Test

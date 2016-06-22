@@ -55,6 +55,8 @@ testModule =
   [ -- Is this thing on?
     ExportClass c_IntBox
   , ExportClass c_PtrCtr
+  , ExportClass c_PtrCtrWithToHeapConversion
+  , ExportClass c_PtrCtrWithToGcConversion
   , ExportFn f_piapprox
   , ExportFn f_piapproxNonpure
   , ExportFn f_timesTwo
@@ -143,17 +145,16 @@ testModule =
 c_IntBox :: Class
 c_IntBox =
   addReqIncludes [includeLocal "intbox.hpp"] $
-  classModifyConversion
-  (\c -> c { classHaskellConversion = Just ClassHaskellConversion
-             { classHaskellConversionType = do
-               addImports $ hsWholeModuleImport "Foreign.Hoppy.Test.Basic.HsBox"
-               return $ HsTyCon $ UnQual $ HsIdent "HsBox"
-             , classHaskellConversionToCppFn = sayLn "intBox_newWithValue . getHsBox"
-             , classHaskellConversionFromCppFn = do
-               addImports $ hsImports "Prelude" ["(.)", "fmap"]
-               sayLn "fmap HsBox . intBox_get"
-             }
-           }) $
+  classSetHaskellConversion
+    ClassHaskellConversion
+    { classHaskellConversionType = do
+      addImports $ hsWholeModuleImport "Foreign.Hoppy.Test.Basic.HsBox"
+      return $ HsTyCon $ UnQual $ HsIdent "HsBox"
+    , classHaskellConversionToCppFn = sayLn "intBox_newWithValue . getHsBox"
+    , classHaskellConversionFromCppFn = do
+      addImports $ hsImports "Prelude" ["(.)", "fmap"]
+      sayLn "fmap HsBox . intBox_get"
+    } $
   makeClass (ident "IntBox") Nothing []
   [ mkCtor "new" []
   , mkCtor "newWithValue" [TInt]
@@ -176,6 +177,30 @@ c_PtrCtr =
   , mkStaticMethod "getConstructionCount" [] TInt
   , mkStaticMethod "getDestructionCount" [] TInt
   , mkConstMethod "redButton" [] TVoid
+  ]
+
+c_PtrCtrWithToHeapConversion :: Class
+c_PtrCtrWithToHeapConversion =
+  addReqIncludes [includeLocal "ptrctr.hpp"] $
+  classSetConversionToHeap $
+  makeClass (ident "PtrCtr") (Just $ toExtName "PtrCtrWithToHeapConversion") []
+  [ mkCtor "new" [] ]
+  [ mkStaticMethod' "newGcedObj" "newHeapObj" [] $ TObj c_PtrCtrWithToHeapConversion
+  , mkStaticMethod "resetCounters" [] TVoid
+  , mkStaticMethod "getConstructionCount" [] TInt
+  , mkStaticMethod "getDestructionCount" [] TInt
+  ]
+
+c_PtrCtrWithToGcConversion :: Class
+c_PtrCtrWithToGcConversion =
+  addReqIncludes [includeLocal "ptrctr.hpp"] $
+  classSetConversionToGc $
+  makeClass (ident "PtrCtr") (Just $ toExtName "PtrCtrWithToGcConversion") []
+  [ mkCtor "new" [] ]
+  [ mkStaticMethod "newGcedObj" [] $ TObj c_PtrCtrWithToGcConversion
+  , mkStaticMethod "resetCounters" [] TVoid
+  , mkStaticMethod "getConstructionCount" [] TInt
+  , mkStaticMethod "getDestructionCount" [] TInt
   ]
 
 f_piapprox :: Function

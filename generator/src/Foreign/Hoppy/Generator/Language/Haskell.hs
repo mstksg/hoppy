@@ -73,6 +73,7 @@ module Foreign.Hoppy.Generator.Language.Haskell (
   toArgName,
   HsTypeSide (..),
   cppTypeToHsTypeAndUse,
+  getClassHaskellConversion,
   prettyPrint,
   ) where
 
@@ -694,12 +695,11 @@ cppTypeToHsTypeAndUse side t =
           return $ HsTyApp (HsTyCon $ UnQual $ HsIdent "HoppyFHR.CCallback") hsType
     TObj cls -> case side of
       HsCSide -> cppTypeToHsTypeAndUse side $ TPtr $ TConst t
-      HsHsSide ->
-        case classHaskellConversionType <$> classHaskellConversion (classConversion cls) of
-          Nothing ->
-            throwError $ concat
-            ["Expected a Haskell type for ", show cls, " but there isn't one"]
-          Just t' -> t'
+      HsHsSide -> case getClassHaskellConversion cls of
+        Nothing ->
+          throwError $ concat
+          ["Expected a Haskell type for ", show cls, " but there isn't one"]
+        Just c -> classHaskellConversionType c
     TObjToHeap cls -> cppTypeToHsTypeAndUse side $ TPtr $ TObj cls
     TToGc t' -> case t' of
       TRef _ -> cppTypeToHsTypeAndUse side t'  -- References behave the same as pointers.
@@ -707,6 +707,14 @@ cppTypeToHsTypeAndUse side t =
       TObj cls -> cppTypeToHsTypeAndUse side $ TPtr $ TObj cls
       _ -> throwError $ tToGcInvalidFormErrorMessage Nothing t'
     TConst t' -> cppTypeToHsTypeAndUse side t'
+
+-- | Returns the 'ClassHaskellConversion' of a class, if it has one.
+getClassHaskellConversion :: Class -> Maybe ClassHaskellConversion
+getClassHaskellConversion cls = case classHaskellConversion $ classConversion cls of
+  ClassConversionNone -> Nothing
+  ClassConversionManual c -> Just c
+  ClassConversionToHeap -> Nothing
+  ClassConversionToGc -> Nothing
 
 -- | Prints a value like 'P.prettyPrint', but removes newlines so that they
 -- don't cause problems with this module's textual generation.  Should be mainly

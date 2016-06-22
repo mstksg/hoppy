@@ -36,20 +36,18 @@ c_string :: Class
 c_string =
   addReqIncludes [includeStd "string"] $
   classAddFeatures [Assignable, Comparable, Copyable, Equatable] $
-  classModifyConversion
-  (\c -> c { classHaskellConversion =
-             Just ClassHaskellConversion
-             { classHaskellConversionType = do
-               addImports hsImportForPrelude
-               return $ HsTyCon $ UnQual $ HsIdent "HoppyP.String"
-             , classHaskellConversionToCppFn = do
-               addImports $ mconcat [hsImportForPrelude, hsImportForForeignC]
-               sayLn "HoppyP.flip HoppyFC.withCString stdString_newFromCString"
-             , classHaskellConversionFromCppFn = do
-               addImports $ mconcat [hsImport1 "Control.Monad" "(<=<)", hsImportForForeignC]
-               sayLn "HoppyFC.peekCString <=< stdString_c_str"
-             }
-           }) $
+  classSetHaskellConversion
+    ClassHaskellConversion
+      { classHaskellConversionType = do
+        addImports hsImportForPrelude
+        return $ HsTyCon $ UnQual $ HsIdent "HoppyP.String"
+      , classHaskellConversionToCppFn = do
+        addImports $ mconcat [hsImportForPrelude, hsImportForForeignC]
+        sayLn "HoppyP.flip HoppyFC.withCString stdString_newFromCString"
+      , classHaskellConversionFromCppFn = do
+        addImports $ mconcat [hsImport1 "Control.Monad" "(<=<)", hsImportForForeignC]
+        sayLn "HoppyFC.peekCString <=< stdString_c_str"
+      } $
   makeClass (ident1 "std" "string") (Just $ toExtName "StdString")
   []
   [ mkCtor "new" []
