@@ -149,6 +149,15 @@ class Assignable cppType value where
 instance Assignable (Ptr CBool) Bool where
   assign p b = poke p $ if b then 1 else 0
 
+instance Assignable (Ptr CInt) Int where
+  assign p i = poke p $ coerceIntegral i
+
+instance Assignable (Ptr CFloat) Float where
+  assign p x = poke p $ realToFrac x
+
+instance Assignable (Ptr CDouble) Double where
+  assign p x = poke p $ realToFrac x
+
 instance Storable a => Assignable (Ptr a) a where
   assign = poke
 
@@ -196,14 +205,14 @@ instance Decodable (Ptr CChar) CChar where decode = peek
 instance Decodable (Ptr CUChar) CUChar where decode = peek
 instance Decodable (Ptr CShort) CShort where decode = peek
 instance Decodable (Ptr CUShort) CUShort where decode = peek
-instance Decodable (Ptr CInt) CInt where decode = peek
+instance Decodable (Ptr CInt) Int where decode = fmap coerceIntegral . peek
 instance Decodable (Ptr CUInt) CUInt where decode = peek
 instance Decodable (Ptr CLong) CLong where decode = peek
 instance Decodable (Ptr CULong) CULong where decode = peek
 instance Decodable (Ptr CLLong) CLLong where decode = peek
 instance Decodable (Ptr CULLong) CULLong where decode = peek
-instance Decodable (Ptr CFloat) CFloat where decode = peek
-instance Decodable (Ptr CDouble) CDouble where decode = peek
+instance Decodable (Ptr CFloat) Float where decode = fmap realToFrac . peek
+instance Decodable (Ptr CDouble) Double where decode = fmap realToFrac . peek
 instance Decodable (Ptr Int8) Int8 where decode = peek
 instance Decodable (Ptr Int16) Int16 where decode = peek
 instance Decodable (Ptr Int32) Int32 where decode = peek

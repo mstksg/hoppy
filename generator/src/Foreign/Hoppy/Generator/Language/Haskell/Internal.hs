@@ -261,15 +261,16 @@ sayExportBitspace mode bitspace =
       let values :: [(Int, String)]
           values = map (second $ toHsBitspaceValueName bitspace) $ bitspaceValueNames bitspace
 
-      hsNumType <- cppTypeToHsTypeAndUse HsHsSide $ bitspaceType bitspace
+      hsCNumType <- cppTypeToHsTypeAndUse HsCSide $ bitspaceType bitspace
+      hsHsNumType <- cppTypeToHsTypeAndUse HsHsSide $ bitspaceType bitspace
 
       -- Print out the data declaration and conversion functions.
-      addImports $ mconcat [hsImportForBits, hsImportForPrelude]
+      addImports $ mconcat [hsImportForBits, hsImportForPrelude, hsImportForRuntime]
       addExport' hsTypeName
       addExport' className
       ln
       saysLn ["newtype ", hsTypeName, " = ", hsTypeName, " { ",
-              fromFnName, " :: ", prettyPrint hsNumType, " }"]
+              fromFnName, " :: ", prettyPrint hsCNumType, " }"]
       indent $ sayLn "deriving (HoppyDB.Bits, HoppyP.Bounded, HoppyP.Eq, HoppyP.Ord, HoppyP.Show)"
       ln
       saysLn ["class ", className, " a where"]
@@ -277,8 +278,10 @@ sayExportBitspace mode bitspace =
         let tyVar = HsTyVar $ HsIdent "a"
         saysLn [toFnName, " :: ", prettyPrint $ HsTyFun tyVar hsType]
       ln
-      saysLn ["instance ", className, " (", prettyPrint hsNumType, ") where"]
+      saysLn ["instance ", className, " (", prettyPrint hsCNumType, ") where"]
       indent $ saysLn [toFnName, " = ", hsTypeName]
+      saysLn ["instance ", className, " (", prettyPrint hsHsNumType, ") where"]
+      indent $ saysLn [toFnName, " = ", hsTypeName, " . HoppyFHR.coerceIntegral"]
 
       -- If the bitspace has an associated enum, then print out a conversion
       -- instance for it as well.
@@ -298,14 +301,15 @@ sayExportBitspace mode bitspace =
         saysLn [valueName, " = ", hsTypeName, " ", show num]
 
     SayExportBoot -> do
-      hsNumType <- cppTypeToHsTypeAndUse HsHsSide $ bitspaceType bitspace
+      hsCNumType <- cppTypeToHsTypeAndUse HsCSide $ bitspaceType bitspace
+      hsHsNumType <- cppTypeToHsTypeAndUse HsHsSide $ bitspaceType bitspace
 
       addImports $ mconcat [hsImportForBits, hsImportForPrelude]
       addExport' hsTypeName
       addExport' className
       ln
       saysLn ["newtype ", hsTypeName, " = ", hsTypeName, " { ",
-              fromFnName, " :: ", prettyPrint hsNumType, " }"]
+              fromFnName, " :: ", prettyPrint hsCNumType, " }"]
       ln
       saysLn ["instance HoppyDB.Bits ", hsTypeName]
       saysLn ["instance HoppyP.Bounded ", hsTypeName]
@@ -318,7 +322,8 @@ sayExportBitspace mode bitspace =
         let tyVar = HsTyVar $ HsIdent "a"
         saysLn [toFnName, " :: ", prettyPrint $ HsTyFun tyVar hsType]
       ln
-      saysLn ["instance ", className, " (", prettyPrint hsNumType, ")"]
+      saysLn ["instance ", className, " (", prettyPrint hsCNumType, ")"]
+      saysLn ["instance ", className, " (", prettyPrint hsHsNumType, ")"]
       forM_ (bitspaceEnum bitspace) $ \enum -> do
         let enumTypeName = toHsEnumTypeName enum
         importHsModuleForExtName $ enumExtName enum
@@ -496,14 +501,14 @@ sayArgProcessing dir t fromVar toVar =
     TUChar -> noConversion
     TShort -> noConversion
     TUShort -> noConversion
-    TInt -> noConversion
+    TInt -> sayCoerceIntegral
     TUInt -> noConversion
     TLong -> noConversion
     TULong -> noConversion
     TLLong -> noConversion
     TULLong -> noConversion
-    TFloat -> noConversion
-    TDouble -> noConversion
+    TFloat -> sayCoerceFloating
+    TDouble -> sayCoerceFloating
     TInt8 -> noConversion
     TInt16 -> noConversion
     TInt32 -> noConversion
@@ -595,6 +600,12 @@ sayArgProcessing dir t fromVar toVar =
         saysLn ["HoppyFHR.toGc ", fromVar, " >>= \\", toVar, " ->"]
     TConst t' -> sayArgProcessing dir t' fromVar toVar
   where noConversion = saysLn ["let ", toVar, " = ", fromVar, " in"]
+        sayCoerceIntegral = do
+          addImports hsImportForRuntime
+          saysLn ["let ", toVar, " = HoppyFHR.coerceIntegral ", fromVar, " in"]
+        sayCoerceFloating = do
+          addImports hsImportForPrelude
+          saysLn ["let ", toVar, " = HoppyP.realToFrac ", fromVar, " in"]
         bitspaceConvFn dir = case dir of
           ToCpp -> toHsBitspaceToNumName
           FromCpp -> toHsBitspaceFromValueName
@@ -617,14 +628,14 @@ sayCallAndProcessReturn dir t callWords =
     TUChar -> sayCall
     TShort -> sayCall
     TUShort -> sayCall
-    TInt -> sayCall
+    TInt -> sayCoerceIntegral >> sayCall
     TUInt -> sayCall
     TLong -> sayCall
     TULong -> sayCall
     TLLong -> sayCall
     TULLong -> sayCall
-    TFloat -> sayCall
-    TDouble -> sayCall
+    TFloat -> sayCoerceFloating >> sayCall
+    TDouble -> sayCoerceFloating >> sayCall
     TInt8 -> sayCall
     TInt16 -> sayCall
     TInt32 -> sayCall
@@ -720,6 +731,10 @@ sayCallAndProcessReturn dir t callWords =
       FromCpp -> throwError $ tToGcWrongDirectionErrorMsg Nothing t'
     TConst t' -> sayCallAndProcessReturn dir t' callWords
   where sayCall = saysLn $ "(" : callWords ++ [")"]
+        sayCoerceIntegral = do addImports $ mconcat [hsImportForPrelude, hsImportForRuntime]
+                               sayLn "HoppyP.fmap HoppyFHR.coerceIntegral"
+        sayCoerceFloating = do addImports hsImportForPrelude
+                               sayLn "HoppyP.fmap HoppyP.realToFrac"
         bitspaceConvFn dir = case dir of
           ToCpp -> toHsBitspaceFromValueName
           FromCpp -> toHsBitspaceToNumName

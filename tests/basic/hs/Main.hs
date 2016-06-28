@@ -75,7 +75,7 @@ main = do
   counts <- runTestTT tests
   when (errors counts /= 0 || failures counts /= 0) exitFailure
 
-assertBox :: CInt -> IntBox -> Assertion
+assertBox :: Int -> IntBox -> Assertion
 assertBox value box = intBox_get box >>= (@?= value)
 
 tests :: Test

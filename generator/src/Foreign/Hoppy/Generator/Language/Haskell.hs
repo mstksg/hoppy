@@ -620,14 +620,20 @@ cppTypeToHsTypeAndUse side t =
     TUChar -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CUChar")
     TShort -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CShort")
     TUShort -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CUShort")
-    TInt -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CInt")
+    TInt -> case side of
+      HsCSide -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CInt")
+      HsHsSide -> addImports hsImportForPrelude $> HsTyCon (UnQual $ HsIdent "HoppyP.Int")
     TUInt -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CUInt")
     TLong -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CLong")
     TULong -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CULong")
     TLLong -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CLLong")
     TULLong -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CULLong")
-    TFloat -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CFloat")
-    TDouble -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CDouble")
+    TFloat -> case side of
+      HsCSide -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CFloat")
+      HsHsSide -> addImports hsImportForPrelude $> HsTyCon (UnQual $ HsIdent "HoppyP.Float")
+    TDouble -> case side of
+      HsCSide -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CDouble")
+      HsHsSide -> addImports hsImportForPrelude $> HsTyCon (UnQual $ HsIdent "HoppyP.Double")
     TInt8 -> addImports hsImportForInt $> HsTyCon (UnQual $ HsIdent "HoppyDI.Int8")
     TInt16 -> addImports hsImportForInt $> HsTyCon (UnQual $ HsIdent "HoppyDI.Int16")
     TInt32 -> addImports hsImportForInt $> HsTyCon (UnQual $ HsIdent "HoppyDI.Int32")
