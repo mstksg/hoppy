@@ -166,9 +166,9 @@ laziness, and can be highly circular, a simple case being a class that includes
 a method that makes use of the class in its parameter or return types.
 
 Each export has an /external name/ that uniquely identifies it within an
-interface.  This name can be different from the name of the C++ the export is
-referring to.  An external name is munged by the code generators and must be a
-valid identifier in all languages a set of bindings will use, so it is
+interface.  This name can be different from the name of the C++ entity the
+export is referring to.  An external name is munged by the code generators and
+must be a valid identifier in all languages a set of bindings will use, so it is
 restricted to characters in the range @[a-zA-Z0-9_]@, and must start with an
 alphabetic character.  Character case in external names will be preserved as
 much as possible in generated code, although case conversions are sometimes
@@ -188,12 +188,13 @@ qualifier, etc.  When passing values back and forth between C++ and Haskell,
 generally, primitive types are converted to equivalent types on both ends, and
 pointer types in C++ are represented by corresponding pointer types in Haskell.
 
-This is not true for raw object types (not pointers or references, just the
-by-value object).  When an object is taken or returned by value, this typically
-indicates a lightweight object that is easy to copy, so Hoppy will convert the
-object to a native Haskell object specified in the class's binding definition.
-Using an object type directly is only allowed if a native Haskell type is
-defined.  See 'ClassConversion' for more on object conversions.
+Raw object types (not pointers or references, just the by-value object types)
+are treated differently.  When an object is taken or returned by value, this
+typically indicates a lightweight object that is easy to copy, so Hoppy will
+attempt to convert the C++ object to a native Haskell object, if a Haskell type
+is defined for the class.  Other options are available, such as having objects
+be handed off to a foreign garbage collector.  See 'ClassConversion' for more on
+object conversions.
 
 -}
 {- $generators
