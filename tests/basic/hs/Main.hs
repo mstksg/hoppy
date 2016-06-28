@@ -339,9 +339,9 @@ classConversionTests =
                      ptrCtrWithToHeapConversion_getDestructionCount
     ptrCtrWithToHeapConversion_resetCounters
     p <- ptrCtrWithToHeapConversion_newHeapObj
-    readCounts >>= (@?= (2, 1))
+    readCounts >>= assertNAlive 1
     delete p
-    readCounts >>= (@?= (2, 2))
+    readCounts >>= assertNAlive 0
 
   , "ClassConversionToGc" ~: do
     let readCounts = (,) <$>
@@ -349,11 +349,14 @@ classConversionTests =
                      ptrCtrWithToGcConversion_getDestructionCount
     ptrCtrWithToGcConversion_resetCounters
     p <- ptrCtrWithToGcConversion_newGcedObj
-    readCounts >>= (@?= (2, 1))
+    readCounts >>= assertNAlive 1
+    performGC
     touchCppPtr p
     performGC
-    readCounts >>= (@?= (2, 2))
+    readCounts >>= assertNAlive 0
   ]
+  where assertNAlive n calls@(ctorCalls, _) =
+          calls @?= (ctorCalls, ctorCalls - n)
 
 fnMethodTests :: Test
 fnMethodTests =
