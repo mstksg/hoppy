@@ -30,6 +30,7 @@ import Foreign.Hoppy.Generator.Spec.ClassFeature (
   )
 import Foreign.Hoppy.Generator.Std (ValueConversion (ConvertPtr, ConvertValue), mod_std)
 import Foreign.Hoppy.Generator.Std.String (c_string)
+import Foreign.Hoppy.Generator.Types
 import qualified Foreign.Hoppy.Generator.Std.List as List
 import qualified Foreign.Hoppy.Generator.Std.Map as Map
 import qualified Foreign.Hoppy.Generator.Std.Pair as Pair
@@ -96,10 +97,10 @@ c_IntBox =
   classAddFeatures [Assignable, Copyable] $
   makeClass (ident "IntBox") Nothing []
   [ mkCtor "new" []
-  , mkCtor "newWithValue" [TInt]
+  , mkCtor "newWithValue" [intT]
   ]
-  [ mkConstMethod "get" [] TInt
-  , mkMethod "set" [TInt] TVoid
+  [ mkConstMethod "get" [] intT
+  , mkMethod "set" [intT] voidT
   ]
 
 c_IntBoxComparable :: Class
@@ -116,23 +117,23 @@ c_IntBoxEquatable =
 
 listInt :: List.Contents
 listInt =
-  List.instantiate' "listInt" TInt mempty $
+  List.instantiate' "listInt" intT mempty $
   List.defaultOptions { List.optValueConversion = Just ConvertValue }
 
 listIntBox :: List.Contents
 listIntBox =
-  List.instantiate' "listIntBox" (TObj c_IntBox) intBoxReqs $
+  List.instantiate' "listIntBox" (objT c_IntBox) intBoxReqs $
   List.defaultOptions { List.optValueConversion = Just ConvertPtr }
 
 listIntBoxComparable :: List.Contents
-listIntBoxComparable = List.instantiate "listIntBoxComparable" (TObj c_IntBoxComparable) intBoxReqs
+listIntBoxComparable = List.instantiate "listIntBoxComparable" (objT c_IntBoxComparable) intBoxReqs
 
 listIntBoxEquatable :: List.Contents
-listIntBoxEquatable = List.instantiate "listIntBoxEquatable" (TObj c_IntBoxEquatable) intBoxReqs
+listIntBoxEquatable = List.instantiate "listIntBoxEquatable" (objT c_IntBoxEquatable) intBoxReqs
 
 mapInts :: Map.Contents
 mapInts =
-  Map.instantiate' "mapInts" TInt TInt intBoxReqs $
+  Map.instantiate' "mapInts" intT intT intBoxReqs $
   Map.defaultOptions
   { Map.optKeyConversion = Just ConvertValue
   , Map.optValueConversion = Just ConvertValue
@@ -140,37 +141,37 @@ mapInts =
 
 mapIntBoxes :: Map.Contents
 mapIntBoxes =
-  Map.instantiate' "mapIntBoxes" (TObj c_IntBoxComparable) (TObj c_IntBox) intBoxReqs $
+  Map.instantiate' "mapIntBoxes" (objT c_IntBoxComparable) (objT c_IntBox) intBoxReqs $
   Map.defaultOptions
   { Map.optKeyConversion = Just ConvertPtr
   , Map.optValueConversion = Just ConvertPtr
   }
 
 pairIntBoxes :: Pair.Contents
-pairIntBoxes = Pair.instantiate "pairIntBoxes" (TObj c_IntBox) (TObj c_IntBox) intBoxReqs
+pairIntBoxes = Pair.instantiate "pairIntBoxes" (objT c_IntBox) (objT c_IntBox) intBoxReqs
 
 setInt :: Set.Contents
 setInt =
-  Set.instantiate' "setInt" TInt intBoxReqs $
+  Set.instantiate' "setInt" intT intBoxReqs $
   Set.defaultOptions { Set.optValueConversion = Just ConvertValue }
 
 setIntBox :: Set.Contents
 setIntBox =
-  Set.instantiate' "setIntBox" (TObj c_IntBoxComparable) intBoxReqs $
+  Set.instantiate' "setIntBox" (objT c_IntBoxComparable) intBoxReqs $
   Set.defaultOptions { Set.optValueConversion = Just ConvertPtr }
 
 vectorIntBox :: Vector.Contents
 vectorIntBox =
-  Vector.instantiate' "vectorIntBox" (TObj c_IntBox) intBoxReqs $
+  Vector.instantiate' "vectorIntBox" (objT c_IntBox) intBoxReqs $
   Vector.defaultOptions { Vector.optValueConversion = Just ConvertPtr }
 
 vectorIntBoxComparable :: Vector.Contents
-vectorIntBoxComparable = Vector.instantiate "vectorIntBoxComparable" (TObj c_IntBox) intBoxReqs
+vectorIntBoxComparable = Vector.instantiate "vectorIntBoxComparable" (objT c_IntBox) intBoxReqs
 
 vectorIntBoxEquatable :: Vector.Contents
-vectorIntBoxEquatable = Vector.instantiate "vectorIntBoxEquatable" (TObj c_IntBox) intBoxReqs
+vectorIntBoxEquatable = Vector.instantiate "vectorIntBoxEquatable" (objT c_IntBox) intBoxReqs
 
 vectorString :: Vector.Contents
 vectorString =
-  Vector.instantiate' "vectorString" (TObj c_string) intBoxReqs $
+  Vector.instantiate' "vectorString" (objT c_string) intBoxReqs $
   Vector.defaultOptions { Vector.optValueConversion = Just ConvertValue }

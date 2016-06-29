@@ -22,6 +22,7 @@ library
     , Foreign.Hoppy.Generator.Main
     , Foreign.Hoppy.Generator.Spec
     , Foreign.Hoppy.Generator.Spec.ClassFeature
+    , Foreign.Hoppy.Generator.Types
     , Foreign.Hoppy.Generator.Version
   other-modules:
       Foreign.Hoppy.Generator.Common

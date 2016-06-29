@@ -29,7 +29,7 @@ int piapprox();
 // Returns is argument multiplied by two.
 long timesTwo(long);
 
-// Tests for TObjToHeap.
+// Tests for objToHeapT.
 PtrCtr givePtrCtrByValue();
 void givePtrCtrByValueToCallback(GetPtrCtrByValueCallback);
 

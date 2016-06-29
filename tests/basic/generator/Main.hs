@@ -20,6 +20,7 @@ module Main (main) where
 import Foreign.Hoppy.Generator.Main (run)
 import Foreign.Hoppy.Generator.Language.Haskell (addImports, sayLn)
 import Foreign.Hoppy.Generator.Spec
+import Foreign.Hoppy.Generator.Types
 import Language.Haskell.Syntax (
   HsName (HsIdent),
   HsQName (UnQual),
@@ -60,7 +61,7 @@ testModule =
   , ExportFn f_piapprox
   , ExportFn f_piapproxNonpure
   , ExportFn f_timesTwo
-    -- For testing TObjToHeap.
+    -- For testing objToHeapT.
   , ExportFn f_givePtrCtrByValue
   , ExportFn f_givePtrCtrByValueToCallback
   , ExportCallback cb_GetPtrCtrByValueCallback
@@ -166,10 +167,10 @@ c_IntBox =
     } $
   makeClass (ident "IntBox") Nothing []
   [ mkCtor "new" []
-  , mkCtor "newWithValue" [TInt]
+  , mkCtor "newWithValue" [intT]
   ]
-  [ mkConstMethod "get" [] TInt
-  , mkMethod "set" [TInt] TVoid
+  [ mkConstMethod "get" [] intT
+  , mkMethod "set" [intT] voidT
   ]
 
 c_PtrCtr :: Class
@@ -177,15 +178,15 @@ c_PtrCtr =
   addReqIncludes [includeLocal "ptrctr.hpp"] $
   makeClass (ident "PtrCtr") Nothing []
   [ mkCtor "new" [] ]
-  [ mkStaticMethod "newGcedObj" [] $ TToGc $ TObj c_PtrCtr
-  , mkStaticMethod "newGcedRefConst" [] $ TToGc $ TRef $ TConst $ TObj c_PtrCtr
-  , mkStaticMethod "newGcedRef" [] $ TToGc $ TRef $ TObj c_PtrCtr
-  , mkStaticMethod "newGcedPtrConst" [] $ TToGc $ TPtr $ TConst $ TObj c_PtrCtr
-  , mkStaticMethod "newGcedPtr" [] $ TToGc $ TPtr $ TObj c_PtrCtr
-  , mkStaticMethod "resetCounters" [] TVoid
-  , mkStaticMethod "getConstructionCount" [] TInt
-  , mkStaticMethod "getDestructionCount" [] TInt
-  , mkConstMethod "redButton" [] TVoid
+  [ mkStaticMethod "newGcedObj" [] $ toGcT $ objT c_PtrCtr
+  , mkStaticMethod "newGcedRefConst" [] $ toGcT $ refT $ constT $ objT c_PtrCtr
+  , mkStaticMethod "newGcedRef" [] $ toGcT $ refT $ objT c_PtrCtr
+  , mkStaticMethod "newGcedPtrConst" [] $ toGcT $ ptrT $ constT $ objT c_PtrCtr
+  , mkStaticMethod "newGcedPtr" [] $ toGcT $ ptrT $ objT c_PtrCtr
+  , mkStaticMethod "resetCounters" [] voidT
+  , mkStaticMethod "getConstructionCount" [] intT
+  , mkStaticMethod "getDestructionCount" [] intT
+  , mkConstMethod "redButton" [] voidT
   ]
 
 c_PtrCtrWithToHeapConversion :: Class
@@ -194,10 +195,10 @@ c_PtrCtrWithToHeapConversion =
   classSetConversionToHeap $
   makeClass (ident "PtrCtr") (Just $ toExtName "PtrCtrWithToHeapConversion") []
   [ mkCtor "new" [] ]
-  [ mkStaticMethod' "newGcedObj" "newHeapObj" [] $ TObj c_PtrCtrWithToHeapConversion
-  , mkStaticMethod "resetCounters" [] TVoid
-  , mkStaticMethod "getConstructionCount" [] TInt
-  , mkStaticMethod "getDestructionCount" [] TInt
+  [ mkStaticMethod' "newGcedObj" "newHeapObj" [] $ objT c_PtrCtrWithToHeapConversion
+  , mkStaticMethod "resetCounters" [] voidT
+  , mkStaticMethod "getConstructionCount" [] intT
+  , mkStaticMethod "getDestructionCount" [] intT
   ]
 
 c_PtrCtrWithToGcConversion :: Class
@@ -206,363 +207,363 @@ c_PtrCtrWithToGcConversion =
   classSetConversionToGc $
   makeClass (ident "PtrCtr") (Just $ toExtName "PtrCtrWithToGcConversion") []
   [ mkCtor "new" [] ]
-  [ mkStaticMethod "newGcedObj" [] $ TObj c_PtrCtrWithToGcConversion
-  , mkStaticMethod "resetCounters" [] TVoid
-  , mkStaticMethod "getConstructionCount" [] TInt
-  , mkStaticMethod "getDestructionCount" [] TInt
+  [ mkStaticMethod "newGcedObj" [] $ objT c_PtrCtrWithToGcConversion
+  , mkStaticMethod "resetCounters" [] voidT
+  , mkStaticMethod "getConstructionCount" [] intT
+  , mkStaticMethod "getDestructionCount" [] intT
   ]
 
 f_piapprox :: Function
 f_piapprox =
   addReqIncludes [includeLocal "functions.hpp"] $
-  makeFn (ident "piapprox") Nothing Pure [] TInt
+  makeFn (ident "piapprox") Nothing Pure [] intT
 
 f_piapproxNonpure :: Function
 f_piapproxNonpure =
   addReqIncludes [includeLocal "functions.hpp"] $
-  makeFn (ident "piapprox") (Just $ toExtName "piapproxNonpure") Nonpure [] TInt
+  makeFn (ident "piapprox") (Just $ toExtName "piapproxNonpure") Nonpure [] intT
 
 f_timesTwo :: Function
 f_timesTwo =
   addReqIncludes [includeLocal "functions.hpp"] $
-  makeFn (ident "timesTwo") Nothing Pure [TLong] TLong
+  makeFn (ident "timesTwo") Nothing Pure [longT] longT
 
 f_givePtrCtrByValue :: Function
 f_givePtrCtrByValue =
   addReqIncludes [includeLocal "functions.hpp"] $
-  makeFn (ident "givePtrCtrByValue") Nothing Nonpure [] $ TObjToHeap c_PtrCtr
+  makeFn (ident "givePtrCtrByValue") Nothing Nonpure [] $ objToHeapT c_PtrCtr
 
 f_givePtrCtrByValueToCallback :: Function
 f_givePtrCtrByValueToCallback =
   addReqIncludes [includeLocal "functions.hpp"] $
   makeFn (ident "givePtrCtrByValueToCallback") Nothing Nonpure
-  [TCallback cb_GetPtrCtrByValueCallback] TVoid
+  [callbackT cb_GetPtrCtrByValueCallback] voidT
 
 cb_GetPtrCtrByValueCallback :: Callback
 cb_GetPtrCtrByValueCallback =
   addReqIncludes [includeLocal "ptrctr.hpp"] $
-  makeCallback (toExtName "GetPtrCtrByValueCallback") [TObjToHeap c_PtrCtr] TVoid
+  makeCallback (toExtName "GetPtrCtrByValueCallback") [objToHeapT c_PtrCtr] voidT
 
 f_getBoxValueByValue :: Function
 f_getBoxValueByValue =
   addReqIncludes [includeLocal "functions.hpp"] $
-  makeFn (ident "getBoxValueByValue") Nothing Nonpure [TObj c_IntBox] TInt
+  makeFn (ident "getBoxValueByValue") Nothing Nonpure [objT c_IntBox] intT
 
 f_getBoxValueByRef :: Function
 f_getBoxValueByRef =
   addReqIncludes [includeLocal "functions.hpp"] $
-  makeFn (ident "getBoxValueByRef") Nothing Nonpure [TRef $ TObj c_IntBox] TInt
+  makeFn (ident "getBoxValueByRef") Nothing Nonpure [refT $ objT c_IntBox] intT
 
 f_getBoxValueByRefConst :: Function
 f_getBoxValueByRefConst =
   addReqIncludes [includeLocal "functions.hpp"] $
-  makeFn (ident "getBoxValueByRefConst") Nothing Nonpure [TRef $ TConst $ TObj c_IntBox] TInt
+  makeFn (ident "getBoxValueByRefConst") Nothing Nonpure [refT $ constT $ objT c_IntBox] intT
 
 f_getBoxValueByPtr :: Function
 f_getBoxValueByPtr =
   addReqIncludes [includeLocal "functions.hpp"] $
-  makeFn (ident "getBoxValueByPtr") Nothing Nonpure [TPtr $ TObj c_IntBox] TInt
+  makeFn (ident "getBoxValueByPtr") Nothing Nonpure [ptrT $ objT c_IntBox] intT
 
 f_getBoxValueByPtrConst :: Function
 f_getBoxValueByPtrConst =
   addReqIncludes [includeLocal "functions.hpp"] $
-  makeFn (ident "getBoxValueByPtrConst") Nothing Nonpure [TPtr $ TConst $ TObj c_IntBox] TInt
+  makeFn (ident "getBoxValueByPtrConst") Nothing Nonpure [ptrT $ constT $ objT c_IntBox] intT
 
 f_makeBoxByValue :: Function
 f_makeBoxByValue =
   addReqIncludes [includeLocal "functions.hpp"] $
-  makeFn (ident "makeBoxByValue") Nothing Nonpure [TInt] $ TObj c_IntBox
+  makeFn (ident "makeBoxByValue") Nothing Nonpure [intT] $ objT c_IntBox
 
 f_makeBoxByRef :: Function
 f_makeBoxByRef =
   addReqIncludes [includeLocal "functions.hpp"] $
-  makeFn (ident "makeBoxByRef") Nothing Nonpure [TInt] $ TRef $ TObj c_IntBox
+  makeFn (ident "makeBoxByRef") Nothing Nonpure [intT] $ refT $ objT c_IntBox
 
 f_makeBoxByRefConst :: Function
 f_makeBoxByRefConst =
   addReqIncludes [includeLocal "functions.hpp"] $
-  makeFn (ident "makeBoxByRefConst") Nothing Nonpure [TInt] $ TRef $ TConst $ TObj c_IntBox
+  makeFn (ident "makeBoxByRefConst") Nothing Nonpure [intT] $ refT $ constT $ objT c_IntBox
 
 f_makeBoxByPtr :: Function
 f_makeBoxByPtr =
   addReqIncludes [includeLocal "functions.hpp"] $
-  makeFn (ident "makeBoxByPtr") Nothing Nonpure [TInt] $ TPtr $ TObj c_IntBox
+  makeFn (ident "makeBoxByPtr") Nothing Nonpure [intT] $ ptrT $ objT c_IntBox
 
 f_makeBoxByPtrConst :: Function
 f_makeBoxByPtrConst =
   addReqIncludes [includeLocal "functions.hpp"] $
-  makeFn (ident "makeBoxByPtrConst") Nothing Nonpure [TInt] $ TPtr $ TConst $ TObj c_IntBox
+  makeFn (ident "makeBoxByPtrConst") Nothing Nonpure [intT] $ ptrT $ constT $ objT c_IntBox
 
 cb_GetBoxValueByValueCallback :: Callback
 cb_GetBoxValueByValueCallback =
   addReqIncludes [includeLocal "intbox.hpp"] $
-  makeCallback (toExtName "GetBoxValueByValueCallback") [TObj c_IntBox] TInt
+  makeCallback (toExtName "GetBoxValueByValueCallback") [objT c_IntBox] intT
 
 cb_GetBoxValueByRefCallback :: Callback
 cb_GetBoxValueByRefCallback =
   addReqIncludes [includeLocal "intbox.hpp"] $
-  makeCallback (toExtName "GetBoxValueByRefCallback") [TRef $ TObj c_IntBox] TInt
+  makeCallback (toExtName "GetBoxValueByRefCallback") [refT $ objT c_IntBox] intT
 
 cb_GetBoxValueByRefConstCallback :: Callback
 cb_GetBoxValueByRefConstCallback =
   addReqIncludes [includeLocal "intbox.hpp"] $
-  makeCallback (toExtName "GetBoxValueByRefConstCallback") [TRef $ TConst $ TObj c_IntBox] TInt
+  makeCallback (toExtName "GetBoxValueByRefConstCallback") [refT $ constT $ objT c_IntBox] intT
 
 cb_GetBoxValueByPtrCallback :: Callback
 cb_GetBoxValueByPtrCallback =
   addReqIncludes [includeLocal "intbox.hpp"] $
-  makeCallback (toExtName "GetBoxValueByPtrCallback") [TPtr $ TObj c_IntBox] TInt
+  makeCallback (toExtName "GetBoxValueByPtrCallback") [ptrT $ objT c_IntBox] intT
 
 cb_GetBoxValueByPtrConstCallback :: Callback
 cb_GetBoxValueByPtrConstCallback =
   addReqIncludes [includeLocal "intbox.hpp"] $
-  makeCallback (toExtName "GetBoxValueByPtrConstCallback") [TPtr $ TConst $ TObj c_IntBox] TInt
+  makeCallback (toExtName "GetBoxValueByPtrConstCallback") [ptrT $ constT $ objT c_IntBox] intT
 
 f_getBoxValueByValueCallbackDriver :: Function
 f_getBoxValueByValueCallbackDriver =
   addReqIncludes [includeLocal "functions.hpp"] $
   makeFn (ident "getBoxValueByValueCallbackDriver") Nothing Nonpure
-  [TCallback cb_GetBoxValueByValueCallback, TInt] TInt
+  [callbackT cb_GetBoxValueByValueCallback, intT] intT
 
 f_getBoxValueByRefCallbackDriver :: Function
 f_getBoxValueByRefCallbackDriver =
   addReqIncludes [includeLocal "functions.hpp"] $
   makeFn (ident "getBoxValueByRefCallbackDriver") Nothing Nonpure
-  [TCallback cb_GetBoxValueByRefCallback, TInt] TInt
+  [callbackT cb_GetBoxValueByRefCallback, intT] intT
 
 f_getBoxValueByRefConstCallbackDriver :: Function
 f_getBoxValueByRefConstCallbackDriver =
   addReqIncludes [includeLocal "functions.hpp"] $
   makeFn (ident "getBoxValueByRefConstCallbackDriver") Nothing Nonpure
-  [TCallback cb_GetBoxValueByRefConstCallback, TInt] TInt
+  [callbackT cb_GetBoxValueByRefConstCallback, intT] intT
 
 f_getBoxValueByPtrCallbackDriver :: Function
 f_getBoxValueByPtrCallbackDriver =
   addReqIncludes [includeLocal "functions.hpp"] $
   makeFn (ident "getBoxValueByPtrCallbackDriver") Nothing Nonpure
-  [TCallback cb_GetBoxValueByPtrCallback, TInt] TInt
+  [callbackT cb_GetBoxValueByPtrCallback, intT] intT
 
 f_getBoxValueByPtrConstCallbackDriver :: Function
 f_getBoxValueByPtrConstCallbackDriver =
   addReqIncludes [includeLocal "functions.hpp"] $
   makeFn (ident "getBoxValueByPtrConstCallbackDriver") Nothing Nonpure
-  [TCallback cb_GetBoxValueByPtrConstCallback, TInt] TInt
+  [callbackT cb_GetBoxValueByPtrConstCallback, intT] intT
 
 cb_MakeBoxByValueCallback :: Callback
 cb_MakeBoxByValueCallback =
   addReqIncludes [includeLocal "intbox.hpp"] $
-  makeCallback (toExtName "MakeBoxByValueCallback") [TInt] $ TObj c_IntBox
+  makeCallback (toExtName "MakeBoxByValueCallback") [intT] $ objT c_IntBox
 
 cb_MakeBoxByRefCallback :: Callback
 cb_MakeBoxByRefCallback =
   addReqIncludes [includeLocal "intbox.hpp"] $
-  makeCallback (toExtName "MakeBoxByRefCallback") [TInt] $ TRef $ TObj c_IntBox
+  makeCallback (toExtName "MakeBoxByRefCallback") [intT] $ refT $ objT c_IntBox
 
 cb_MakeBoxByRefConstCallback :: Callback
 cb_MakeBoxByRefConstCallback =
   addReqIncludes [includeLocal "intbox.hpp"] $
-  makeCallback (toExtName "MakeBoxByRefConstCallback") [TInt] $ TRef $ TConst $ TObj c_IntBox
+  makeCallback (toExtName "MakeBoxByRefConstCallback") [intT] $ refT $ constT $ objT c_IntBox
 
 cb_MakeBoxByPtrCallback :: Callback
 cb_MakeBoxByPtrCallback =
   addReqIncludes [includeLocal "intbox.hpp"] $
-  makeCallback (toExtName "MakeBoxByPtrCallback") [TInt] $ TPtr $ TObj c_IntBox
+  makeCallback (toExtName "MakeBoxByPtrCallback") [intT] $ ptrT $ objT c_IntBox
 
 cb_MakeBoxByPtrConstCallback :: Callback
 cb_MakeBoxByPtrConstCallback =
   addReqIncludes [includeLocal "intbox.hpp"] $
-  makeCallback (toExtName "MakeBoxByPtrConstCallback") [TInt] $ TPtr $ TConst $ TObj c_IntBox
+  makeCallback (toExtName "MakeBoxByPtrConstCallback") [intT] $ ptrT $ constT $ objT c_IntBox
 
 f_makeBoxByValueCallbackDriver :: Function
 f_makeBoxByValueCallbackDriver =
   addReqIncludes [includeLocal "functions.hpp"] $
   makeFn (ident "makeBoxByValueCallbackDriver") Nothing Nonpure
-  [TCallback cb_MakeBoxByValueCallback, TInt] TInt
+  [callbackT cb_MakeBoxByValueCallback, intT] intT
 
 f_makeBoxByRefCallbackDriver :: Function
 f_makeBoxByRefCallbackDriver =
   addReqIncludes [includeLocal "functions.hpp"] $
   makeFn (ident "makeBoxByRefCallbackDriver") Nothing Nonpure
-  [TCallback cb_MakeBoxByRefCallback, TInt] TInt
+  [callbackT cb_MakeBoxByRefCallback, intT] intT
 
 f_makeBoxByRefConstCallbackDriver :: Function
 f_makeBoxByRefConstCallbackDriver =
   addReqIncludes [includeLocal "functions.hpp"] $
   makeFn (ident "makeBoxByRefConstCallbackDriver") Nothing Nonpure
-  [TCallback cb_MakeBoxByRefConstCallback, TInt] TInt
+  [callbackT cb_MakeBoxByRefConstCallback, intT] intT
 
 f_makeBoxByPtrCallbackDriver :: Function
 f_makeBoxByPtrCallbackDriver =
   addReqIncludes [includeLocal "functions.hpp"] $
   makeFn (ident "makeBoxByPtrCallbackDriver") Nothing Nonpure
-  [TCallback cb_MakeBoxByPtrCallback, TInt] TInt
+  [callbackT cb_MakeBoxByPtrCallback, intT] intT
 
 f_makeBoxByPtrConstCallbackDriver :: Function
 f_makeBoxByPtrConstCallbackDriver =
   addReqIncludes [includeLocal "functions.hpp"] $
   makeFn (ident "makeBoxByPtrConstCallbackDriver") Nothing Nonpure
-  [TCallback cb_MakeBoxByPtrConstCallback, TInt] TInt
+  [callbackT cb_MakeBoxByPtrConstCallback, intT] intT
 
 c_IntBoxWithFnMethods :: Class
 c_IntBoxWithFnMethods =
   addReqIncludes [includeLocal "functions.hpp", includeLocal "intbox.hpp"] $
   makeClass (ident "IntBox") (Just $ toExtName "IntBoxWithFnMethods") []
-  [ mkCtor "new" [TInt]
+  [ mkCtor "new" [intT]
   ]
   [ -- A normal method.
     makeFnMethod (ident "getBoxValueByRef") "getValue" MNormal Nonpure
-    [TRef $ TObj c_IntBoxWithFnMethods] TInt
+    [refT $ objT c_IntBoxWithFnMethods] intT
     -- A const method.
   , makeFnMethod (ident "getBoxValueByPtrConst") "getValueConst" MConst Nonpure
-    [TPtr $ TConst $ TObj c_IntBoxWithFnMethods] TInt
+    [ptrT $ constT $ objT c_IntBoxWithFnMethods] intT
     -- A static method.
-  , makeFnMethod (ident "timesTwo") "double" MStatic Pure [TLong] TLong
+  , makeFnMethod (ident "timesTwo") "double" MStatic Pure [longT] longT
   ]
 
 f_isTrue :: Function
 f_isTrue =
   addReqIncludes [includeLocal "functions.hpp"] $
-  makeFn (ident "isTrue") Nothing Nonpure [TBool] TBool
+  makeFn (ident "isTrue") Nothing Nonpure [boolT] boolT
 
 f_isFalse :: Function
 f_isFalse =
   addReqIncludes [includeLocal "functions.hpp"] $
-  makeFn (ident "isFalse") Nothing Nonpure [TBool] TBool
+  makeFn (ident "isFalse") Nothing Nonpure [boolT] boolT
 
 f_sizeOfBool :: Function
 f_sizeOfBool =
   addReqIncludes [includeLocal "functions.hpp"] $
-  makeFn (ident "sizeOfBool") Nothing Pure [] TSize
+  makeFn (ident "sizeOfBool") Nothing Pure [] sizeT
 
 f_sizeOfChar :: Function
 f_sizeOfChar =
   addReqIncludes [includeLocal "functions.hpp"] $
-  makeFn (ident "sizeOfChar") Nothing Pure [] TSize
+  makeFn (ident "sizeOfChar") Nothing Pure [] sizeT
 
 f_sizeOfShort :: Function
 f_sizeOfShort =
   addReqIncludes [includeLocal "functions.hpp"] $
-  makeFn (ident "sizeOfShort") Nothing Pure [] TSize
+  makeFn (ident "sizeOfShort") Nothing Pure [] sizeT
 
 f_sizeOfInt :: Function
 f_sizeOfInt =
   addReqIncludes [includeLocal "functions.hpp"] $
-  makeFn (ident "sizeOfInt") Nothing Pure [] TSize
+  makeFn (ident "sizeOfInt") Nothing Pure [] sizeT
 
 f_sizeOfLong :: Function
 f_sizeOfLong =
   addReqIncludes [includeLocal "functions.hpp"] $
-  makeFn (ident "sizeOfLong") Nothing Pure [] TSize
+  makeFn (ident "sizeOfLong") Nothing Pure [] sizeT
 
 f_sizeOfLLong :: Function
 f_sizeOfLLong =
   addReqIncludes [includeLocal "functions.hpp"] $
-  makeFn (ident "sizeOfLLong") Nothing Pure [] TSize
+  makeFn (ident "sizeOfLLong") Nothing Pure [] sizeT
 
 f_sizeOfFloat :: Function
 f_sizeOfFloat =
   addReqIncludes [includeLocal "functions.hpp"] $
-  makeFn (ident "sizeOfFloat") Nothing Pure [] TSize
+  makeFn (ident "sizeOfFloat") Nothing Pure [] sizeT
 
 f_sizeOfDouble :: Function
 f_sizeOfDouble =
   addReqIncludes [includeLocal "functions.hpp"] $
-  makeFn (ident "sizeOfDouble") Nothing Pure [] TSize
+  makeFn (ident "sizeOfDouble") Nothing Pure [] sizeT
 
 f_sizeOfPtrdiff :: Function
 f_sizeOfPtrdiff =
   addReqIncludes [includeLocal "functions.hpp"] $
-  makeFn (ident "sizeOfPtrdiff") Nothing Pure [] TSize
+  makeFn (ident "sizeOfPtrdiff") Nothing Pure [] sizeT
 
 f_sizeOfSize :: Function
 f_sizeOfSize =
   addReqIncludes [includeLocal "functions.hpp"] $
-  makeFn (ident "sizeOfSize") Nothing Pure [] TSize
+  makeFn (ident "sizeOfSize") Nothing Pure [] sizeT
 
 f_sizeOfSSize :: Function
 f_sizeOfSSize =
   addReqIncludes [includeLocal "functions.hpp"] $
-  makeFn (ident "sizeOfSSize") Nothing Pure [] TSize
+  makeFn (ident "sizeOfSSize") Nothing Pure [] sizeT
 
 f_doubleInt :: Function
 f_doubleInt =
   addReqIncludes [includeLocal "functions.hpp"] $
-  makeFn (ident "doubleInt") Nothing Pure [TInt] TInt
+  makeFn (ident "doubleInt") Nothing Pure [intT] intT
 
 f_doubleLong :: Function
 f_doubleLong =
   addReqIncludes [includeLocal "functions.hpp"] $
-  makeFn (ident "doubleLong") Nothing Pure [TLong] TLong
+  makeFn (ident "doubleLong") Nothing Pure [longT] longT
 
 f_doubleFloat :: Function
 f_doubleFloat =
   addReqIncludes [includeLocal "functions.hpp"] $
-  makeFn (ident "doubleFloat") Nothing Pure [TFloat] TFloat
+  makeFn (ident "doubleFloat") Nothing Pure [floatT] floatT
 
 f_doubleDouble :: Function
 f_doubleDouble =
   addReqIncludes [includeLocal "functions.hpp"] $
-  makeFn (ident "doubleDouble") Nothing Pure [TDouble] TDouble
+  makeFn (ident "doubleDouble") Nothing Pure [doubleT] doubleT
 
 f_doubleInt8 :: Function
 f_doubleInt8 =
   addReqIncludes [includeLocal "functions.hpp"] $
-  makeFn (ident "doubleInt8") Nothing Pure [TInt8] TInt8
+  makeFn (ident "doubleInt8") Nothing Pure [int8T] int8T
 
 f_doubleInt32 :: Function
 f_doubleInt32 =
   addReqIncludes [includeLocal "functions.hpp"] $
-  makeFn (ident "doubleInt32") Nothing Pure [TInt32] TInt32
+  makeFn (ident "doubleInt32") Nothing Pure [int32T] int32T
 
 f_doubleUInt16 :: Function
 f_doubleUInt16 =
   addReqIncludes [includeLocal "functions.hpp"] $
-  makeFn (ident "doubleUInt16") Nothing Pure [TWord16] TWord16
+  makeFn (ident "doubleUInt16") Nothing Pure [word16T] word16T
 
 f_doubleUInt64 :: Function
 f_doubleUInt64 =
   addReqIncludes [includeLocal "functions.hpp"] $
-  makeFn (ident "doubleUInt64") Nothing Pure [TWord64] TWord64
+  makeFn (ident "doubleUInt64") Nothing Pure [word64T] word64T
 
 f_getBoolPtr :: Function
 f_getBoolPtr =
   addReqIncludes [includeLocal "functions.hpp"] $
-  makeFn (ident "getBoolPtr") Nothing Nonpure [] $ TPtr TBool
+  makeFn (ident "getBoolPtr") Nothing Nonpure [] $ ptrT boolT
 
 f_getIntPtr :: Function
 f_getIntPtr =
   addReqIncludes [includeLocal "functions.hpp"] $
-  makeFn (ident "getIntPtr") Nothing Nonpure [] $ TPtr TInt
+  makeFn (ident "getIntPtr") Nothing Nonpure [] $ ptrT intT
 
 f_getIntPtrPtr :: Function
 f_getIntPtrPtr =
   addReqIncludes [includeLocal "functions.hpp"] $
-  makeFn (ident "getIntPtrPtr") Nothing Nonpure [] $ TPtr $ TPtr TInt
+  makeFn (ident "getIntPtrPtr") Nothing Nonpure [] $ ptrT $ ptrT intT
 
 f_getIntBoxPtrPtr :: Function
 f_getIntBoxPtrPtr =
   addReqIncludes [includeLocal "functions.hpp"] $
-  makeFn (ident "getIntBoxPtrPtr") Nothing Nonpure [] $ TPtr $ TPtr $ TObj c_IntBox
+  makeFn (ident "getIntBoxPtrPtr") Nothing Nonpure [] $ ptrT $ ptrT $ objT c_IntBox
 
 f_doubleIntPtr :: Function
 f_doubleIntPtr =
   addReqIncludes [includeLocal "functions.hpp"] $
-  makeFn (ident "doubleIntPtr") Nothing Nonpure [TPtr TInt] TVoid
+  makeFn (ident "doubleIntPtr") Nothing Nonpure [ptrT intT] voidT
 
 f_doubleIntPtrPtr :: Function
 f_doubleIntPtrPtr =
   addReqIncludes [includeLocal "functions.hpp"] $
-  makeFn (ident "doubleIntPtrPtr") Nothing Nonpure [TPtr $ TPtr TInt] TVoid
+  makeFn (ident "doubleIntPtrPtr") Nothing Nonpure [ptrT $ ptrT intT] voidT
 
 f_doubleIntRef :: Function
 f_doubleIntRef =
   addReqIncludes [includeLocal "functions.hpp"] $
-  makeFn (ident "doubleIntRef") Nothing Nonpure [TRef TInt] TVoid
+  makeFn (ident "doubleIntRef") Nothing Nonpure [refT intT] voidT
 
 f_doubleIntBoxPtrPtr :: Function
 f_doubleIntBoxPtrPtr =
   addReqIncludes [includeLocal "functions.hpp"] $
-  makeFn (ident "doubleIntBoxPtrPtr") Nothing Nonpure [TPtr $ TPtr $ TObj c_IntBox] TVoid
+  makeFn (ident "doubleIntBoxPtrPtr") Nothing Nonpure [ptrT $ ptrT $ objT c_IntBox] voidT
 
 c_Undeletable :: Class
 c_Undeletable =
@@ -570,7 +571,7 @@ c_Undeletable =
   classSetDtorPrivate $
   makeClass (ident "Undeletable") Nothing []
   []
-  [ mkStaticMethod "getInstance" [] $ TRef $ TObj c_Undeletable
+  [ mkStaticMethod "getInstance" [] $ refT $ objT c_Undeletable
   ]
 
 c_InheritanceA :: Class
@@ -578,15 +579,15 @@ c_InheritanceA =
   addReqIncludes [includeLocal "inheritance.hpp"] $
   makeClass (ident "InheritanceA") Nothing []
   [ mkCtor "new" [] ]
-  [ mkConstMethod "aFoo" [] TInt
-  , mkConstMethod "aBar" [] TInt
+  [ mkConstMethod "aFoo" [] intT
+  , mkConstMethod "aBar" [] intT
   ]
 
 c_InheritanceB :: Class
 c_InheritanceB =
   addReqIncludes [includeLocal "inheritance.hpp"] $
   makeClass (ident "InheritanceB") Nothing [] []
-  [ mkConstMethod "bFoo" [] TInt
+  [ mkConstMethod "bFoo" [] intT
   ]
 
 c_InheritanceC :: Class
@@ -601,7 +602,7 @@ c_InheritanceC =
   in (enum,
       bitspaceAddEnum enum $
       bitspaceAddCppType (ident "BetterBool") (Just "static_cast<BetterBool>") Nothing $
-      makeBitspace (toExtName "BetterBools") TInt values)
+      makeBitspace (toExtName "BetterBools") intT values)
   where values =
           [ (0, ["true"])
           , (1, ["false"])
@@ -611,33 +612,33 @@ c_InheritanceC =
 f_betterBoolId :: Function
 f_betterBoolId =
   addReqIncludes [includeLocal "functions.hpp"] $
-  makeFn (ident "betterBoolId") Nothing Pure [TEnum e_BetterBool] $ TEnum e_BetterBool
+  makeFn (ident "betterBoolId") Nothing Pure [enumT e_BetterBool] $ enumT e_BetterBool
 
 f_betterBoolsId :: Function
 f_betterBoolsId =
   addReqIncludes [includeLocal "functions.hpp"] $
   makeFn (ident "betterBoolId") (Just $ toExtName "betterBoolsId") Pure
-  [TBitspace bs_BetterBools] $ TBitspace bs_BetterBools
+  [bitspaceT bs_BetterBools] $ bitspaceT bs_BetterBools
 
 cb_BetterBoolCallback :: Callback
 cb_BetterBoolCallback =
   addReqIncludes [includeLocal "enum.hpp"] $
-  makeCallback (toExtName "BetterBoolCallback") [TEnum e_BetterBool] $ TEnum e_BetterBool
+  makeCallback (toExtName "BetterBoolCallback") [enumT e_BetterBool] $ enumT e_BetterBool
 
 cb_BetterBoolsCallback :: Callback
 cb_BetterBoolsCallback =
   addReqIncludes [includeLocal "enum.hpp"] $
   makeCallback (toExtName "BetterBoolsCallback")
-  [TBitspace bs_BetterBools] $ TBitspace bs_BetterBools
+  [bitspaceT bs_BetterBools] $ bitspaceT bs_BetterBools
 
 f_takesBetterBoolCallback :: Function
 f_takesBetterBoolCallback =
   addReqIncludes [includeLocal "functions.hpp"] $
   makeFn (ident "takesBetterBoolCallback") Nothing Pure
-  [TCallback cb_BetterBoolCallback, TEnum e_BetterBool] $ TEnum e_BetterBool
+  [callbackT cb_BetterBoolCallback, enumT e_BetterBool] $ enumT e_BetterBool
 
 f_takesBetterBoolsCallback :: Function
 f_takesBetterBoolsCallback =
   addReqIncludes [includeLocal "functions.hpp"] $
   makeFn (ident "takesBetterBoolsCallback") Nothing Pure
-  [TCallback cb_BetterBoolsCallback, TBitspace bs_BetterBools] $ TBitspace bs_BetterBools
+  [callbackT cb_BetterBoolsCallback, bitspaceT bs_BetterBools] $ bitspaceT bs_BetterBools

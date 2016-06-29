@@ -30,12 +30,12 @@ import Foreign.Hoppy.Generator.Std.String (c_string)
 -- the collection as a whole.
 data ValueConversion =
     ConvertPtr
-    -- ^ A C++ value of type @t@ will convert to a foreign value of type @'TPtr'
-    -- t@.
+    -- ^ A C++ value of type @t@ will convert to a foreign value of type
+    -- @'Foreign.Hoppy.Generator.Types.ptrT' t@.
   | ConvertValue
     -- ^ A C++ value of type @t@ will convert to a foreign value of type @t@.
-    -- For an object type ('TObj'), the class must have conversions
-    -- ('ClassConversion').
+    -- For an object type ('Foreign.Hoppy.Generator.Types.objT'), the class must
+    -- have conversions ('ClassConversion').
   deriving (Bounded, Enum, Eq, Ord, Show)
 
 -- | Include @std::string@.

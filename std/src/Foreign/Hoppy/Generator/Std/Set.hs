@@ -51,6 +51,7 @@ import Foreign.Hoppy.Generator.Spec.ClassFeature (
 import Foreign.Hoppy.Generator.Std (ValueConversion (ConvertPtr, ConvertValue))
 import Foreign.Hoppy.Generator.Std.Internal (includeHelper)
 import Foreign.Hoppy.Generator.Std.Iterator
+import Foreign.Hoppy.Generator.Types
 
 -- | Options for instantiating the set classes.
 data Options = Options
@@ -98,25 +99,25 @@ instantiate' setName t tReqs opts =
         makeClass (ident1T "std" "set" [t]) (Just $ toExtName setName) []
         [ mkCtor "new" []
         ]
-        [ mkConstMethod "begin" [] $ TToGc $ TObj iterator
-        , mkMethod "clear" [] TVoid
-        , mkConstMethod "count" [t] TSize
+        [ mkConstMethod "begin" [] $ toGcT $ objT iterator
+        , mkMethod "clear" [] voidT
+        , mkConstMethod "count" [t] sizeT
           -- TODO count
-        , mkConstMethod "empty" [] TBool
-        , mkConstMethod "end" [] $ TToGc $ TObj iterator
+        , mkConstMethod "empty" [] boolT
+        , mkConstMethod "end" [] $ toGcT $ objT iterator
           -- equalRange: find is good enough.
-        , mkMethod' "erase" "erase" [TObj iterator] TVoid
-        , mkMethod' "erase" "eraseRange" [TObj iterator, TObj iterator] TVoid
-        , mkMethod "find" [t] $ TToGc $ TObj iterator
-          -- TODO Replace these with a single version that returns a (TToGc std::pair).
+        , mkMethod' "erase" "erase" [objT iterator] voidT
+        , mkMethod' "erase" "eraseRange" [objT iterator, objT iterator] voidT
+        , mkMethod "find" [t] $ toGcT $ objT iterator
+          -- TODO Replace these with a single version that returns a (toGcT std::pair).
         , makeFnMethod (ident2 "hoppy" "set" "insert") "insert"
-          MNormal Nonpure [TRef $ TObj set, t] TBool
+          MNormal Nonpure [refT $ objT set, t] boolT
         , makeFnMethod (ident2 "hoppy" "set" "insertAndGetIterator") "insertAndGetIterator"
-          MNormal Nonpure [TRef $ TObj set, t] $ TToGc $ TObj iterator
+          MNormal Nonpure [refT $ objT set, t] $ toGcT $ objT iterator
           -- lower_bound: find is good enough.
-        , mkConstMethod' "max_size" "maxSize" [] TSize
-        , mkConstMethod "size" [] TSize
-        , mkMethod "swap" [TRef $ TObj set] TVoid
+        , mkConstMethod' "max_size" "maxSize" [] sizeT
+        , mkConstMethod "size" [] sizeT
+        , mkMethod "swap" [refT $ objT set] voidT
           -- upper_bound: find is good enough.
         ]
 
@@ -142,10 +143,10 @@ instantiate' setName t tReqs opts =
         [hsValueTypeConst, hsValueType] <- forM [Const, Nonconst] $ \cst ->
             cppTypeToHsTypeAndUse HsHsSide $
             (case conversion of
-               ConvertPtr -> TPtr
+               ConvertPtr -> ptrT
                ConvertValue -> id) $
             case cst of
-              Const -> TConst t
+              Const -> constT t
               Nonconst -> t
 
         -- Generate const and nonconst HasContents instances.

@@ -46,6 +46,7 @@ import Control.Monad.Writer (MonadWriter, Writer, WriterT, runWriter, runWriterT
 import Data.Foldable (forM_)
 import Data.List (intercalate, intersperse)
 import Foreign.Hoppy.Generator.Spec
+import Foreign.Hoppy.Generator.Types
 
 cppNameSeparator :: String
 cppNameSeparator = "__"
@@ -195,8 +196,8 @@ sayIdentifier =
 sayVar :: MonadWriter [Chunk] m => String -> Maybe [String] -> Type -> m ()
 sayVar name maybeParamNames t = sayType' t maybeParamNames topPrecedence $ say name
 
--- | @sayType maybeParamNames t@ renders @t@ in C++ syntax.  If @t@ is a 'TFn',
--- then @maybeParamNames@ will provide variable names for parameters, if
+-- | @sayType maybeParamNames t@ renders @t@ in C++ syntax.  If @t@ is a
+-- 'fnT', then @maybeParamNames@ will provide variable names for parameters, if
 -- present.
 sayType :: MonadWriter [Chunk] m => Maybe [String] -> Type -> m ()
 sayType maybeParamNames t = sayType' t maybeParamNames topPrecedence $ return ()
@@ -210,38 +211,38 @@ sayType' (normalizeType -> t) maybeParamNames outerPrec unwrappedOuter =
               then unwrappedOuter
               else say "(" >> unwrappedOuter >> say ")"
   in case t of
-    TVoid -> say "void" >> outer
-    TBool -> say "bool" >> outer
-    TChar -> say "char" >> outer
-    TUChar -> say "unsigned char" >> outer
-    TShort -> say "short" >> outer
-    TUShort -> say "unsigned short" >> outer
-    TInt -> say "int" >> outer
-    TUInt -> say "unsigned int" >> outer
-    TLong -> say "long" >> outer
-    TULong -> say "unsigned long" >> outer
-    TLLong -> say "long long" >> outer
-    TULLong -> say "unsigned long long" >> outer
-    TFloat -> say "float" >> outer
-    TDouble -> say "double" >> outer
-    TInt8 -> say "int8_t" >> outer
-    TInt16 -> say "int16_t" >> outer
-    TInt32 -> say "int32_t" >> outer
-    TInt64 -> say "int64_t" >> outer
-    TWord8 -> say "uint8_t" >> outer
-    TWord16 -> say "uint16_t" >> outer
-    TWord32 -> say "uint32_t" >> outer
-    TWord64 -> say "uint64_t" >> outer
-    TPtrdiff -> say "ptrdiff_t" >> outer
-    TSize -> say "size_t" >> outer
-    TSSize -> say "ssize_t" >> outer
-    TEnum e -> sayIdentifier (enumIdentifier e) >> outer
-    TBitspace b -> case bitspaceCppTypeIdentifier b of
+    Internal_TVoid -> say "void" >> outer
+    Internal_TBool -> say "bool" >> outer
+    Internal_TChar -> say "char" >> outer
+    Internal_TUChar -> say "unsigned char" >> outer
+    Internal_TShort -> say "short" >> outer
+    Internal_TUShort -> say "unsigned short" >> outer
+    Internal_TInt -> say "int" >> outer
+    Internal_TUInt -> say "unsigned int" >> outer
+    Internal_TLong -> say "long" >> outer
+    Internal_TULong -> say "unsigned long" >> outer
+    Internal_TLLong -> say "long long" >> outer
+    Internal_TULLong -> say "unsigned long long" >> outer
+    Internal_TFloat -> say "float" >> outer
+    Internal_TDouble -> say "double" >> outer
+    Internal_TInt8 -> say "int8_t" >> outer
+    Internal_TInt16 -> say "int16_t" >> outer
+    Internal_TInt32 -> say "int32_t" >> outer
+    Internal_TInt64 -> say "int64_t" >> outer
+    Internal_TWord8 -> say "uint8_t" >> outer
+    Internal_TWord16 -> say "uint16_t" >> outer
+    Internal_TWord32 -> say "uint32_t" >> outer
+    Internal_TWord64 -> say "uint64_t" >> outer
+    Internal_TPtrdiff -> say "ptrdiff_t" >> outer
+    Internal_TSize -> say "size_t" >> outer
+    Internal_TSSize -> say "ssize_t" >> outer
+    Internal_TEnum e -> sayIdentifier (enumIdentifier e) >> outer
+    Internal_TBitspace b -> case bitspaceCppTypeIdentifier b of
       Just identifier -> sayIdentifier identifier >> outer
       Nothing -> sayType' (bitspaceType b) maybeParamNames outerPrec unwrappedOuter
-    TPtr t' -> sayType' t' Nothing prec $ say "*" >> outer
-    TRef t' -> sayType' t' Nothing prec $ say "&" >> outer
-    TFn paramTypes retType -> sayType' retType Nothing prec $ do
+    Internal_TPtr t' -> sayType' t' Nothing prec $ say "*" >> outer
+    Internal_TRef t' -> sayType' t' Nothing prec $ say "&" >> outer
+    Internal_TFn paramTypes retType -> sayType' retType Nothing prec $ do
       outer
       say "("
       sequence_ $ intersperse (say ", ") $
@@ -249,11 +250,12 @@ sayType' (normalizeType -> t) maybeParamNames outerPrec unwrappedOuter =
         \(ptype, pname) ->
         sayType' ptype Nothing topPrecedence $ forM_ pname say
       say ")"
-    TCallback cb -> says [callbackImplClassName cb, "*"] >> outer
-    TObj cls -> sayIdentifier (classIdentifier cls) >> outer
-    TObjToHeap cls -> sayType' (TRef $ TConst $ TObj cls) maybeParamNames outerPrec unwrappedOuter
-    TToGc t' -> sayType' t' maybeParamNames outerPrec unwrappedOuter
-    TConst t' -> sayType' t' maybeParamNames outerPrec $ say "const" >> unwrappedOuter
+    Internal_TCallback cb -> says [callbackImplClassName cb, "*"] >> outer
+    Internal_TObj cls -> sayIdentifier (classIdentifier cls) >> outer
+    Internal_TObjToHeap cls ->
+      sayType' (refT $ constT $ objT cls) maybeParamNames outerPrec unwrappedOuter
+    Internal_TToGc t' -> sayType' t' maybeParamNames outerPrec unwrappedOuter
+    Internal_TConst t' -> sayType' t' maybeParamNames outerPrec $ say "const" >> unwrappedOuter
                  -- TODO ^ Is using the outer stuff correctly here?
 
 topPrecedence :: Int
@@ -261,7 +263,7 @@ topPrecedence = 11
 
 typePrecedence :: Type -> Int
 typePrecedence t = case t of
-  TFn {} -> 10
-  TPtr {} -> 9
-  TRef {} -> 9
+  Internal_TFn {} -> 10
+  Internal_TPtr {} -> 9
+  Internal_TRef {} -> 9
   _ -> 8

@@ -25,6 +25,7 @@ import Data.Monoid (mconcat)
 import Foreign.Hoppy.Generator.Language.Haskell (addImports, sayLn)
 import Foreign.Hoppy.Generator.Spec
 import Foreign.Hoppy.Generator.Spec.ClassFeature
+import Foreign.Hoppy.Generator.Types
 import Language.Haskell.Syntax (
   HsName (HsIdent),
   HsQName (UnQual),
@@ -51,10 +52,10 @@ c_string =
   makeClass (ident1 "std" "string") (Just $ toExtName "StdString")
   []
   [ mkCtor "new" []
-  , mkCtor "newFromCString" [TPtr $ TConst TChar]
+  , mkCtor "newFromCString" [ptrT $ constT charT]
   ]
-  [ mkConstMethod' "at" "at" [TInt] $ TRef TChar
-  , mkConstMethod' "at" "get" [TInt] TChar
-  , mkConstMethod "c_str" [] $ TPtr $ TConst TChar
-  , mkConstMethod "size" [] TSize
+  [ mkConstMethod' "at" "at" [intT] $ refT charT
+  , mkConstMethod' "at" "get" [intT] charT
+  , mkConstMethod "c_str" [] $ ptrT $ constT charT
+  , mkConstMethod "size" [] sizeT
   ]

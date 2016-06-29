@@ -102,6 +102,7 @@ import Data.Monoid (Monoid, mappend, mconcat, mempty)
 import Data.Tuple (swap)
 import Foreign.Hoppy.Generator.Common (capitalize, lowerFirst)
 import Foreign.Hoppy.Generator.Spec
+import Foreign.Hoppy.Generator.Types
 import qualified Language.Haskell.Pretty as P
 import Language.Haskell.Syntax (
   HsName (HsIdent),
@@ -611,48 +612,52 @@ cppTypeToHsTypeAndUse :: HsTypeSide -> Type -> Generator HsType
 cppTypeToHsTypeAndUse side t =
   withErrorContext (concat ["converting ", show t, " to ", show side, " type"]) $
   case t of
-    TVoid -> return $ HsTyCon $ Special HsUnitCon
+    Internal_TVoid -> return $ HsTyCon $ Special HsUnitCon
     -- C++ has sizeof(bool) == 1, whereas Haskell can > 1, so we have to convert.
-    TBool -> case side of
+    Internal_TBool -> case side of
       HsCSide -> addImports hsImportForRuntime $> HsTyCon (UnQual $ HsIdent "HoppyFHR.CBool")
       HsHsSide -> addImports hsImportForPrelude $> HsTyCon (UnQual $ HsIdent "HoppyP.Bool")
-    TChar -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CChar")
-    TUChar -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CUChar")
-    TShort -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CShort")
-    TUShort -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CUShort")
-    TInt -> case side of
+    Internal_TChar -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CChar")
+    Internal_TUChar -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CUChar")
+    Internal_TShort -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CShort")
+    Internal_TUShort ->
+      addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CUShort")
+    Internal_TInt -> case side of
       HsCSide -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CInt")
       HsHsSide -> addImports hsImportForPrelude $> HsTyCon (UnQual $ HsIdent "HoppyP.Int")
-    TUInt -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CUInt")
-    TLong -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CLong")
-    TULong -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CULong")
-    TLLong -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CLLong")
-    TULLong -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CULLong")
-    TFloat -> case side of
+    Internal_TUInt -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CUInt")
+    Internal_TLong -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CLong")
+    Internal_TULong -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CULong")
+    Internal_TLLong -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CLLong")
+    Internal_TULLong ->
+      addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CULLong")
+    Internal_TFloat -> case side of
       HsCSide -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CFloat")
       HsHsSide -> addImports hsImportForPrelude $> HsTyCon (UnQual $ HsIdent "HoppyP.Float")
-    TDouble -> case side of
+    Internal_TDouble -> case side of
       HsCSide -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CDouble")
       HsHsSide -> addImports hsImportForPrelude $> HsTyCon (UnQual $ HsIdent "HoppyP.Double")
-    TInt8 -> addImports hsImportForInt $> HsTyCon (UnQual $ HsIdent "HoppyDI.Int8")
-    TInt16 -> addImports hsImportForInt $> HsTyCon (UnQual $ HsIdent "HoppyDI.Int16")
-    TInt32 -> addImports hsImportForInt $> HsTyCon (UnQual $ HsIdent "HoppyDI.Int32")
-    TInt64 -> addImports hsImportForInt $> HsTyCon (UnQual $ HsIdent "HoppyDI.Int64")
-    TWord8 -> addImports hsImportForWord $> HsTyCon (UnQual $ HsIdent "HoppyDW.Word8")
-    TWord16 -> addImports hsImportForWord $> HsTyCon (UnQual $ HsIdent "HoppyDW.Word16")
-    TWord32 -> addImports hsImportForWord $> HsTyCon (UnQual $ HsIdent "HoppyDW.Word32")
-    TWord64 -> addImports hsImportForWord $> HsTyCon (UnQual $ HsIdent "HoppyDW.Word64")
-    TPtrdiff -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CPtrdiff")
-    TSize -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CSize")
-    TSSize -> addImports hsImportForSystemPosixTypes $> HsTyCon (UnQual $ HsIdent "HoppySPT.CSsize")
-    TEnum e -> HsTyCon . UnQual . HsIdent <$> case side of
+    Internal_TInt8 -> addImports hsImportForInt $> HsTyCon (UnQual $ HsIdent "HoppyDI.Int8")
+    Internal_TInt16 -> addImports hsImportForInt $> HsTyCon (UnQual $ HsIdent "HoppyDI.Int16")
+    Internal_TInt32 -> addImports hsImportForInt $> HsTyCon (UnQual $ HsIdent "HoppyDI.Int32")
+    Internal_TInt64 -> addImports hsImportForInt $> HsTyCon (UnQual $ HsIdent "HoppyDI.Int64")
+    Internal_TWord8 -> addImports hsImportForWord $> HsTyCon (UnQual $ HsIdent "HoppyDW.Word8")
+    Internal_TWord16 -> addImports hsImportForWord $> HsTyCon (UnQual $ HsIdent "HoppyDW.Word16")
+    Internal_TWord32 -> addImports hsImportForWord $> HsTyCon (UnQual $ HsIdent "HoppyDW.Word32")
+    Internal_TWord64 -> addImports hsImportForWord $> HsTyCon (UnQual $ HsIdent "HoppyDW.Word64")
+    Internal_TPtrdiff ->
+      addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CPtrdiff")
+    Internal_TSize -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CSize")
+    Internal_TSSize ->
+      addImports hsImportForSystemPosixTypes $> HsTyCon (UnQual $ HsIdent "HoppySPT.CSsize")
+    Internal_TEnum e -> HsTyCon . UnQual . HsIdent <$> case side of
       HsCSide -> addImports hsImportForForeignC $> "HoppyFC.CInt"
       HsHsSide -> importHsModuleForExtName (enumExtName e) $> toHsEnumTypeName e
-    TBitspace b -> case side of
+    Internal_TBitspace b -> case side of
       HsCSide -> cppTypeToHsTypeAndUse side $ bitspaceType b
       HsHsSide -> importHsModuleForExtName (bitspaceExtName b) $>
                   HsTyCon (UnQual $ HsIdent $ toHsBitspaceTypeName b)
-    TPtr (TObj cls) -> do
+    Internal_TPtr (Internal_TObj cls) -> do
       -- Same as TPtr (TConst (TObj cls)), but nonconst.
       importHsModuleForExtName (classExtName cls)
       let dataType = HsTyCon $ UnQual $ HsIdent $ toHsTypeName Nonconst $ classExtName cls
@@ -661,7 +666,7 @@ cppTypeToHsTypeAndUse side t =
           addImports hsImportForForeign
           return $ HsTyApp (HsTyCon $ UnQual $ HsIdent "HoppyF.Ptr") dataType
         HsHsSide -> return dataType
-    TPtr (TConst (TObj cls)) -> do
+    Internal_TPtr (Internal_TConst (Internal_TObj cls)) -> do
       -- Same as TPtr (TObj cls), but const.
       importHsModuleForExtName (classExtName cls)
       let dataType = HsTyCon $ UnQual $ HsIdent $ toHsTypeName Const $ classExtName cls
@@ -670,7 +675,7 @@ cppTypeToHsTypeAndUse side t =
           addImports hsImportForForeign
           return $ HsTyApp (HsTyCon $ UnQual $ HsIdent "HoppyF.Ptr") dataType
         HsHsSide -> return dataType
-    TPtr (TFn paramTypes retType) -> do
+    Internal_TPtr (Internal_TFn paramTypes retType) -> do
       paramHsTypes <- mapM (cppTypeToHsTypeAndUse side) paramTypes
       retHsType <- cppTypeToHsTypeAndUse side retType
       sideFn <- case side of
@@ -680,39 +685,39 @@ cppTypeToHsTypeAndUse side t =
       addImports hsImportForPrelude
       return $ sideFn $
         foldr HsTyFun (HsTyApp (HsTyCon $ UnQual $ HsIdent "HoppyP.IO") retHsType) paramHsTypes
-    TPtr t' -> do
+    Internal_TPtr t' -> do
       addImports hsImportForForeign
       -- Pointers to types not covered above point to raw C++ values, so we need
       -- to use the C-side type of the pointer target here.
       HsTyApp (HsTyCon $ UnQual $ HsIdent "HoppyF.Ptr") <$> cppTypeToHsTypeAndUse HsCSide t'
-    TRef t' -> cppTypeToHsTypeAndUse side $ TPtr t'
-    TFn paramTypes retType -> do
+    Internal_TRef t' -> cppTypeToHsTypeAndUse side $ ptrT t'
+    Internal_TFn paramTypes retType -> do
       paramHsTypes <- mapM (cppTypeToHsTypeAndUse side) paramTypes
       retHsType <- cppTypeToHsTypeAndUse side retType
       addImports hsImportForPrelude
       return $
         foldr HsTyFun (HsTyApp (HsTyCon $ UnQual $ HsIdent "HoppyP.IO") retHsType) paramHsTypes
-    TCallback cb -> do
+    Internal_TCallback cb -> do
       hsType <- cppTypeToHsTypeAndUse side $ callbackToTFn cb
       case side of
         HsHsSide -> return hsType
         HsCSide -> do
           addImports hsImportForRuntime
           return $ HsTyApp (HsTyCon $ UnQual $ HsIdent "HoppyFHR.CCallback") hsType
-    TObj cls -> case side of
-      HsCSide -> cppTypeToHsTypeAndUse side $ TPtr $ TConst t
+    Internal_TObj cls -> case side of
+      HsCSide -> cppTypeToHsTypeAndUse side $ ptrT $ constT t
       HsHsSide -> case getClassHaskellConversion cls of
         Nothing ->
           throwError $ concat
           ["Expected a Haskell type for ", show cls, " but there isn't one"]
         Just c -> classHaskellConversionType c
-    TObjToHeap cls -> cppTypeToHsTypeAndUse side $ TPtr $ TObj cls
-    TToGc t' -> case t' of
-      TRef _ -> cppTypeToHsTypeAndUse side t'  -- References behave the same as pointers.
-      TPtr _ -> cppTypeToHsTypeAndUse side t'
-      TObj cls -> cppTypeToHsTypeAndUse side $ TPtr $ TObj cls
+    Internal_TObjToHeap cls -> cppTypeToHsTypeAndUse side $ ptrT $ objT cls
+    Internal_TToGc t' -> case t' of
+      Internal_TRef _ -> cppTypeToHsTypeAndUse side t'  -- References behave the same as pointers.
+      Internal_TPtr _ -> cppTypeToHsTypeAndUse side t'
+      Internal_TObj cls -> cppTypeToHsTypeAndUse side $ ptrT $ objT cls
       _ -> throwError $ tToGcInvalidFormErrorMessage Nothing t'
-    TConst t' -> cppTypeToHsTypeAndUse side t'
+    Internal_TConst t' -> cppTypeToHsTypeAndUse side t'
 
 -- | Returns the 'ClassHaskellConversion' of a class, if it has one.
 getClassHaskellConversion :: Class -> Maybe ClassHaskellConversion

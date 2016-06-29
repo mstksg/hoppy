@@ -82,6 +82,7 @@ import Foreign.C (CInt)
 import Foreign.Hoppy.Generator.Language.Haskell
 import Foreign.Hoppy.Generator.Main
 import Foreign.Hoppy.Generator.Spec
+import Foreign.Hoppy.Generator.Types
 import Foreign.Hoppy.Generator.Version
 import Foreign.Hoppy.Runtime
 import Foreign.Ptr (Ptr)
@@ -182,19 +183,20 @@ have an instance of 'HasReqs' and 'addReqIncludes' can be used to add includes.
 C++ identifiers are represented by the 'Identifier' data type and support basic
 template syntax (no metaprogramming).
 
-All C++ types are represented with the 'Type' data type, which includes
-primitive numeric types, object types, function types, @void@, the const
-qualifier, etc.  When passing values back and forth between C++ and Haskell,
-generally, primitive types are converted to equivalent types on both ends, and
-pointer types in C++ are represented by corresponding pointer types in Haskell.
+All C++ types are represented with the 'Type' data type, values of which are in
+the "Foreign.Hoppy.Generator.Types" module.  This includes primitive numeric
+types, object types, function types, @void@, the const qualifier, etc.  When
+passing values back and forth between C++ and Haskell, generally, primitive
+types are converted to equivalent types on both ends, and pointer types in C++
+are represented by corresponding pointer types in Haskell.
 
-Raw object types (not pointers or references, just the by-value object types)
-are treated differently.  When an object is taken or returned by value, this
-typically indicates a lightweight object that is easy to copy, so Hoppy will
-attempt to convert the C++ object to a native Haskell object, if a Haskell type
-is defined for the class.  Other options are available, such as having objects
-be handed off to a foreign garbage collector.  See 'ClassConversion' for more on
-object conversions.
+Raw object types (not pointers or references, just the by-value object types,
+i.e. 'objT') are treated differently.  When an object is taken or returned by
+value, this typically indicates a lightweight object that is easy to copy, so
+Hoppy will attempt to convert the C++ object to a native Haskell object, if a
+Haskell type is defined for the class.  Other options are available, such as
+having objects be handed off to a foreign garbage collector.  See
+'ClassConversion' for more on object conversions.
 
 -}
 {- $generators
@@ -228,51 +230,56 @@ only 'Export's that can be referenced by other generated C++ code.
 -}
 {- $generators-cpp-object-passing
 
-> data Type = ... | TPtr Type | TRef Type | TObj Class | TConst
+@
+'ptrT' :: 'Type' -> 'Type'
+'refT' :: 'Type' -> 'Type'
+'objT' :: 'Class' -> 'Type'
+'constT' :: 'Type' -> 'Type'
+@
 
 We consider all of the following cases as passing an object, both into and out
 of C++, and independently, as an argument and as a return value:
 
-1. @'TObj' _@
-2. @'TRef' ('TConst' ('TObj' _))@
-3. @'TRef' ('TObj' _)@
-4. @'TPtr' ('TConst' ('TObj' _))@
-5. @'TPtr' ('TObj' _)@
+1. @'objT' _@
+2. @'refT' ('constT' ('objT' _))@
+3. @'refT' ('objT' _)@
+4. @'ptrT' ('constT' ('objT' _))@
+5. @'ptrT' ('objT' _)@
 
-The first is equivalent to @'TConst' ('TObj' _)@.  When passing an argument from
+The first is equivalent to @'constT' ('objT' _)@.  When passing an argument from
 a foreign language to C++, the first two are equivalent, and it's recommended to
 use the first, shorter form (@T@ and @const T&@ are functionally equivalent in
 C++, and are the same as far as what values foreign bindings will accept).
 
 When passing any of the above types as an argument in either direction, an
 object is passed between C++ and a foreign language via a pointer.  Cases 1, 2,
-and 4 are passed as const pointers.  For a foreign language passing a @'TObj' _@
+and 4 are passed as const pointers.  For a foreign language passing a @'objT' _@
 to C++, this means converting a foreign value to a temporary C++ object.
-Passing a @'TObj' _@ argument into or out of C++, the caller always owns the
+Passing a @'objT' _@ argument into or out of C++, the caller always owns the
 object.
 
 When returning an object, again, pointers are always what is passed across the
-language boundary in either direction.  Returning a @'TObj' _@ transfers
-ownership: a C++ function returning a @'TObj' _@ will copy the object to the
+language boundary in either direction.  Returning a @'objT' _@ transfers
+ownership: a C++ function returning a @'objT' _@ will copy the object to the
 heap, and return a pointer to the object which the caller owns; a callback
-returning a @'TObj' _@ will internally create a C++ object from a foreign value,
+returning a @'objT' _@ will internally create a C++ object from a foreign value,
 and hand that object off to the C++ side (which will return it and free the
 temporary).
 
 Object lifetimes can be managed by a foreign language's garbage collector.
-'TToGc' is a special type that is only allowed in certain forms, and only when
+'toGcT' is a special type that is only allowed in certain forms, and only when
 passing a value from C++ to a foreign language (i.e. returning from a C++
 function, or C++ invoking a foreign callback), to put the object under the
 collector's management.  Only object types are allowed:
 
-1. @'TToGc' ('TObj' cls)@
-2. @'TToGc' ('TRef' ('TConst' ('TObj' cls)))@
-3. @'TToGc' ('TRef' ('TObj' cls))@
-4. @'TToGc' ('TPtr' ('TConst' ('TObj' cls)))@
-5. @'TToGc' ('TPtr' ('TObj' cls))@
+1. @'toGcT' ('objT' cls)@
+2. @'toGcT' ('refT' ('constT' ('objT' cls)))@
+3. @'toGcT' ('refT' ('objT' cls))@
+4. @'toGcT' ('ptrT' ('constT' ('objT' cls)))@
+5. @'toGcT' ('ptrT' ('objT' cls))@
 
 Cases 2-5 are straightforward: the existing object is given to the collector.
-Case 1 without the 'TToGc' would cause the object to be converted, but instead
+Case 1 without the 'toGcT' would cause the object to be converted, but instead
 here the (temporary) object gets copied to the heap, and a managed pointer to
 the heap object is returned.  Case 1 is useful when you want to pass a handle
 that has a non-trivial C++ representation (so you don't define a conversion for
@@ -289,9 +296,9 @@ should not be assigned to the collector a second time).
 -}
 {- $generators-cpp-callbacks
 
-> data Type = ... | TCallback Callback
->
 > data Callback = Callback ExtName [Type] Type ...  -- Parameter and return types.
+>
+> callbackT :: Callback -> Type
 
 We want to call some foreign code from C++.  What C++ type do we associate with
 such an entry point?  (Both the C++ and foreign sides of the callback will need
@@ -403,7 +410,7 @@ bitspace declaration such as
 @
 formatFlags :: 'Bitspace'
 formatFlags =
-  'makeBitspace' ('toExtName' \"Format\") 'TInt'
+  'makeBitspace' ('toExtName' \"Format\") 'intT'
   [ (1, [\"format\", \"letter\"])
   , (2, [\"format\", \"jpeg\"])
   , (4, [\"format\", \"c\"])
@@ -452,7 +459,7 @@ See the section on Haskell object passing for more details.
 
 Despite needing to be exported as with other 'Export' choices, 'Callback's do
 not expose anything to the user.  Instead, they provide machinery for functions
-to be able to use 'TCallback'.
+to be able to use 'callbackT'.
 
 -}
 {- $generators-hs-module-structure-classes
@@ -467,9 +474,9 @@ zipper :: 'Class'
 zipper =
   'makeClass' ('ident' \"Zipper\") Nothing [compressor]
   [ 'mkCtor' \"new\" [] ]
-  [ 'mkStaticMethod' \"canZip\" [] 'TBool'
-  , 'mkConstMethod' \"hasZipped\" [] 'TVoid'
-  , 'mkMethod' \"zip\" [] 'TVoid'
+  [ 'mkStaticMethod' \"canZip\" [] 'boolT'
+  , 'mkConstMethod' \"hasZipped\" [] 'voidT'
+  , 'mkMethod' \"zip\" [] 'voidT'
   ]
 @
 
@@ -497,7 +504,7 @@ converting raw 'Ptr's into object handles.  This is the opposite operation of
 'toPtr'.
 
 - If the class -- @Zipper@ in this case -- has an @operator=@ method that takes
-either a @'TObj' zipper@ or a @'TRef' ('TConst' ('TObj' zipper))@, then an
+either a @'objT' zipper@ or a @'refT' ('constT' ('objT' zipper))@, then an
 instance @ZipperValue a => 'Assignable' Zipper a@ is generated to allow
 assigning of general zipper-like values to @Zipper@ objects; see below for an
 explanation of @ZipperValue@.  This instance is for the non-const @Zipper@ only.

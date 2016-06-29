@@ -25,6 +25,7 @@ module Foreign.Hoppy.Generator.Test.Circular.Flub (
 
 import Foreign.Hoppy.Generator.Spec
 import {-# SOURCE #-} Foreign.Hoppy.Generator.Test.Circular.Flob
+import Foreign.Hoppy.Generator.Types
 
 flubModule :: Module
 flubModule =
@@ -41,10 +42,10 @@ flubModule =
   ]
 
 v_FlubVar :: Variable
-v_FlubVar = makeVariable (ident "flubVar") Nothing TChar
+v_FlubVar = makeVariable (ident "flubVar") Nothing charT
 
 v_FlubVarConst :: Variable
-v_FlubVarConst = makeVariable (ident "flubVarConst") Nothing $ TConst TChar
+v_FlubVarConst = makeVariable (ident "flubVarConst") Nothing $ constT charT
 
 e_FlubEnum :: CppEnum
 e_FlubEnum = makeEnum (ident "FlubEnum") Nothing enumValues
@@ -52,7 +53,7 @@ e_FlubEnum = makeEnum (ident "FlubEnum") Nothing enumValues
 bs_FlubBitspace :: Bitspace
 bs_FlubBitspace =
   bitspaceAddEnum e_FlubEnum $
-  makeBitspace (toExtName "FlubBitspace") TInt enumValues
+  makeBitspace (toExtName "FlubBitspace") intT enumValues
 
 enumValues :: [(Int, [String])]
 enumValues =
@@ -69,7 +70,7 @@ c_FlubClass =
 
 f_takesFlobValues :: Function
 f_takesFlobValues =
-  makeFn (ident "takesFlobValues") Nothing Nonpure [TPtr $ TObj c_FlobClass] TVoid
+  makeFn (ident "takesFlobValues") Nothing Nonpure [ptrT $ objT c_FlobClass] voidT
 
 cb_FlubCallback :: Callback
-cb_FlubCallback = makeCallback (toExtName "FlubCallback") [TPtr $ TObj c_FlubClass] TVoid
+cb_FlubCallback = makeCallback (toExtName "FlubCallback") [ptrT $ objT c_FlubClass] voidT

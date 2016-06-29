@@ -49,6 +49,7 @@ import Foreign.Hoppy.Generator.Spec.ClassFeature (
   )
 import Foreign.Hoppy.Generator.Std (ValueConversion (ConvertPtr, ConvertValue))
 import Foreign.Hoppy.Generator.Std.Iterator
+import Foreign.Hoppy.Generator.Types
 import Foreign.Hoppy.Generator.Version (CppVersion (Cpp2011), activeCppVersion, collect, just, test)
 
 -- | Options for instantiating the vector classes.
@@ -98,48 +99,48 @@ instantiate' vectorName t tReqs opts =
         [ mkCtor "new" []
         ] $
         collect
-        [ just $ mkMethod' "at" "at" [TSize] $ TRef t
-        , just $ mkConstMethod' "at" "atConst" [TSize] $ TRef $ TConst t
-        , just $ mkMethod' "back" "back" [] $ TRef t
-        , just $ mkConstMethod' "back" "backConst" [] $ TRef $ TConst t
-        , just $ mkMethod' "begin" "begin" [] $ TToGc $ TObj iterator
-        , just $ mkConstMethod' "begin" "beginConst" [] $ TToGc $ TObj constIterator
-        , just $ mkConstMethod "capacity" [] TSize
-        , just $ mkMethod "clear" [] TVoid
-        , just $ mkConstMethod "empty" [] TBool
-        , just $ mkMethod' "end" "end" [] $ TToGc $ TObj iterator
-        , just $ mkConstMethod' "end" "endConst" [] $ TToGc $ TObj constIterator
-        , just $ mkMethod' "erase" "erase" [TObj iterator] TVoid
-        , just $ mkMethod' "erase" "eraseRange" [TObj iterator, TObj iterator] TVoid
-        , just $ mkMethod' "front" "front" [] $ TRef t
-        , just $ mkConstMethod' "front" "frontConst" [] $ TRef $ TConst t
-        , just $ mkMethod "insert" [TObj iterator, t] $ TToGc $ TObj iterator
-        , just $ mkConstMethod' "max_size" "maxSize" [] TSize
-        , just $ mkMethod' "pop_back" "popBack" [] TVoid
-        , just $ mkMethod' "push_back" "pushBack" [t] TVoid
-        , just $ mkMethod "reserve" [TSize] TVoid
-        , just $ mkMethod' "resize" "resize" [TSize] TVoid
-        , just $ mkMethod' "resize" "resizeWith" [TSize, t] TVoid
-        , test (activeCppVersion >= Cpp2011) $ mkMethod' "shrink_to_fit" "shrinkToFit" [] TVoid
-        , just $ mkConstMethod "size" [] TSize
-        , just $ mkMethod "swap" [TRef $ TObj vector] TVoid
+        [ just $ mkMethod' "at" "at" [sizeT] $ refT t
+        , just $ mkConstMethod' "at" "atConst" [sizeT] $ refT $ constT t
+        , just $ mkMethod' "back" "back" [] $ refT t
+        , just $ mkConstMethod' "back" "backConst" [] $ refT $ constT t
+        , just $ mkMethod' "begin" "begin" [] $ toGcT $ objT iterator
+        , just $ mkConstMethod' "begin" "beginConst" [] $ toGcT $ objT constIterator
+        , just $ mkConstMethod "capacity" [] sizeT
+        , just $ mkMethod "clear" [] voidT
+        , just $ mkConstMethod "empty" [] boolT
+        , just $ mkMethod' "end" "end" [] $ toGcT $ objT iterator
+        , just $ mkConstMethod' "end" "endConst" [] $ toGcT $ objT constIterator
+        , just $ mkMethod' "erase" "erase" [objT iterator] voidT
+        , just $ mkMethod' "erase" "eraseRange" [objT iterator, objT iterator] voidT
+        , just $ mkMethod' "front" "front" [] $ refT t
+        , just $ mkConstMethod' "front" "frontConst" [] $ refT $ constT t
+        , just $ mkMethod "insert" [objT iterator, t] $ toGcT $ objT iterator
+        , just $ mkConstMethod' "max_size" "maxSize" [] sizeT
+        , just $ mkMethod' "pop_back" "popBack" [] voidT
+        , just $ mkMethod' "push_back" "pushBack" [t] voidT
+        , just $ mkMethod "reserve" [sizeT] voidT
+        , just $ mkMethod' "resize" "resize" [sizeT] voidT
+        , just $ mkMethod' "resize" "resizeWith" [sizeT, t] voidT
+        , test (activeCppVersion >= Cpp2011) $ mkMethod' "shrink_to_fit" "shrinkToFit" [] voidT
+        , just $ mkConstMethod "size" [] sizeT
+        , just $ mkMethod "swap" [refT $ objT vector] voidT
         ]
 
       iterator =
         addReqs reqs $
-        makeRandomIterator Mutable (Just t) TPtrdiff $
+        makeRandomIterator Mutable (Just t) ptrdiffT $
         makeClass (identT' [("std", Nothing), ("vector", Just [t]), ("iterator", Nothing)])
         (Just $ toExtName iteratorName) [] [] []
 
       constIterator =
         addReqs reqs $
-        makeRandomIterator Constant (Just t) TPtrdiff $
+        makeRandomIterator Constant (Just t) ptrdiffT $
         makeClass (identT' [("std", Nothing), ("vector", Just [t]), ("const_iterator", Nothing)])
         (Just $ toExtName constIteratorName) []
-        [ mkCtor "newFromNonconst" [TObj iterator]
+        [ mkCtor "newFromNonconst" [objT iterator]
         ]
         [ makeFnMethod (ident2 "hoppy" "iterator" "deconst") "deconst" MConst Nonpure
-          [TObj constIterator, TRef $ TObj vector] $ TToGc $ TObj iterator
+          [objT constIterator, refT $ objT vector] $ toGcT $ objT iterator
         ]
 
       -- The addendum for the vector class contains HasContents and FromContents
@@ -156,10 +157,10 @@ instantiate' vectorName t tReqs opts =
           hsValueType <-
             cppTypeToHsTypeAndUse HsHsSide $
             (case conversion of
-               ConvertPtr -> TPtr
+               ConvertPtr -> ptrT
                ConvertValue -> id) $
             case cst of
-              Const -> TConst t
+              Const -> constT t
               Nonconst -> t
 
           -- Generate const and nonconst HasContents instances.

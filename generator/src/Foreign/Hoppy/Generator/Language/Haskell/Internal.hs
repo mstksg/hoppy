@@ -47,6 +47,7 @@ import Data.Monoid (mconcat)
 import qualified Data.Set as S
 import Foreign.Hoppy.Generator.Common
 import Foreign.Hoppy.Generator.Spec
+import Foreign.Hoppy.Generator.Types
 import Foreign.Hoppy.Generator.Language.Cpp (
   classCastFnCppName,
   classDeleteFnCppName,
@@ -191,11 +192,11 @@ sayExportVar :: SayExportMode -> Variable -> Generator ()
 sayExportVar mode v = do
   withErrorContext ("generating variable " ++ show (varExtName v)) $ do
     let (isConst, deconstType) = case varType v of
-          TConst t -> (True, t)
+          Internal_TConst t -> (True, t)
           t -> (False, t)
     sayExportFn mode (varGetterExtName v) Nothing Nonpure [] deconstType
     unless isConst $
-      sayExportFn mode (varSetterExtName v) Nothing Nonpure [deconstType] TVoid
+      sayExportFn mode (varSetterExtName v) Nothing Nonpure [deconstType] voidT
 
 sayExportEnum :: SayExportMode -> CppEnum -> Generator ()
 sayExportEnum mode enum =
@@ -494,35 +495,35 @@ sayArgProcessing :: CallDirection -> Type -> String -> String -> Generator ()
 sayArgProcessing dir t fromVar toVar =
   withErrorContext ("processing argument of type " ++ show t) $
   case t of
-    TVoid -> throwError $ "TVoid is not a valid argument type"
-    TBool -> case dir of
+    Internal_TVoid -> throwError $ "TVoid is not a valid argument type"
+    Internal_TBool -> case dir of
       ToCpp -> saysLn ["let ", toVar, " = if ", fromVar, " then 1 else 0 in"]
       FromCpp -> do addImports $ hsImport1 "Prelude" "(/=)"
                     saysLn ["let ", toVar, " = ", fromVar, " /= 0 in"]
-    TChar -> noConversion
-    TUChar -> noConversion
-    TShort -> noConversion
-    TUShort -> noConversion
-    TInt -> sayCoerceIntegral
-    TUInt -> noConversion
-    TLong -> noConversion
-    TULong -> noConversion
-    TLLong -> noConversion
-    TULLong -> noConversion
-    TFloat -> sayCoerceFloating
-    TDouble -> sayCoerceFloating
-    TInt8 -> noConversion
-    TInt16 -> noConversion
-    TInt32 -> noConversion
-    TInt64 -> noConversion
-    TWord8 -> noConversion
-    TWord16 -> noConversion
-    TWord32 -> noConversion
-    TWord64 -> noConversion
-    TPtrdiff -> noConversion
-    TSize -> noConversion
-    TSSize -> noConversion
-    TEnum _ -> do
+    Internal_TChar -> noConversion
+    Internal_TUChar -> noConversion
+    Internal_TShort -> noConversion
+    Internal_TUShort -> noConversion
+    Internal_TInt -> sayCoerceIntegral
+    Internal_TUInt -> noConversion
+    Internal_TLong -> noConversion
+    Internal_TULong -> noConversion
+    Internal_TLLong -> noConversion
+    Internal_TULLong -> noConversion
+    Internal_TFloat -> sayCoerceFloating
+    Internal_TDouble -> sayCoerceFloating
+    Internal_TInt8 -> noConversion
+    Internal_TInt16 -> noConversion
+    Internal_TInt32 -> noConversion
+    Internal_TInt64 -> noConversion
+    Internal_TWord8 -> noConversion
+    Internal_TWord16 -> noConversion
+    Internal_TWord32 -> noConversion
+    Internal_TWord64 -> noConversion
+    Internal_TPtrdiff -> noConversion
+    Internal_TSize -> noConversion
+    Internal_TSSize -> noConversion
+    Internal_TEnum _ -> do
       addImports $ mconcat [hsImport1 "Prelude" "($)", hsImportForPrelude, hsImportForRuntime]
       saysLn ["let ", toVar,
               -- TODO The coersion here is unnecssary if we replace the C numeric
@@ -532,7 +533,7 @@ sayArgProcessing dir t fromVar toVar =
                 ToCpp -> " = HoppyFHR.coerceIntegral $ HoppyP.fromEnum "
                 FromCpp -> " = HoppyP.toEnum $ HoppyFHR.coerceIntegral ",
               fromVar, " in"]
-    TBitspace b -> do
+    Internal_TBitspace b -> do
       importHsModuleForExtName $ bitspaceExtName b
       saysLn $ concat [ ["let ", toVar, " = "]
                       , case dir of
@@ -541,7 +542,7 @@ sayArgProcessing dir t fromVar toVar =
                         [" ", fromVar, " in"]
                       ]
     -- References and pointers are handled equivalently.
-    TPtr (TObj cls) -> do
+    Internal_TPtr (Internal_TObj cls) -> do
       addImportForClass cls
       case dir of
         ToCpp -> do
@@ -552,7 +553,7 @@ sayArgProcessing dir t fromVar toVar =
         FromCpp ->
           saysLn ["let ", toVar, " = ", toHsDataCtorName Unmanaged Nonconst cls,
                   " ", fromVar, " in"]
-    TPtr (TConst (TObj cls)) -> do
+    Internal_TPtr (Internal_TConst (Internal_TObj cls)) -> do
       addImportForClass cls
       case dir of
         ToCpp -> do
@@ -565,16 +566,16 @@ sayArgProcessing dir t fromVar toVar =
         FromCpp ->
           saysLn ["let ", toVar, " = ", toHsDataCtorName Unmanaged Const cls,
                   " ", fromVar, " in"]
-    TPtr _ -> noConversion
-    TRef t' -> sayArgProcessing dir (TPtr t') fromVar toVar
-    TFn {} -> throwError "TFn unimplemented"
-    TCallback cb -> case dir of
+    Internal_TPtr _ -> noConversion
+    Internal_TRef t' -> sayArgProcessing dir (ptrT t') fromVar toVar
+    Internal_TFn {} -> throwError "TFn unimplemented"
+    Internal_TCallback cb -> case dir of
       ToCpp -> do
         addImports $ hsImport1 "Prelude" "(>>=)"
         importHsModuleForExtName $ callbackExtName cb
         saysLn [toHsCallbackCtorName cb, " ", fromVar, " >>= \\", toVar, " ->"]
       FromCpp -> throwError "Can't receive a callback from C++"
-    TObj cls -> case dir of
+    Internal_TObj cls -> case dir of
       ToCpp -> do
         -- Same as the (TPtr (TConst (TObj _))), ToPtr case.
         addImportForClass cls
@@ -594,18 +595,18 @@ sayArgProcessing dir t fromVar toVar =
                                 hsImportForRuntime]
           saysLn ["HoppyFHR.decode (", toHsDataCtorName Unmanaged Const cls, " ",
                   fromVar, ") >>= \\", toVar, " ->"]
-        ClassConversionToHeap -> sayArgProcessing dir (TObjToHeap cls) fromVar toVar
-        ClassConversionToGc -> sayArgProcessing dir (TToGc t) fromVar toVar
-    TObjToHeap cls -> case dir of
-      ToCpp -> throwError $ tObjToHeapWrongDirectionErrorMsg Nothing cls
-      FromCpp -> sayArgProcessing dir (TPtr $ TObj cls) fromVar toVar
-    TToGc t' -> case dir of
-      ToCpp -> throwError $ tToGcWrongDirectionErrorMsg Nothing t'
+        ClassConversionToHeap -> sayArgProcessing dir (objToHeapT cls) fromVar toVar
+        ClassConversionToGc -> sayArgProcessing dir (toGcT t) fromVar toVar
+    Internal_TObjToHeap cls -> case dir of
+      ToCpp -> throwError $ objToHeapTWrongDirectionErrorMsg Nothing cls
+      FromCpp -> sayArgProcessing dir (ptrT $ objT cls) fromVar toVar
+    Internal_TToGc t' -> case dir of
+      ToCpp -> throwError $ toGcTWrongDirectionErrorMsg Nothing t'
       FromCpp -> do
         addImports $ mconcat [hsImport1 "Prelude" "(>>=)",
                               hsImportForRuntime]
         saysLn ["HoppyFHR.toGc ", fromVar, " >>= \\", toVar, " ->"]
-    TConst t' -> sayArgProcessing dir t' fromVar toVar
+    Internal_TConst t' -> sayArgProcessing dir t' fromVar toVar
   where noConversion = saysLn ["let ", toVar, " = ", fromVar, " in"]
         sayCoerceIntegral = do
           addImports hsImportForRuntime
@@ -621,37 +622,37 @@ sayCallAndProcessReturn :: CallDirection -> Type -> [String] -> Generator ()
 sayCallAndProcessReturn dir t callWords =
   withErrorContext ("processing return value of type " ++ show t) $
   case t of
-    TVoid -> sayCall
-    TBool -> do
+    Internal_TVoid -> sayCall
+    Internal_TBool -> do
       case dir of
         ToCpp -> do addImports $ mconcat [hsImport1 "Prelude" "(/=)", hsImportForPrelude]
                     sayLn "HoppyP.fmap (/= 0)"
         FromCpp -> sayLn "HoppyP.fmap (\\x -> if x then 1 else 0)"
       sayCall
-    TChar -> sayCall
-    TUChar -> sayCall
-    TShort -> sayCall
-    TUShort -> sayCall
-    TInt -> sayCoerceIntegral >> sayCall
-    TUInt -> sayCall
-    TLong -> sayCall
-    TULong -> sayCall
-    TLLong -> sayCall
-    TULLong -> sayCall
-    TFloat -> sayCoerceFloating >> sayCall
-    TDouble -> sayCoerceFloating >> sayCall
-    TInt8 -> sayCall
-    TInt16 -> sayCall
-    TInt32 -> sayCall
-    TInt64 -> sayCall
-    TWord8 -> sayCall
-    TWord16 -> sayCall
-    TWord32 -> sayCall
-    TWord64 -> sayCall
-    TPtrdiff -> sayCall
-    TSize -> sayCall
-    TSSize -> sayCall
-    TEnum _ -> do
+    Internal_TChar -> sayCall
+    Internal_TUChar -> sayCall
+    Internal_TShort -> sayCall
+    Internal_TUShort -> sayCall
+    Internal_TInt -> sayCoerceIntegral >> sayCall
+    Internal_TUInt -> sayCall
+    Internal_TLong -> sayCall
+    Internal_TULong -> sayCall
+    Internal_TLLong -> sayCall
+    Internal_TULLong -> sayCall
+    Internal_TFloat -> sayCoerceFloating >> sayCall
+    Internal_TDouble -> sayCoerceFloating >> sayCall
+    Internal_TInt8 -> sayCall
+    Internal_TInt16 -> sayCall
+    Internal_TInt32 -> sayCall
+    Internal_TInt64 -> sayCall
+    Internal_TWord8 -> sayCall
+    Internal_TWord16 -> sayCall
+    Internal_TWord32 -> sayCall
+    Internal_TWord64 -> sayCall
+    Internal_TPtrdiff -> sayCall
+    Internal_TSize -> sayCall
+    Internal_TSSize -> sayCall
+    Internal_TEnum _ -> do
       addImports $ mconcat [hsImport1 "Prelude" "(.)", hsImportForPrelude, hsImportForRuntime]
       case dir of
         -- TODO The coersion here is unnecssary if we replace the C numeric types
@@ -659,13 +660,13 @@ sayCallAndProcessReturn dir t callWords =
         ToCpp -> saysLn ["HoppyP.fmap (HoppyP.toEnum . HoppyFHR.coerceIntegral)"]
         FromCpp -> saysLn ["HoppyP.fmap (HoppyFHR.coerceIntegral . HoppyP.fromEnum)"]
       sayCall
-    TBitspace b -> do
+    Internal_TBitspace b -> do
       addImports hsImportForPrelude
       importHsModuleForExtName $ bitspaceExtName b
       saysLn ["HoppyP.fmap ", bitspaceConvFn dir b]
       sayCall
     -- The same as TPtr (TConst (TObj _)), but nonconst.
-    TPtr (TObj cls) -> do
+    Internal_TPtr (Internal_TObj cls) -> do
       addImportForClass cls
       case dir of
         ToCpp -> do
@@ -677,7 +678,7 @@ sayCallAndProcessReturn dir t callWords =
           sayLn "HoppyP.fmap HoppyFHR.toPtr"
           sayCall
     -- The same as TPtr (TConst (TObj _)), but nonconst.
-    TPtr (TConst (TObj cls)) -> do
+    Internal_TPtr (Internal_TConst (Internal_TObj cls)) -> do
       addImportForClass cls
       case dir of
         ToCpp -> do
@@ -688,17 +689,17 @@ sayCallAndProcessReturn dir t callWords =
           addImports $ mconcat [hsImportForPrelude, hsImportForRuntime]
           sayLn "HoppyP.fmap HoppyFHR.toPtr"
           sayCall
-    TPtr _ -> sayCall
-    TRef t' -> sayCallAndProcessReturn dir (TPtr t') callWords
-    TFn {} -> throwError "TFn unimplemented"
-    TCallback cb -> case dir of
+    Internal_TPtr _ -> sayCall
+    Internal_TRef t' -> sayCallAndProcessReturn dir (ptrT t') callWords
+    Internal_TFn {} -> throwError "TFn unimplemented"
+    Internal_TCallback cb -> case dir of
       ToCpp -> throwError "Can't receive a callback from C++"
       FromCpp -> do
         addImports $ hsImport1 "Prelude" "(=<<)"
         importHsModuleForExtName $ callbackExtName cb
         saysLn [toHsCallbackCtorName cb, "=<<"]
         sayCall
-    TObj cls -> case dir of
+    Internal_TObj cls -> case dir of
       ToCpp -> case classHaskellConversion $ classConversion cls of
         ClassConversionNone ->
           throwError $ concat
@@ -710,8 +711,8 @@ sayCallAndProcessReturn dir t callWords =
                                 hsImportForRuntime]
           saysLn ["(HoppyFHR.decodeAndDelete . ", toHsDataCtorName Unmanaged Const cls, ") =<<"]
           sayCall
-        ClassConversionToHeap -> sayCallAndProcessReturn dir (TObjToHeap cls) callWords
-        ClassConversionToGc -> sayCallAndProcessReturn dir (TToGc t) callWords
+        ClassConversionToHeap -> sayCallAndProcessReturn dir (objToHeapT cls) callWords
+        ClassConversionToGc -> sayCallAndProcessReturn dir (toGcT t) callWords
       FromCpp -> do
         addImportForClass cls
         addImports $ mconcat [hsImports "Prelude" ["(.)", "(=<<)"],
@@ -719,10 +720,10 @@ sayCallAndProcessReturn dir t callWords =
                               hsImportForRuntime]
         sayLn "(HoppyP.fmap (HoppyFHR.toPtr) . HoppyFHR.encode) =<<"
         sayCall
-    TObjToHeap cls -> case dir of
-      ToCpp -> sayCallAndProcessReturn dir (TPtr $ TObj cls) callWords
-      FromCpp -> throwError $ tObjToHeapWrongDirectionErrorMsg Nothing cls
-    TToGc t' -> case dir of
+    Internal_TObjToHeap cls -> case dir of
+      ToCpp -> sayCallAndProcessReturn dir (ptrT $ objT cls) callWords
+      FromCpp -> throwError $ objToHeapTWrongDirectionErrorMsg Nothing cls
+    Internal_TToGc t' -> case dir of
       ToCpp -> do
         addImports $ mconcat [hsImport1 "Prelude" "(=<<)",
                               hsImportForRuntime]
@@ -730,10 +731,10 @@ sayCallAndProcessReturn dir t callWords =
         -- TToGc (TObj _) should create a pointer rather than decoding, so we
         -- change the TObj _ into a TPtr (TObj _).
         case t' of
-          TObj _ -> sayCallAndProcessReturn dir (TPtr t') callWords
+          Internal_TObj _ -> sayCallAndProcessReturn dir (ptrT t') callWords
           _ -> sayCallAndProcessReturn dir t' callWords
-      FromCpp -> throwError $ tToGcWrongDirectionErrorMsg Nothing t'
-    TConst t' -> sayCallAndProcessReturn dir t' callWords
+      FromCpp -> throwError $ toGcTWrongDirectionErrorMsg Nothing t'
+    Internal_TConst t' -> sayCallAndProcessReturn dir t' callWords
   where sayCall = saysLn $ "(" : callWords ++ [")"]
         sayCoerceIntegral = do addImports $ mconcat [hsImportForPrelude, hsImportForRuntime]
                                sayLn "HoppyP.fmap HoppyFHR.coerceIntegral"
@@ -1040,7 +1041,7 @@ sayExportClassHsCtors :: SayExportMode -> Class -> Generator ()
 sayExportClassHsCtors mode cls =
   forM_ (classCtors cls) $ \ctor ->
   (sayExportFn mode <$> getClassyExtName cls <*> pure Nothing <*>
-   pure Nonpure <*> ctorParams <*> pure (TPtr $ TObj cls)) ctor
+   pure Nonpure <*> ctorParams <*> pure (ptrT $ objT cls)) ctor
 
 sayExportClassHsSpecialFns :: SayExportMode -> Class -> Generator ()
 sayExportClassHsSpecialFns mode cls = do
@@ -1078,7 +1079,7 @@ sayExportClassHsSpecialFns mode cls = do
   -- generate an instance of Assignable.
   let assignmentMethods = flip filter (classMethods cls) $ \m ->
         methodApplicability m == MNormal &&
-        (methodParams m == [TObj cls] || methodParams m == [TRef $ TConst $ TObj cls]) &&
+        (methodParams m == [objT cls] || methodParams m == [refT $ constT $ objT cls]) &&
         (case methodImpl m of
           RealMethod name -> name == FnOp OpAssign
           FnMethod name -> name == FnOp OpAssign)
@@ -1267,8 +1268,8 @@ fnToHsTypeAndUse side methodInfo purity paramTypes returnType = do
   params <- mapM contextForParam $
             (case methodInfo of
                 Just (cst, cls) -> [("this", case cst of
-                                        Nonconst -> TPtr $ TObj cls
-                                        Const -> TPtr $ TConst $ TObj cls)]
+                                        Nonconst -> ptrT $ objT cls
+                                        Const -> ptrT $ constT $ objT cls)]
                 Nothing -> []) ++
             zip (map toArgName [1..]) paramTypes
   let context = mapMaybe fst params :: HsContext
@@ -1280,12 +1281,12 @@ fnToHsTypeAndUse side methodInfo purity paramTypes returnType = do
   -- conversion to a Haskell type, and wrap the result in 'IO' if the function
   -- is impure.  (HsCSide types always get wrapped in IO.)
   returnForGc <- case returnType of
-    TObj cls -> case classHaskellConversion $ classConversion cls of
+    Internal_TObj cls -> case classHaskellConversion $ classConversion cls of
       ClassConversionNone ->
         throwError $ concat ["Expected ", show cls, " to be returnable from a C++ function"]
       ClassConversionManual _ -> return returnType
-      ClassConversionToHeap -> return $ TObjToHeap cls
-      ClassConversionToGc -> return $ TToGc returnType
+      ClassConversionToHeap -> return $ objToHeapT cls
+      ClassConversionToGc -> return $ toGcT returnType
     _ -> return returnType
   hsReturnForGc <- cppTypeToHsTypeAndUse side returnForGc
   hsReturnForPurity <- case (purity, side) of
@@ -1298,13 +1299,13 @@ fnToHsTypeAndUse side methodInfo purity paramTypes returnType = do
 
   where contextForParam :: (String, Type) -> Generator (Maybe HsAsst, HsType)
         contextForParam (s, t) = case t of
-          TBitspace b -> receiveBitspace s t b
-          TPtr (TObj cls) -> receivePtr s cls Nonconst
-          TPtr (TConst (TObj cls)) -> receiveValue s t cls
-          TRef (TObj cls) -> receivePtr s cls Nonconst
-          TRef (TConst (TObj cls)) -> receiveValue s t cls
-          TObj cls -> receiveValue s t cls
-          TConst t' -> contextForParam (s, t')
+          Internal_TBitspace b -> receiveBitspace s t b
+          Internal_TPtr (Internal_TObj cls) -> receivePtr s cls Nonconst
+          Internal_TPtr (Internal_TConst (Internal_TObj cls)) -> receiveValue s t cls
+          Internal_TRef (Internal_TObj cls) -> receivePtr s cls Nonconst
+          Internal_TRef (Internal_TConst (Internal_TObj cls)) -> receiveValue s t cls
+          Internal_TObj cls -> receiveValue s t cls
+          Internal_TConst t' -> contextForParam (s, t')
           _ -> handoff side t
 
         -- Use whatever type 'cppTypeToHsTypeAndUse' suggests, with no typeclass
@@ -1350,8 +1351,8 @@ getMethodEffectiveParams :: Class -> Method -> [Type]
 getMethodEffectiveParams cls method =
   (case methodImpl method of
      RealMethod {} -> case methodApplicability method of
-       MNormal -> (TPtr (TObj cls):)
-       MConst -> (TPtr (TConst $ TObj cls):)
+       MNormal -> (ptrT (objT cls):)
+       MConst -> (ptrT (constT $ objT cls):)
        MStatic -> id
      FnMethod {} -> id) $
   methodParams method

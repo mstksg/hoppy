@@ -150,7 +150,7 @@ objectGcTests =
     performGC
     readCounts >>= (@?= (1, 1))
 
-  , "(TToGc . TObj) creates collectable pointers" ~: do
+  , "(toGcT . objT) creates collectable pointers" ~: do
     ptrCtr_resetCounters
     p <- ptrCtr_newGcedObj
     ptrCtr_redButton p
@@ -158,28 +158,28 @@ objectGcTests =
     (news, dels) <- readCounts
     dels @?= news
 
-  , "(TToGc . TRef . TConst . TObj) creates collectable pointers" ~: do
+  , "(toGcT . refT . constT . objT) creates collectable pointers" ~: do
     ptrCtr_resetCounters
     p <- ptrCtr_newGcedRefConst
     ptrCtr_redButton p
     performGC
     readCounts >>= (@?= (1, 1))
 
-  , "(TToGc . TRef . TObj) creates collectable pointers" ~: do
+  , "(toGcT . refT . objT) creates collectable pointers" ~: do
     ptrCtr_resetCounters
     p <- ptrCtr_newGcedRef
     ptrCtr_redButton p
     performGC
     readCounts >>= (@?= (1, 1))
 
-  , "(TToGc . TPtr . TConst . TObj) creates collectable pointers" ~: do
+  , "(toGcT . ptrT . constT . objT) creates collectable pointers" ~: do
     ptrCtr_resetCounters
     p <- ptrCtr_newGcedPtrConst
     ptrCtr_redButton p
     performGC
     readCounts >>= (@?= (1, 1))
 
-  , "(TToGc . TPtr . TObj) creates collectable pointers" ~: do
+  , "(toGcT . ptrT . objT) creates collectable pointers" ~: do
     ptrCtr_resetCounters
     p <- ptrCtr_newGcedPtr
     ptrCtr_redButton p
@@ -243,7 +243,7 @@ conversionTests =
 
 tObjToHeapTests :: Test
 tObjToHeapTests =
-  "TObjToHeap" ~: TestList
+  "objTToHeap" ~: TestList
   [ "PtrCtr functions properly" ~: do
     ptrCtr_resetCounters
     getCounts >>= (@?= (0, 0))
@@ -377,36 +377,36 @@ fnMethodTests =
 primitiveTypeSizeTests :: Test
 primitiveTypeSizeTests =
   "primitive type sizes" ~: TestList
-  [ -- TBool has special conversions, since the size of Haskell's Bool can be
+  [ -- boolT has special conversions, since the size of Haskell's Bool can be
     -- more than one byte.  We also test the special conversion logic here.
-    "TBool" ~: fromIntegral sizeOfBool @?= 1
-  , "TBool true->true conversion" ~: isTrue True >>= (@?= True)
-  , "TBool false->false conversion" ~: isTrue False >>= (@?= False)
-  , "TBool true->false conversion" ~: isFalse True >>= (@?= False)
-  , "TBool false->true conversion" ~: isFalse False >>= (@?= True)
-  , "TChar" ~: fromIntegral sizeOfChar @?= sizeOf (undefined :: CChar)
-  , "TShort" ~: fromIntegral sizeOfShort @?= sizeOf (undefined :: CShort)
-  , "TInt" ~: fromIntegral sizeOfInt @?= sizeOf (undefined :: CInt)
-  , "TLong" ~: fromIntegral sizeOfLong @?= sizeOf (undefined :: CLong)
-  , "TLLong" ~: fromIntegral sizeOfLLong @?= sizeOf (undefined :: CLLong)
-  , "TFloat" ~: fromIntegral sizeOfFloat @?= sizeOf (undefined :: CFloat)
-  , "TDouble" ~: fromIntegral sizeOfDouble @?= sizeOf (undefined :: CDouble)
-  , "TPtrdiff" ~: fromIntegral sizeOfPtrdiff @?= sizeOf (undefined :: CPtrdiff)
-  , "TSize" ~: fromIntegral sizeOfSize @?= sizeOf (undefined :: CSize)
-  , "TSSize" ~: fromIntegral sizeOfSSize @?= sizeOf (undefined :: CSsize)
+    "boolT" ~: fromIntegral sizeOfBool @?= 1
+  , "boolT true->true conversion" ~: isTrue True >>= (@?= True)
+  , "boolT false->false conversion" ~: isTrue False >>= (@?= False)
+  , "boolT true->false conversion" ~: isFalse True >>= (@?= False)
+  , "boolT false->true conversion" ~: isFalse False >>= (@?= True)
+  , "charT" ~: fromIntegral sizeOfChar @?= sizeOf (undefined :: CChar)
+  , "shortT" ~: fromIntegral sizeOfShort @?= sizeOf (undefined :: CShort)
+  , "intT" ~: fromIntegral sizeOfInt @?= sizeOf (undefined :: CInt)
+  , "longT" ~: fromIntegral sizeOfLong @?= sizeOf (undefined :: CLong)
+  , "llongT" ~: fromIntegral sizeOfLLong @?= sizeOf (undefined :: CLLong)
+  , "floatT" ~: fromIntegral sizeOfFloat @?= sizeOf (undefined :: CFloat)
+  , "doubleT" ~: fromIntegral sizeOfDouble @?= sizeOf (undefined :: CDouble)
+  , "ptrdiffT" ~: fromIntegral sizeOfPtrdiff @?= sizeOf (undefined :: CPtrdiff)
+  , "sizeT" ~: fromIntegral sizeOfSize @?= sizeOf (undefined :: CSize)
+  , "ssizeT" ~: fromIntegral sizeOfSSize @?= sizeOf (undefined :: CSsize)
   ]
 
 numericTypePassingTests :: Test
 numericTypePassingTests =
   "numeric type passing" ~: TestList
-  [ "TInt" ~: doubleInt 5 @?= 10
-  , "TLong" ~: doubleLong (-5) @?= -10
-  , "TFloat" ~: doubleFloat 0.5 @?= 1
-  , "TDouble" ~: doubleDouble 1867 @?= 3734
-  , "TInt8" ~: doubleInt8 63 @?= 126
-  , "TInt32" ~: doubleInt32 (-1073741824) @?= minBound -- -2147483648
-  , "TWord16" ~: doubleUInt16 32767 @?= 65534
-  , "TWord64" ~: doubleUInt64 9223372036854775807 @?= 18446744073709551614
+  [ "intT" ~: doubleInt 5 @?= 10
+  , "longT" ~: doubleLong (-5) @?= -10
+  , "floatT" ~: doubleFloat 0.5 @?= 1
+  , "doubleT" ~: doubleDouble 1867 @?= 3734
+  , "int8T" ~: doubleInt8 63 @?= 126
+  , "int32T" ~: doubleInt32 (-1073741824) @?= minBound -- -2147483648
+  , "word16T" ~: doubleUInt16 32767 @?= 65534
+  , "word64T" ~: doubleUInt64 9223372036854775807 @?= 18446744073709551614
   ]
 
 rawPointerTests :: Test

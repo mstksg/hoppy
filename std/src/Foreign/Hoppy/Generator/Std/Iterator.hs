@@ -40,7 +40,7 @@ import Foreign.Hoppy.Generator.Spec (
     OpSubtract,
     OpSubtractAssign),
   Purity (Nonpure),
-  Type (TConst, TObj, TPtr, TRef, TToGc, TVoid),
+  Type,
   addReqIncludes,
   classAddCtors,
   classAddMethods,
@@ -54,6 +54,7 @@ import Foreign.Hoppy.Generator.Spec.ClassFeature (
   ClassFeature (Assignable, Copyable, Equatable),
   classAddFeatures,
   )
+import Foreign.Hoppy.Generator.Types
 import Foreign.Hoppy.Generator.Std.Internal (includeHelper)
 
 -- | Whether an iterator may be used to modify the underlying collection.
@@ -67,13 +68,13 @@ data IteratorMutability = Constant | Mutable
 --
 -- * The class features 'Assignable', 'Copyable', and 'Equatable'.
 --
--- * __operator*:__ @getConst :: this -> 'TRef' ('TConst' valueType)@; if
+-- * __operator*:__ @getConst :: this -> 'refT' ('constT' valueType)@; if
 -- @valueTypeMaybe@ is present.
 --
--- * __operator*:__ @get :: this -> 'TRef' valueType@; if @valueTypeMaybe@ is
+-- * __operator*:__ @get :: this -> 'refT' valueType@; if @valueTypeMaybe@ is
 -- present and @mutable@ is 'Mutable'.
 --
--- * __*iter = x:__ @put :: this -> valueType -> 'TVoid'@; if @valueTypeMaybe@
+-- * __*iter = x:__ @put :: this -> valueType -> 'voidT'@; if @valueTypeMaybe@
 -- is present and @mutable@ is 'Mutable'.
 makeTrivialIterator :: IteratorMutability -> Maybe Type -> Class -> Class
 makeTrivialIterator mutable valueTypeMaybe cls =
@@ -90,58 +91,58 @@ makeTrivialIterator mutable valueTypeMaybe cls =
           catMaybes
           [ do valueType <- valueTypeMaybe
                Mutable <- Just mutable
-               return $ mkMethod' OpDeref "get" [] $ TRef valueType
+               return $ mkMethod' OpDeref "get" [] $ refT valueType
           , do valueType <- valueTypeMaybe
-               return $ mkConstMethod' OpDeref "getConst" [] $ TRef $ TConst valueType
+               return $ mkConstMethod' OpDeref "getConst" [] $ refT $ constT valueType
           , do valueType <- valueTypeMaybe
                Mutable <- Just mutable
                return $
                  makeFnMethod (ident2 "hoppy" "iterator" "put") "put"
-                 MNormal Nonpure [TPtr $ TObj cls, valueType] TVoid
+                 MNormal Nonpure [ptrT $ objT cls, valueType] voidT
           ]
 
 -- | Turns a class into a forward iterator, including everything from
 -- 'makeTrivialIterator' plus the pre-increment operator:
 --
--- * __operator++:__ @next :: this -> 'TRef' ('TObj' cls)@.
+-- * __operator++:__ @next :: this -> 'refT' ('objT' cls)@.
 makeForwardIterator :: IteratorMutability -> Maybe Type -> Class -> Class
 makeForwardIterator mutable valueTypeMaybe cls =
   classAddMethods methods $
   makeTrivialIterator mutable valueTypeMaybe cls
   where methods =
-          [ mkMethod' OpIncPre "next" [] $ TRef $ TObj cls
+          [ mkMethod' OpIncPre "next" [] $ refT $ objT cls
           ]
 
 -- | Turns a class into a bidirectional iterator, including everything from
 -- 'makeForwardIterator' plus the pre-decrement operator:
 --
--- * __operator--:__ @prev :: this -> 'TRef' ('TObj' cls)@.
+-- * __operator--:__ @prev :: this -> 'refT' ('objT' cls)@.
 makeBidirectionalIterator :: IteratorMutability -> Maybe Type -> Class -> Class
 makeBidirectionalIterator mutability valueTypeMaybe cls =
   classAddMethods methods $
   makeForwardIterator mutability valueTypeMaybe cls
   where methods =
-          [ mkMethod' OpDecPre "prev" [] $ TRef $ TObj cls
+          [ mkMethod' OpDecPre "prev" [] $ refT $ objT cls
           ]
 
 -- | @makeRandomIterator mutable valueTypeMaybe distanceType cls@ turns a class
 -- into a random iterator, including everything from 'makeBidirectionalIterator'
 -- plus some methods:
 --
--- * __operator+=:__ @add :: this -> distanceType -> 'TRef' ('TObj' cls)@.
+-- * __operator+=:__ @add :: this -> distanceType -> 'refT' ('objT' cls)@.
 --
--- * __operator+:__ @plus :: this -> distanceType -> 'TToGc' cls@.
+-- * __operator+:__ @plus :: this -> distanceType -> 'toGcT' cls@.
 --
--- * __operator-=:__ @subtract :: distanceType -> 'TRef' ('TObj' cls)@.
+-- * __operator-=:__ @subtract :: distanceType -> 'refT' ('objT' cls)@.
 --
--- * __operator-:__ @minus :: distanceType -> 'TToGc' cls@.
+-- * __operator-:__ @minus :: distanceType -> 'toGcT' cls@.
 --
 -- * __operator-:__ @difference :: this -> this -> distanceType@.
 --
--- * __operator[]:__ @atConst :: distanceType -> 'TRef' ('TConst' valueType)@;
+-- * __operator[]:__ @atConst :: distanceType -> 'refT' ('constT' valueType)@;
 -- if @valueTypeMaybe@ is present.
 --
--- * __operator[]:__ @at :: distanceType -> 'TRef' valueType@; if
+-- * __operator[]:__ @at :: distanceType -> 'refT' valueType@; if
 -- @valueTypeMaybe@ is present and @mutable@ is 'Mutable'.
 makeRandomIterator :: IteratorMutability -> Maybe Type -> Type -> Class -> Class
 makeRandomIterator mutable valueTypeMaybe distanceType cls =
@@ -149,14 +150,14 @@ makeRandomIterator mutable valueTypeMaybe distanceType cls =
   makeBidirectionalIterator mutable valueTypeMaybe cls
   where methods =
           catMaybes
-          [ Just $ mkMethod' OpAdd "plus" [distanceType] $ TToGc $ TObj cls
-          , Just $ mkMethod' OpAddAssign "add" [distanceType] $ TRef $ TObj cls
-          , Just $ mkMethod' OpSubtract "minus" [distanceType] $ TToGc $ TObj cls
-          , Just $ mkMethod' OpSubtract "difference" [TObj cls] distanceType
-          , Just $ mkMethod' OpSubtractAssign "subtract" [distanceType] $ TRef $ TObj cls
+          [ Just $ mkMethod' OpAdd "plus" [distanceType] $ toGcT $ objT cls
+          , Just $ mkMethod' OpAddAssign "add" [distanceType] $ refT $ objT cls
+          , Just $ mkMethod' OpSubtract "minus" [distanceType] $ toGcT $ objT cls
+          , Just $ mkMethod' OpSubtract "difference" [objT cls] distanceType
+          , Just $ mkMethod' OpSubtractAssign "subtract" [distanceType] $ refT $ objT cls
           , do valueType <- valueTypeMaybe
                Mutable <- Just mutable
-               return $ mkMethod' OpArray "at" [distanceType] $ TRef valueType
+               return $ mkMethod' OpArray "at" [distanceType] $ refT valueType
           , do valueType <- valueTypeMaybe
-               return $ mkConstMethod' OpArray "atConst" [distanceType] $ TRef $ TConst valueType
+               return $ mkConstMethod' OpArray "atConst" [distanceType] $ refT $ constT valueType
           ]

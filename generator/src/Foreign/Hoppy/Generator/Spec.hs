@@ -128,7 +128,6 @@ module Foreign.Hoppy.Generator.Spec (
   ClassHaskellConversion (..),
   -- ** Callbacks
   Callback, makeCallback, callbackExtName, callbackParams, callbackReturn, callbackReqs,
-  callbackToTFn,
   -- * Addenda
   Addendum (..),
   HasAddendum,
@@ -139,6 +138,7 @@ module Foreign.Hoppy.Generator.Spec (
   hsImportSetMakeSource,
   -- * Internal to Hoppy
   stringOrIdentifier,
+  callbackToTFn,
   -- ** Haskell imports
   makeHsImportSet,
   getHsImportSet,
@@ -152,9 +152,9 @@ module Foreign.Hoppy.Generator.Spec (
   hsImportForSystemPosixTypes,
   hsImportForUnsafeIO,
   -- ** Error messages
-  tObjToHeapWrongDirectionErrorMsg,
+  objToHeapTWrongDirectionErrorMsg,
   tToGcInvalidFormErrorMessage,
-  tToGcWrongDirectionErrorMsg,
+  toGcTWrongDirectionErrorMsg,
   ) where
 
 #if !MIN_VERSION_base(4,8,0)
@@ -766,113 +766,93 @@ ident5T a b c d e f ts =
   Identifier [IdPart a Nothing, IdPart b Nothing, IdPart c Nothing,
               IdPart d Nothing, IdPart e Nothing, IdPart f $ Just ts]
 
--- | Concrete C++ types.  It is possible to represent invalid C++ types with
--- this, but we try to catch these and fail cleanly as much as possible.
+-- | A concrete C++ type.  Use the bindings in "Foreign.Hoppy.Generator.Types"
+-- for values of this type; these data constructors are subject to change
+-- without notice.
 data Type =
-    TVoid  -- ^ C++ @void@, Haskell @()@.
-  | TBool  -- ^ C++ @bool@, Haskell 'Bool'.
-  | TChar  -- ^ C++ @char@, Haskell 'Foreign.C.CChar'.
-  | TUChar  -- ^ C++ @unsigned char@, Haskell 'Foreign.C.CUChar'.
-  | TShort  -- ^ C++ @short int@, Haskell 'Foreign.C.CShort'.
-  | TUShort  -- ^ C++ @unsigned short int@, Haskell 'Foreign.C.CUShort'.
-  | TInt  -- ^ C++ @int@, Haskell 'Foreign.C.CInt'.
-  | TUInt  -- ^ C++ @unsigned int@, Haskell 'Foreign.C.CUInt'.
-  | TLong  -- ^ C++ @long int@, Haskell 'Foreign.C.CLong'.
-  | TULong  -- ^ C++ @unsigned long int@, Haskell 'Foreign.C.CULong'.
-  | TLLong  -- ^ C++ @long long int@, Haskell 'Foreign.C.CLLong'.
-  | TULLong  -- ^ C++ @unsigned long long int@, Haskell 'Foreign.C.CULLong'.
-  | TFloat  -- ^ C++ @float@, Haskell 'Foreign.C.CFloat'.
-  | TDouble  -- ^ C++ @double@, Haskell 'Foreign.C.CDouble'.
-  | TInt8  -- ^ C++ @int8_t@, Haskell 'Data.Int.Int8'.
-  | TInt16  -- ^ C++ @int16_t@, Haskell 'Data.Int.Int16'.
-  | TInt32  -- ^ C++ @int32_t@, Haskell 'Data.Int.Int32'.
-  | TInt64  -- ^ C++ @int64_t@, Haskell 'Data.Int.Int64'.
-  | TWord8  -- ^ C++ @uint8_t@, Haskell 'Data.Word.Word8'.
-  | TWord16  -- ^ C++ @uint16_t@, Haskell 'Data.Word.Word16'.
-  | TWord32  -- ^ C++ @uint32_t@, Haskell 'Data.Word.Word32'.
-  | TWord64  -- ^ C++ @uint64_t@, Haskell 'Data.Word.Word64'.
-  | TPtrdiff  -- ^ C++ @ptrdiff_t@, Haskell 'Foreign.C.CPtrdiff'.
-  | TSize  -- ^ C++ @size_t@, Haskell 'Foreign.C.CSize'.
-  | TSSize  -- ^ C++ @ssize_t@, Haskell 'System.Posix.Types.CSsize'.
-  | TEnum CppEnum  -- ^ A C++ @enum@ value.
-  | TBitspace Bitspace  -- ^ A C++ bitspace value.
-  | TPtr Type  -- ^ A poiner to another type.
-  | TRef Type  -- ^ A reference to another type.
-  | TFn [Type] Type
-    -- ^ A function taking parameters and returning a value (or 'TVoid').
-    -- Function pointers must wrap a 'TFn' in a 'TPtr'.
-  | TCallback Callback  -- ^ A handle for calling foreign code from C++.
-  | TObj Class  -- ^ An instance of a class.
-  | TObjToHeap Class
-    -- ^ A special case of 'TObj' that is only allowed when passing objects from
-    -- C++ to a foreign language.  Rather than looking at the object's
-    -- 'ClassConversion', the object will be copied to the heap, and a pointer
-    -- to the heap object will be passed.  The object must be
-    -- copy-constructable.
-    --
-    -- __The foreign language owns the pointer, even for callback arguments.__
-  | TToGc Type
-    -- ^ This type transfers ownership of the object to the foreign language's
-    -- garbage collector, and results in a managed pointer in the foreign
-    -- language.  This may only be used in one of the forms below, when passing
-    -- data from C++ to a foreign language (i.e. in a C++ function return type
-    -- or in a callback argument).  In the first case, the temporary object is
-    -- copied to the heap, and the result is a managed pointer to the heap
-    -- object instead of the temporary.
-    --
-    -- - @TToGc (TObj cls)@
-    -- - @TToGc (TRef (TConst (TObj cls)))@
-    -- - @TToGc (TRef (TObj cls))@
-    -- - @TToGc (TPtr (TConst (TObj cls)))@
-    -- - @TToGc (TPtr (TObj cls))@
-  | TConst Type  -- ^ A @const@ version of another type.
+    Internal_TVoid
+  | Internal_TBool
+  | Internal_TChar
+  | Internal_TUChar
+  | Internal_TShort
+  | Internal_TUShort
+  | Internal_TInt
+  | Internal_TUInt
+  | Internal_TLong
+  | Internal_TULong
+  | Internal_TLLong
+  | Internal_TULLong
+  | Internal_TFloat
+  | Internal_TDouble
+  | Internal_TInt8
+  | Internal_TInt16
+  | Internal_TInt32
+  | Internal_TInt64
+  | Internal_TWord8
+  | Internal_TWord16
+  | Internal_TWord32
+  | Internal_TWord64
+  | Internal_TPtrdiff
+  | Internal_TSize
+  | Internal_TSSize
+  | Internal_TEnum CppEnum
+  | Internal_TBitspace Bitspace
+  | Internal_TPtr Type
+  | Internal_TRef Type
+  | Internal_TFn [Type] Type
+  | Internal_TCallback Callback
+  | Internal_TObj Class
+  | Internal_TObjToHeap Class
+  | Internal_TToGc Type
+  | Internal_TConst Type
   deriving (Eq, Show)
 
 -- | Canonicalizes a 'Type' without changing its meaning.  Multiple nested
--- 'TConst's are collapsed into a single one.
+-- 'Internal_TConst's are collapsed into a single one.
 normalizeType :: Type -> Type
 normalizeType t = case t of
-  TVoid -> t
-  TBool -> t
-  TChar -> t
-  TUChar -> t
-  TShort -> t
-  TUShort -> t
-  TInt -> t
-  TUInt -> t
-  TLong -> t
-  TULong -> t
-  TLLong -> t
-  TULLong -> t
-  TFloat -> t
-  TDouble -> t
-  TInt8 -> t
-  TInt16 -> t
-  TInt32 -> t
-  TInt64 -> t
-  TWord8 -> t
-  TWord16 -> t
-  TWord32 -> t
-  TWord64 -> t
-  TPtrdiff -> t
-  TSize -> t
-  TSSize -> t
-  TEnum _ -> t
-  TBitspace _ -> t
-  TPtr t' -> TPtr $ normalizeType t'
-  TRef t' -> TRef $ normalizeType t'
-  TFn paramTypes retType -> TFn (map normalizeType paramTypes) $ normalizeType retType
-  TCallback _ -> t
-  TObj _ -> t
-  TObjToHeap _ -> t
-  TToGc _ -> t
-  TConst (TConst t') -> normalizeType $ TConst t'
-  TConst _ -> t
+  Internal_TVoid -> t
+  Internal_TBool -> t
+  Internal_TChar -> t
+  Internal_TUChar -> t
+  Internal_TShort -> t
+  Internal_TUShort -> t
+  Internal_TInt -> t
+  Internal_TUInt -> t
+  Internal_TLong -> t
+  Internal_TULong -> t
+  Internal_TLLong -> t
+  Internal_TULLong -> t
+  Internal_TFloat -> t
+  Internal_TDouble -> t
+  Internal_TInt8 -> t
+  Internal_TInt16 -> t
+  Internal_TInt32 -> t
+  Internal_TInt64 -> t
+  Internal_TWord8 -> t
+  Internal_TWord16 -> t
+  Internal_TWord32 -> t
+  Internal_TWord64 -> t
+  Internal_TPtrdiff -> t
+  Internal_TSize -> t
+  Internal_TSSize -> t
+  Internal_TEnum _ -> t
+  Internal_TBitspace _ -> t
+  Internal_TPtr t' -> Internal_TPtr $ normalizeType t'
+  Internal_TRef t' -> Internal_TRef $ normalizeType t'
+  Internal_TFn paramTypes retType ->
+    Internal_TFn (map normalizeType paramTypes) $ normalizeType retType
+  Internal_TCallback _ -> t
+  Internal_TObj _ -> t
+  Internal_TObjToHeap _ -> t
+  Internal_TToGc _ -> t
+  Internal_TConst (Internal_TConst t') -> normalizeType $ Internal_TConst t'
+  Internal_TConst _ -> t
 
--- | Strips leading 'TConst's off of a type.
+-- | Strips leading 'Internal_TConst's off of a type.
 stripConst :: Type -> Type
 stripConst t = case t of
-  TConst t' -> stripConst t'
+  Internal_TConst t' -> stripConst t'
   _ -> t
 
 -- | A C++ variable.
@@ -882,8 +862,9 @@ data Variable = Variable
   , varExtName :: ExtName
     -- ^ The variable's external name.
   , varType :: Type
-    -- ^ The type of the variable.  This may be 'TConst' to indicate that the
-    -- variable is read-only.
+    -- ^ The type of the variable.  This may be
+    -- 'Foreign.Hoppy.Generator.Types.constT' to indicate that the variable is
+    -- read-only.
   , varReqs :: Reqs
     -- ^ Requirements for bindings to use this variable.
   , varAddendum :: Addendum
@@ -910,10 +891,10 @@ makeVariable identifier maybeExtName t =
   Variable identifier (extNameOrIdentifier identifier maybeExtName) t mempty mempty
 
 -- | Returns whether the variable is constant, i.e. whether its type is
--- @'TConst' ...@.
+-- @'Foreign.Hoppy.Generator.Types.constT' ...@.
 varIsConst :: Variable -> Bool
 varIsConst v = case varType v of
-  TConst _ -> True
+  Internal_TConst _ -> True
   _ -> False
 
 -- | Returns the external name of the getter function for the variable.
@@ -985,7 +966,7 @@ data Bitspace = Bitspace
     -- ^ The bitspace's external name.
   , bitspaceType :: Type
     -- ^ The C++ type used for bits values.  This should be a primitive numeric
-    -- type, usually 'TInt'.
+    -- type, usually 'Foreign.Hoppy.Generator.Types.intT'.
   , bitspaceValueNames :: [(Int, [String])]
     -- ^ The numeric values and names of the bitspace values.  See
     -- 'enumValueNames'.
@@ -1224,11 +1205,12 @@ classAddMethods methods cls =
   if null methods then cls else cls { classMethods = classMethods cls ++ methods }
 
 -- | When a class object is returned from a function or taken as a parameter by
--- value (i.e. with 'TObj'), it will be converted to or from a foreign (non-C++)
--- object.  Conversion may also be performed explicitly.  This data type
--- describes how to perform those conversions.  A class may or may not support
--- conversion, for any particular foreign language; what is said below only
--- applies to classes that are convertible for a language.
+-- value (i.e. with 'Foreign.Hoppy.Generator.Types.objT'), it will be converted
+-- to or from a foreign (non-C++) object.  Conversion may also be performed
+-- explicitly.  This data type describes how to perform those conversions.  A
+-- class may or may not support conversion, for any particular foreign language;
+-- what is said below only applies to classes that are convertible for a
+-- language.
 --
 -- When converting between a C++ value and a foreign value, a pointer to the
 -- object is passed between C++ and the foreign language.  Then, for each
@@ -1258,24 +1240,29 @@ data ClassConversion = ClassConversion
 data ClassConversionMode a =
     ClassConversionNone
     -- ^ Indicates that a class __is not__ convertible for a language.  Passing
-    -- raw 'TObj' values into and out of C++ is not allowed.
+    -- raw 'Foreign.Hoppy.Generator.Types.objT' values into and out of C++ is
+    -- not allowed.
   | ClassConversionManual a
     -- ^ Indicates that a class __is__ convertible for a language.  Passing raw
-    -- 'TObj' values into and out of C++ is allowed, and the attached structure
-    -- describes how to perform the conversions.
+    -- 'Foreign.Hoppy.Generator.Types.objT' values into and out of C++ is
+    -- allowed, and the attached structure describes how to perform the
+    -- conversions.
   | ClassConversionToHeap
     -- ^ Indicates that a class __is not__ convertible for a language.
     -- Nevertheless, passing an object from C++ to the foreign language via a
-    -- type of @'TObj' cls@ is allowed, and behaves as though the type were
-    -- @'TObjToHeap' cls@ instead.
+    -- type of @'Foreign.Hoppy.Generator.Types.objT' cls@ is allowed, and
+    -- behaves as though the type were
+    -- @'Foreign.Hoppy.Generator.Types.objToHeapT' cls@ instead.
   | ClassConversionToGc
     -- ^ Indicates that a class __is not__ convertible for a language.
     -- Nevertheless, passing an object from C++ to the foreign language via a
-    -- type of @'TObj' cls@ is allowed, and behaves as though the type were
-    -- @'TToGc' ('TObj' cls)@ instead.
+    -- type of @'Foreign.Hoppy.Generator.Types.objT' cls@ is allowed, and
+    -- behaves as though the type were @'Foreign.Hoppy.Generator.Types.toGcT'
+    -- ('Foreign.Hoppy.Generator.Types.objT' cls)@ instead.
     --
-    -- This should be used for value objects so that you can simply use @'TObj'
-    -- cls@ in return types, and also write on @'mkProp' "..." ('TObj' cls)@.
+    -- This should be used for value objects so that you can simply use
+    -- @'Foreign.Hoppy.Generator.Types.objT' cls@ in return types, and also
+    -- write on @'mkProp' "..." ('Foreign.Hoppy.Generator.Types.objT' cls)@.
 
 -- | Encoding parameters for a class that is not encodable or decodable.
 classConversionNone :: ClassConversion
@@ -1577,7 +1564,7 @@ mkStaticMethod' cName foreignName = makeMethod'' cName foreignName MStatic Nonpu
 -- >   [ methods... ] ++
 -- >   mkProps
 -- >   [ mkBoolIsProp myClass "adjustable"
--- >   , mkProp myClass "maxWidth" TInt
+-- >   , mkProp myClass "maxWidth" intT
 -- >   ]
 mkProps :: [[Method]] -> [Method]
 mkProps = concat
@@ -1591,7 +1578,7 @@ mkProp name t =
   let c:cs = name
       setName = 's' : 'e' : 't' : toUpper c : cs
   in [ mkConstMethod name [] t
-     , mkMethod setName [t] TVoid
+     , mkMethod setName [t] Internal_TVoid
      ]
 
 -- | Creates a getter/setter binding pair for static methods:
@@ -1603,7 +1590,7 @@ mkStaticProp name t =
   let c:cs = name
       setName = 's' : 'e' : 't' : toUpper c : cs
   in [ mkStaticMethod name [] t
-     , mkStaticMethod setName [t] TVoid
+     , mkStaticMethod setName [t] Internal_TVoid
      ]
 
 -- | Creates a getter/setter binding pair for boolean methods, where the getter
@@ -1617,8 +1604,8 @@ mkBoolIsProp name =
       name' = toUpper c : cs
       isName = 'i':'s':name'
       setName = 's':'e':'t':name'
-  in [ mkConstMethod isName [] TBool
-     , mkMethod setName [TBool] TVoid
+  in [ mkConstMethod isName [] Internal_TBool
+     , mkMethod setName [Internal_TBool] Internal_TVoid
      ]
 
 -- | Creates a getter/setter binding pair for boolean methods, where the getter
@@ -1632,8 +1619,8 @@ mkBoolHasProp name =
       name' = toUpper c : cs
       hasName = 'h':'a':'s':name'
       setName = 's':'e':'t':name'
-  in [ mkConstMethod hasName [] TBool
-     , mkMethod setName [TBool] TVoid
+  in [ mkConstMethod hasName [] Internal_TBool
+     , mkMethod setName [Internal_TBool] Internal_TVoid
      ]
 
 -- | A non-C++ function that can be invoked via a C++ functor.
@@ -1673,9 +1660,10 @@ makeCallback :: ExtName
              -> Callback
 makeCallback extName paramTypes retType = Callback extName paramTypes retType mempty mempty
 
--- | Creates a 'TFn' from a callback's parameter and return types.
+-- | Creates a 'Foreign.Hoppy.Generator.Types.fnT' from a callback's parameter
+-- and return types.
 callbackToTFn :: Callback -> Type
-callbackToTFn = TFn <$> callbackParams <*> callbackReturn
+callbackToTFn = Internal_TFn <$> callbackParams <*> callbackReturn
 
 -- | A collection of imports for a Haskell module.  This is a monoid: import
 -- Statements are merged to give the union of imported bindings.
@@ -1861,26 +1849,29 @@ hsImportForSystemPosixTypes = hsQualifiedImport "System.Posix.Types" "HoppySPT"
 hsImportForUnsafeIO :: HsImportSet
 hsImportForUnsafeIO = hsQualifiedImport "System.IO.Unsafe" "HoppySIU"
 
--- | Returns an error message indicating that 'TObjToHeap' is used where data is
--- going from a foreign language into C++.
-tObjToHeapWrongDirectionErrorMsg :: Maybe String -> Class -> String
-tObjToHeapWrongDirectionErrorMsg maybeCaller cls =
+-- | Returns an error message indicating that
+-- 'Foreign.Hoppy.Generator.Types.objToHeapT' is used where data is going from a
+-- foreign language into C++.
+objToHeapTWrongDirectionErrorMsg :: Maybe String -> Class -> String
+objToHeapTWrongDirectionErrorMsg maybeCaller cls =
   concat [maybe "" (++ ": ") maybeCaller,
           "(TObjToHeap ", show cls, ") cannot be passed into C++",
           maybe "" (const ".") maybeCaller]
 
--- | Returns an error message indicating that 'TObjToHeap' is used where data is
--- going from a foreign language into C++.
+-- | Returns an error message indicating that
+-- 'Foreign.Hoppy.Generator.Types.objToHeapT' is used where data is going from a
+-- foreign language into C++.
 tToGcInvalidFormErrorMessage :: Maybe String -> Type -> String
 tToGcInvalidFormErrorMessage maybeCaller typeArg =
   concat [maybe "" (++ ": ") maybeCaller,
-          "(", show (TToGc typeArg), ") is an invalid form for TToGc.",
+          "(", show (Internal_TToGc typeArg), ") is an invalid form for TToGc.",
           maybe "" (const ".") maybeCaller]
 
--- | Returns an error message indicating that 'TToGc' is used where data is
--- going from a foreign language into C++.
-tToGcWrongDirectionErrorMsg :: Maybe String -> Type -> String
-tToGcWrongDirectionErrorMsg maybeCaller typeArg =
+-- | Returns an error message indicating that
+-- 'Foreign.Hoppy.Generator.Types.toGcT' is used where data is going from a
+-- foreign language into C++.
+toGcTWrongDirectionErrorMsg :: Maybe String -> Type -> String
+toGcTWrongDirectionErrorMsg maybeCaller typeArg =
   concat [maybe "" (++ ": ") maybeCaller,
-          "(", show (TToGc typeArg), ") cannot be passed into C++",
+          "(", show (Internal_TToGc typeArg), ") cannot be passed into C++",
           maybe "" (const ".") maybeCaller]

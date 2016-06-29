@@ -22,6 +22,7 @@ module Foreign.Hoppy.Generator.Test.Circular.Flob (
 
 import Foreign.Hoppy.Generator.Spec
 import Foreign.Hoppy.Generator.Test.Circular.Flub
+import Foreign.Hoppy.Generator.Types
 
 flobModule :: Module
 flobModule =
@@ -39,21 +40,21 @@ c_FlobClass :: Class
 c_FlobClass =
   makeClass (ident "FlobClass") Nothing []
   [ mkCtor "new" [] ]
-  [ mkConstMethod "invokeCallback" [TCallback cb_FlubCallback] TVoid ]
+  [ mkConstMethod "invokeCallback" [callbackT cb_FlubCallback] voidT ]
 
 f_takesFlubValues :: Function
 f_takesFlubValues =
   makeFn (ident "takesFlubValues") Nothing Nonpure
-  [TPtr $ TObj c_FlubClass, TEnum e_FlubEnum, TBitspace bs_FlubBitspace] TVoid
+  [ptrT $ objT c_FlubClass, enumT e_FlubEnum, bitspaceT bs_FlubBitspace] voidT
 
 f_returnsFlubClass :: Function
 f_returnsFlubClass =
-  makeFn (ident "returnsFlubClass") Nothing Nonpure [] $ TPtr $ TObj c_FlubClass
+  makeFn (ident "returnsFlubClass") Nothing Nonpure [] $ ptrT $ objT c_FlubClass
 
 f_returnsFlubEnum :: Function
 f_returnsFlubEnum =
-  makeFn (ident "returnsFlubEnum") Nothing Nonpure [] $ TEnum e_FlubEnum
+  makeFn (ident "returnsFlubEnum") Nothing Nonpure [] $ enumT e_FlubEnum
 
 f_returnsFlubBitspace :: Function
 f_returnsFlubBitspace =
-  makeFn (ident "returnsFlubBitspace") Nothing Nonpure [] $ TBitspace bs_FlubBitspace
+  makeFn (ident "returnsFlubBitspace") Nothing Nonpure [] $ bitspaceT bs_FlubBitspace

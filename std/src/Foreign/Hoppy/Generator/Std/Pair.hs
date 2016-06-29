@@ -35,6 +35,7 @@ import Foreign.Hoppy.Generator.Spec.ClassFeature (
   classAddFeatures,
   )
 import Foreign.Hoppy.Generator.Std.Internal (includeHelper)
+import Foreign.Hoppy.Generator.Types
 import Foreign.Hoppy.Generator.Version (CppVersion (Cpp2011), activeCppVersion, collect, just, test)
 
 -- | Options for instantiating @pair@.
@@ -77,14 +78,14 @@ instantiate' pairName a b userReqs opts =
         ] $
         collect
         [ just $ makeFnMethod (ident2 "hoppy" "utility" "pairFirst") "first" MNormal Nonpure
-          [TRef $ TObj pair] $ TRef a
+          [refT $ objT pair] $ refT a
         , just $ makeFnMethod (ident2 "hoppy" "utility" "pairFirst") "firstConst" MConst Nonpure
-          [TRef $ TObj pair] $ TRef $ TConst a
+          [refT $ objT pair] $ refT $ constT a
         , just $ makeFnMethod (ident2 "hoppy" "utility" "pairSecond") "second" MNormal Nonpure
-          [TRef $ TObj pair] $ TRef b
+          [refT $ objT pair] $ refT b
         , just $ makeFnMethod (ident2 "hoppy" "utility" "pairSecond") "secondConst" MConst Nonpure
-          [TRef $ TObj pair] $ TRef $ TConst b
-        , test (activeCppVersion >= Cpp2011) $ mkMethod "swap" [TRef $ TObj pair] TVoid
+          [refT $ objT pair] $ refT $ constT b
+        , test (activeCppVersion >= Cpp2011) $ mkMethod "swap" [refT $ objT pair] voidT
         ]
 
   in Contents

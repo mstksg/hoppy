@@ -42,6 +42,7 @@ import qualified Data.Set as S
 import Foreign.Hoppy.Generator.Common
 import Foreign.Hoppy.Generator.Language.Cpp
 import Foreign.Hoppy.Generator.Spec
+import Foreign.Hoppy.Generator.Types
 
 data CoderDirection = DoDecode | DoEncode
                     deriving (Eq, Show)
@@ -99,7 +100,7 @@ execGenerator interface m maybeHeaderGuardName action = do
 sayFunction :: String -> [String] -> Type -> Maybe (Generator ()) -> Generator ()
 sayFunction name paramNames t maybeBody = do
   case t of
-    TFn {} -> return ()
+    Internal_TFn {} -> return ()
     _ -> abort $ concat ["sayFunction: A function type is required, given ", show t, "."]
   say "\n"  -- New top-level structure, leave a blank line.
   sayVar name (Just paramNames) t
@@ -163,7 +164,7 @@ sayExport sayBody export = case export of
                   sayBody
 
   ExportClass cls -> when sayBody $ do
-    let clsPtr = TPtr $ TObj cls
+    let clsPtr = ptrT $ objT cls
         justClsPtr = Just clsPtr
     -- TODO Is this redundant for a completely empty class?  (No ctors or methods, private dtor.)
     addReqsM $ classReqs cls  -- This is needed at least for the delete function.
@@ -181,7 +182,7 @@ sayExport sayBody export = case export of
     when (classDtorIsPublic cls) $
       sayFunction (classDeleteFnCppName cls)
                   ["self"]
-                  (TFn [TPtr $ TConst $ TObj cls] TVoid) $
+                  (fnT [ptrT $ constT $ objT cls] voidT) $
         Just $ say "delete self;\n"
 
     -- Export each of the class's methods.
@@ -225,17 +226,17 @@ sayExport sayBody export = case export of
         genUpcastFns cls ancestorCls = do
           sayFunction (classCastFnCppName cls ancestorCls)
                       ["self"]
-                      (TFn [TPtr $ TConst $ TObj cls] $ TPtr $ TConst $ TObj ancestorCls)
+                      (fnT [ptrT $ constT $ objT cls] $ ptrT $ constT $ objT ancestorCls)
                       (Just $ say "return self;\n")
           forM_ (classSuperclasses ancestorCls) $ genUpcastFns cls
 
         genDowncastFns :: Class -> Class -> Generator ()
         genDowncastFns cls ancestorCls = unless (classIsMonomorphicSuperclass ancestorCls) $ do
-          let clsPtr = TPtr $ TConst $ TObj cls
-              ancestorPtr = TPtr $ TConst $ TObj ancestorCls
+          let clsPtr = ptrT $ constT $ objT cls
+              ancestorPtr = ptrT $ constT $ objT ancestorCls
           sayFunction (classCastFnCppName ancestorCls cls)
                       ["self"]
-                      (TFn [ancestorPtr] clsPtr) $ Just $ do
+                      (fnT [ancestorPtr] clsPtr) $ Just $ do
             say "return dynamic_cast<"
             sayType Nothing clsPtr
             say ">(self);\n"
@@ -244,7 +245,7 @@ sayExport sayBody export = case export of
 sayExportVariable :: Variable -> Generator ()
 sayExportVariable v = do
   let (isConst, deconstType) = case varType v of
-        TConst t -> (True, t)
+        Internal_TConst t -> (True, t)
         t -> (False, t)
 
   -- Say a getter function.
@@ -261,7 +262,7 @@ sayExportVariable v = do
                 (VarWrite $ varIdentifier v)
                 Nothing
                 [deconstType]
-                TVoid
+                voidT
                 True
 
 data CallType =
@@ -289,10 +290,10 @@ sayExportFn extName callType maybeThisType paramTypes retType sayBody = do
   sayFunction (externalNameToCpp extName)
               (maybe id (const ("self":)) maybeThisType $
                zipWith3 (\t ctm -> case t of
-                           TCallback {} -> toArgNameAlt
+                           Internal_TCallback {} -> toArgNameAlt
                            _ -> if isJust ctm then toArgNameAlt else toArgName)
                paramTypes paramCTypeMaybes [1..paramCount])
-              (TFn (maybe id (:) maybeThisType paramCTypes) retCType) $
+              (fnT (maybe id (:) maybeThisType paramCTypes) retCType) $
     if not sayBody
     then Nothing
     else Just $ do
@@ -331,9 +332,9 @@ sayExportFn extName callType maybeThisType paramTypes retType sayBody = do
           -- Writes the call, transforming the return value if necessary.
           -- These translations should be kept in sync with typeToCType.
           sayCallAndReturn retType' retCTypeMaybe' = case (retType', retCTypeMaybe') of
-            (TVoid, Nothing) -> sayCall >> say ";\n"
+            (Internal_TVoid, Nothing) -> sayCall >> say ";\n"
             (_, Nothing) -> say "return " >> sayCall >> say ";\n"
-            (TBitspace b, Just _) -> do
+            (Internal_TBitspace b, Just _) -> do
               addReqsM $ bitspaceReqs b
               let convFn = bitspaceFromCppValueFn b
               say "return "
@@ -341,11 +342,17 @@ sayExportFn extName callType maybeThisType paramTypes retType sayBody = do
               sayCall
               when (isJust convFn) $ say ")"
               say ";\n";
-            (TRef cls, Just (TPtr cls')) | cls == cls' -> say "return &(" >> sayCall >> say ");\n"
-            (TObj cls, Just (TPtr (TConst (TObj cls')))) | cls == cls' -> sayReturnNew cls sayCall
-            (TObjToHeap cls, Just (TPtr (TObj cls'))) | cls == cls' -> sayReturnNew cls sayCall
-            (TToGc (TObj cls), Just (TPtr (TObj cls'))) | cls == cls' -> sayReturnNew cls sayCall
-            (TToGc retType'', _) -> sayCallAndReturn retType'' retCTypeMaybe'
+            (Internal_TRef cls, Just (Internal_TPtr cls')) | cls == cls' ->
+              say "return &(" >> sayCall >> say ");\n"
+            (Internal_TObj cls,
+             Just (Internal_TPtr (Internal_TConst (Internal_TObj cls')))) | cls == cls' ->
+              sayReturnNew cls sayCall
+            (Internal_TObjToHeap cls, Just (Internal_TPtr (Internal_TObj cls'))) | cls == cls' ->
+              sayReturnNew cls sayCall
+            (Internal_TToGc (Internal_TObj cls),
+             Just (Internal_TPtr (Internal_TObj cls'))) | cls == cls' ->
+              sayReturnNew cls sayCall
+            (Internal_TToGc retType'', _) -> sayCallAndReturn retType'' retCTypeMaybe'
             ts -> abort $ concat ["sayExportFn: Unexpected return types ", show ts,
                                   "while generating binding for ", show extName, "."]
 
@@ -360,7 +367,7 @@ sayExportFn extName callType maybeThisType paramTypes retType sayBody = do
 -- callback.
 sayArgRead :: CoderDirection -> (Int, Type, Maybe Type) -> Generator ()
 sayArgRead dir (n, stripConst . normalizeType -> cppType, maybeCType) = case cppType of
-  TBitspace b -> case maybeCType of
+  Internal_TBitspace b -> case maybeCType of
     Just cType -> do
       let cppTypeId = fromMaybe (error $ concat
                                  ["sayArgRead: Expected ", show b,
@@ -381,7 +388,7 @@ sayArgRead dir (n, stripConst . normalizeType -> cppType, maybeCType) = case cpp
     Nothing ->
       return ()
 
-  TCallback cb -> do
+  Internal_TCallback cb -> do
     case dir of
       DoDecode -> return ()
       DoEncode -> abort $ concat
@@ -389,25 +396,25 @@ sayArgRead dir (n, stripConst . normalizeType -> cppType, maybeCType) = case cpp
                    show cb, "."]
     says [callbackClassName cb, " ", toArgName n, "(", toArgNameAlt n, ");\n"]
 
-  TRef t -> convertObj t
+  Internal_TRef t -> convertObj t
 
-  TObj _ -> convertObj $ TConst cppType
+  Internal_TObj _ -> convertObj $ constT cppType
 
-  TObjToHeap cls -> case dir of
-    DoDecode -> error $ tObjToHeapWrongDirectionErrorMsg (Just "sayArgRead") cls
+  Internal_TObjToHeap cls -> case dir of
+    DoDecode -> error $ objToHeapTWrongDirectionErrorMsg (Just "sayArgRead") cls
     DoEncode -> do
       sayIdentifier $ classIdentifier cls
       says ["* ", toArgName n, " = new "]
       sayIdentifier $ classIdentifier cls
       says ["(", toArgNameAlt n, ");\n"]
 
-  TToGc t' -> case dir of
-    DoDecode -> error $ tToGcWrongDirectionErrorMsg (Just "sayArgRead") t'
+  Internal_TToGc t' -> case dir of
+    DoDecode -> error $ toGcTWrongDirectionErrorMsg (Just "sayArgRead") t'
     DoEncode -> do
       let newCppType = case t' of
             -- In the case of (TToGc (TObj _)), we copy the temporary object to
             -- the heap and let the foreign language manage that value.
-            TObj cls -> TObjToHeap cls
+            Internal_TObj cls -> objToHeapT cls
             _ -> t'
       sayArgRead dir (n, cppType, typeToCType newCppType)
 
@@ -423,10 +430,10 @@ sayArgRead dir (n, stripConst . normalizeType -> cppType, maybeCType) = case cpp
 
   where convertObj cppType' = case dir of
           DoDecode -> do
-            sayVar (toArgName n) Nothing $ TRef cppType'
+            sayVar (toArgName n) Nothing $ refT cppType'
             says [" = *", toArgNameAlt n, ";\n"]
           DoEncode -> do
-            sayVar (toArgName n) Nothing $ TPtr cppType'
+            sayVar (toArgName n) Nothing $ ptrT cppType'
             says [" = &", toArgNameAlt n, ";\n"]
 
 sayArgNames :: Int -> Generator ()
@@ -441,8 +448,8 @@ sayExportCallback sayBody cb = do
       paramTypes = callbackParams cb
       paramCount = length paramTypes
       retType = callbackReturn cb
-      cbType = TCallback cb
-      fnType = TFn paramTypes retType
+      cbType = callbackT cb
+      fnType = fnT paramTypes retType
 
   -- The function pointer we receive from foreign code will work with C-types,
   -- so determine what that function looks like.
@@ -451,8 +458,8 @@ sayExportCallback sayBody cb = do
 
   addReqsM . mconcat =<< mapM typeReqs (retType:paramTypes)
 
-  let fnCType = TFn paramCTypes retCType
-      fnPtrCType = TPtr fnCType
+  let fnCType = fnT paramCTypes retCType
+      fnPtrCType = ptrT fnCType
 
   if not sayBody
     then do
@@ -469,7 +476,7 @@ sayExportCallback sayBody cb = do
       says ["    ", implClassName, "(const ", implClassName, "&);\n"]
       says ["    ", implClassName, "& operator=(const ", implClassName, "&);\n"]
       say "\n"
-      say "    " >> sayVar "f_" Nothing (TConst fnPtrCType) >> say ";\n"
+      say "    " >> sayVar "f_" Nothing (constT fnPtrCType) >> say ";\n"
       say "    void (*const release_)(void(*)());\n"
       say "    const bool releaseRelease_;\n"
       say "};\n"
@@ -516,9 +523,9 @@ sayExportCallback sayBody cb = do
         -- Invoke the function pointer into foreign code.
         let sayCall = say "f_(" >> sayArgNames paramCount >> say ")"
         case (retType, retCTypeMaybe) of
-          (TVoid, Nothing) -> sayCall >> say ";\n"
+          (Internal_TVoid, Nothing) -> sayCall >> say ";\n"
           (_, Nothing) -> say "return " >> sayCall >> say ";\n"
-          (TBitspace b, Just _) -> do
+          (Internal_TBitspace b, Just _) -> do
             addReqsM $ bitspaceReqs b
             let convFn = bitspaceToCppValueFn b
             say "return "
@@ -526,14 +533,17 @@ sayExportCallback sayBody cb = do
             sayCall
             when (isJust convFn) $ say ")"
             say ";\n";
-          (TObj cls1, Just retCType@(TPtr (TConst (TObj cls2)))) | cls1 == cls2 -> do
-            sayVar "resultPtr" Nothing retCType >> say " = " >> sayCall >> say ";\n"
-            sayVar "result" Nothing retType >> say " = *resultPtr;\n"
-            say "delete resultPtr;\n"
-            say "return result;\n"
-          (TRef (TConst (TObj cls1)), Just (TPtr (TConst (TObj cls2)))) | cls1 == cls2 ->
+          (Internal_TObj cls1, Just retCType@(Internal_TPtr (Internal_TConst (Internal_TObj cls2))))
+            | cls1 == cls2 -> do
+              sayVar "resultPtr" Nothing retCType >> say " = " >> sayCall >> say ";\n"
+              sayVar "result" Nothing retType >> say " = *resultPtr;\n"
+              say "delete resultPtr;\n"
+              say "return result;\n"
+          (Internal_TRef (Internal_TConst (Internal_TObj cls1)),
+           Just (Internal_TPtr (Internal_TConst (Internal_TObj cls2)))) | cls1 == cls2 ->
             say "return *(" >> sayCall >> say ");\n"
-          (TRef (TObj cls1), Just (TPtr (TObj cls2))) | cls1 == cls2 ->
+          (Internal_TRef (Internal_TObj cls1),
+           Just (Internal_TPtr (Internal_TObj cls2))) | cls1 == cls2 ->
             say "return *(" >> sayCall >> say ");\n"
           ts -> abort $ concat
                 ["sayExportCallback: Unexpected return types ", show ts, "."]
@@ -544,15 +554,15 @@ sayExportCallback sayBody cb = do
                   (map toArgName [1..paramCount])
                   fnType $ Just $ do
         case retType of
-          TVoid -> say "(*impl_)("
+          Internal_TVoid -> say "(*impl_)("
           _ -> say "return (*impl_)("
         sayArgNames paramCount
         say ");\n"
 
       -- Render the function that creates a new callback object.
-      let newCallbackFnType = TFn [ fnPtrCType
-                                  , TPtr (TFn [TPtr $ TFn [] TVoid] TVoid)
-                                  , TBool
+      let newCallbackFnType = fnT [ fnPtrCType
+                                  , ptrT (fnT [ptrT $ fnT [] voidT] voidT)
+                                  , boolT
                                   ]
                               cbType
       sayFunction fnName ["f", "release", "releaseRelease"] newCallbackFnType $ Just $
@@ -566,61 +576,61 @@ typeToCType t = case t of
   -- converting the bitspace value, when the bitspace has a C++ type we have to
   -- assume that it needs to be converted.  The caller will sort out whether a
   -- conversion is actually requested.
-  TBitspace b -> case bitspaceCppTypeIdentifier b of
+  Internal_TBitspace b -> case bitspaceCppTypeIdentifier b of
     Just _ -> Just $ bitspaceType b
     Nothing -> Nothing
-  TRef t' -> Just $ TPtr t'
-  TObj _ -> Just $ TPtr $ TConst t
-  TObjToHeap cls -> Just $ TPtr $ TObj cls
-  TToGc t'@(TObj _) -> Just $ TPtr t'
-  TToGc t' -> typeToCType t'
-  TConst t' -> typeToCType t'
+  Internal_TRef t' -> Just $ ptrT t'
+  Internal_TObj _ -> Just $ ptrT $ constT t
+  Internal_TObjToHeap cls -> Just $ ptrT $ objT cls
+  Internal_TToGc t'@(Internal_TObj _) -> Just $ ptrT t'
+  Internal_TToGc t' -> typeToCType t'
+  Internal_TConst t' -> typeToCType t'
   _ -> Nothing
 
 typeReqs :: Type -> Generator Reqs
 typeReqs t = case t of
-  TVoid -> return mempty
-  TBool -> return mempty
-  TChar -> return mempty
-  TUChar -> return mempty
-  TShort -> return mempty
-  TUShort -> return mempty
-  TInt -> return mempty
-  TUInt -> return mempty
-  TLong -> return mempty
-  TULong -> return mempty
-  TLLong -> return mempty
-  TULLong -> return mempty
-  TFloat -> return mempty
-  TDouble -> return mempty
-  TInt8 -> return cstdintReqs
-  TInt16 -> return cstdintReqs
-  TInt32 -> return cstdintReqs
-  TInt64 -> return cstdintReqs
-  TWord8 -> return cstdintReqs
-  TWord16 -> return cstdintReqs
-  TWord32 -> return cstdintReqs
-  TWord64 -> return cstdintReqs
-  TPtrdiff -> return cstddefReqs
-  TSize -> return cstddefReqs
-  TSSize -> return cstddefReqs
-  TEnum e -> return $ enumReqs e
-  TBitspace b -> typeReqs $ bitspaceType b
-  TPtr t' -> typeReqs t'
-  TRef t' -> typeReqs t'
-  TFn paramTypes retType ->
+  Internal_TVoid -> return mempty
+  Internal_TBool -> return mempty
+  Internal_TChar -> return mempty
+  Internal_TUChar -> return mempty
+  Internal_TShort -> return mempty
+  Internal_TUShort -> return mempty
+  Internal_TInt -> return mempty
+  Internal_TUInt -> return mempty
+  Internal_TLong -> return mempty
+  Internal_TULong -> return mempty
+  Internal_TLLong -> return mempty
+  Internal_TULLong -> return mempty
+  Internal_TFloat -> return mempty
+  Internal_TDouble -> return mempty
+  Internal_TInt8 -> return cstdintReqs
+  Internal_TInt16 -> return cstdintReqs
+  Internal_TInt32 -> return cstdintReqs
+  Internal_TInt64 -> return cstdintReqs
+  Internal_TWord8 -> return cstdintReqs
+  Internal_TWord16 -> return cstdintReqs
+  Internal_TWord32 -> return cstdintReqs
+  Internal_TWord64 -> return cstdintReqs
+  Internal_TPtrdiff -> return cstddefReqs
+  Internal_TSize -> return cstddefReqs
+  Internal_TSSize -> return cstddefReqs
+  Internal_TEnum e -> return $ enumReqs e
+  Internal_TBitspace b -> typeReqs $ bitspaceType b
+  Internal_TPtr t' -> typeReqs t'
+  Internal_TRef t' -> typeReqs t'
+  Internal_TFn paramTypes retType ->
     -- TODO Is the right 'ReqsType' being used recursively here?
     mconcat <$> mapM typeReqs (retType:paramTypes)
-  TCallback cb -> do
+  Internal_TCallback cb -> do
     cbClassReqs <- reqInclude . includeLocal . moduleHppPath <$>
                    findExportModule (callbackExtName cb)
     -- TODO Is the right 'ReqsType' being used recursively here?
     fnTypeReqs <- typeReqs $ callbackToTFn cb
     return $ cbClassReqs `mappend` fnTypeReqs
-  TObj cls -> return $ classReqs cls
-  TObjToHeap cls -> return $ classReqs cls
-  TToGc t' -> typeReqs t'
-  TConst t' -> typeReqs t'
+  Internal_TObj cls -> return $ classReqs cls
+  Internal_TObjToHeap cls -> return $ classReqs cls
+  Internal_TToGc t' -> typeReqs t'
+  Internal_TConst t' -> typeReqs t'
 
 cstddefReqs :: Reqs
 cstddefReqs = reqInclude $ includeStd "cstddef"

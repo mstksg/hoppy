@@ -50,6 +50,7 @@ import Foreign.Hoppy.Generator.Spec.ClassFeature (
 import Foreign.Hoppy.Generator.Std (ValueConversion (ConvertPtr, ConvertValue))
 import Foreign.Hoppy.Generator.Std.Internal (includeHelper)
 import Foreign.Hoppy.Generator.Std.Iterator
+import Foreign.Hoppy.Generator.Types
 
 -- | Options for instantiating the map classes.
 data Options = Options
@@ -111,28 +112,28 @@ instantiate' mapName k v userReqs opts =
         makeClass (ident1T "std" "map" [k, v]) (Just extName) []
         [ mkCtor "new" []
         ]
-        [ mkMethod' "at" "at" [k] $ TRef v
-        , mkConstMethod' "at" "atConst" [k] $ TRef $ TConst v
-        , mkMethod' "begin" "begin" [] $ TToGc $ TObj iterator
-        , mkConstMethod' "begin" "beginConst" [] $ TToGc $ TObj constIterator
-        , mkMethod "clear" [] TVoid
-        , mkConstMethod "count" [k] TSize
-        , mkConstMethod "empty" [] TBool
-        , mkMethod' "end" "end" [] $ TToGc $ TObj iterator
-        , mkConstMethod' "end" "endConst" [] $ TToGc $ TObj constIterator
+        [ mkMethod' "at" "at" [k] $ refT v
+        , mkConstMethod' "at" "atConst" [k] $ refT $ constT v
+        , mkMethod' "begin" "begin" [] $ toGcT $ objT iterator
+        , mkConstMethod' "begin" "beginConst" [] $ toGcT $ objT constIterator
+        , mkMethod "clear" [] voidT
+        , mkConstMethod "count" [k] sizeT
+        , mkConstMethod "empty" [] boolT
+        , mkMethod' "end" "end" [] $ toGcT $ objT iterator
+        , mkConstMethod' "end" "endConst" [] $ toGcT $ objT constIterator
           -- equal_range: find is good enough.
-        , mkMethod' "erase" "erase" [TObj iterator] TVoid
-        , mkMethod' "erase" "eraseKey" [k] TSize
-        , mkMethod' "erase" "eraseRange" [TObj iterator, TObj iterator] TVoid
-        , mkMethod' "find" "find" [k] $ TToGc $ TObj iterator
-        , mkConstMethod' "find" "findConst" [k] $ TToGc $ TObj constIterator
+        , mkMethod' "erase" "erase" [objT iterator] voidT
+        , mkMethod' "erase" "eraseKey" [k] sizeT
+        , mkMethod' "erase" "eraseRange" [objT iterator, objT iterator] voidT
+        , mkMethod' "find" "find" [k] $ toGcT $ objT iterator
+        , mkConstMethod' "find" "findConst" [k] $ toGcT $ objT constIterator
           -- TODO insert
           -- lower_bound: find is good enough.
-        , mkConstMethod' "max_size" "maxSize" [] TSize
-        , mkConstMethod "size" [] TSize
-        , mkMethod "swap" [TRef $ TObj map] TVoid
+        , mkConstMethod' "max_size" "maxSize" [] sizeT
+        , mkConstMethod "size" [] sizeT
+        , mkMethod "swap" [refT $ objT map] voidT
           -- upper_bound: find is good enough.
-        , mkMethod OpArray [k] $ TRef v
+        , mkMethod OpArray [k] $ refT v
         ]
 
       iterator =
@@ -143,11 +144,11 @@ instantiate' mapName k v userReqs opts =
                             ("iterator", Nothing)])
         (Just $ toExtName iteratorName) [] []
         [ makeFnMethod getIteratorKeyIdent "getKey" MConst Nonpure
-          [TObj iterator] $ TRef $ TConst k
+          [objT iterator] $ refT $ constT k
         , makeFnMethod getIteratorValueIdent "getValue" MNormal Nonpure
-          [TRef $ TObj iterator] $ TRef v
+          [refT $ objT iterator] $ refT v
         , makeFnMethod getIteratorValueIdent "getValueConst" MConst Nonpure
-          [TObj iterator] $ TRef $ TConst v
+          [objT iterator] $ refT $ constT v
         ]
 
       constIterator =
@@ -158,14 +159,14 @@ instantiate' mapName k v userReqs opts =
                             ("const_iterator", Nothing)])
         (Just $ toExtName constIteratorName)
         []
-        [ mkCtor "newFromConst" [TObj iterator]
+        [ mkCtor "newFromConst" [objT iterator]
         ]
         [ makeFnMethod (ident2 "hoppy" "iterator" "deconst") "deconst" MConst Nonpure
-          [TObj constIterator, TRef $ TObj map] $ TToGc $ TObj iterator
+          [objT constIterator, refT $ objT map] $ toGcT $ objT iterator
         , makeFnMethod getIteratorKeyIdent "getKey" MConst Nonpure
-          [TObj constIterator] $ TRef $ TConst k
+          [objT constIterator] $ refT $ constT k
         , makeFnMethod getIteratorValueIdent "getValueConst" MConst Nonpure
-          [TObj constIterator] $ TRef $ TConst v
+          [objT constIterator] $ refT $ constT v
         ]
 
       -- The addendum for the map class contains HasContents and FromContents
@@ -181,17 +182,17 @@ instantiate' mapName k v userReqs opts =
           keyHsType <-
             cppTypeToHsTypeAndUse HsHsSide $
             (case keyConv of
-               ConvertPtr -> TPtr
+               ConvertPtr -> ptrT
                ConvertValue -> id) $
-            TConst k
+            constT k
 
           valueHsType <-
             cppTypeToHsTypeAndUse HsHsSide $
             (case valueConv of
-               ConvertPtr -> TPtr
+               ConvertPtr -> ptrT
                ConvertValue -> id) $
             case cst of
-              Const -> TConst v
+              Const -> constT v
               Nonconst -> v
 
           -- Generate const and nonconst HasContents instances.

@@ -49,6 +49,7 @@ import Foreign.Hoppy.Generator.Spec.ClassFeature (
   )
 import Foreign.Hoppy.Generator.Std (ValueConversion (ConvertPtr, ConvertValue))
 import Foreign.Hoppy.Generator.Std.Iterator
+import Foreign.Hoppy.Generator.Types
 import Foreign.Hoppy.Generator.Version (collect, just, test)
 
 -- | Options for instantiating the list classes.
@@ -97,41 +98,41 @@ instantiate' listName t tReqs opts =
         [ mkCtor "new" []
         ] $
         collect
-        [ just $ mkMethod' "back" "back" [] $ TRef t
-        , just $ mkConstMethod' "back" "backConst" [] $ TRef $ TConst t
-        , just $ mkMethod' "begin" "begin" [] $ TToGc $ TObj iterator
-        , just $ mkConstMethod' "begin" "beginConst" [] $ TToGc $ TObj constIterator
-        , just $ mkMethod "clear" [] TVoid
-        , just $ mkConstMethod "empty" [] TBool
-        , just $ mkMethod' "end" "end" [] $ TToGc $ TObj iterator
-        , just $ mkConstMethod' "end" "endConst" [] $ TToGc $ TObj constIterator
-        , just $ mkMethod' "erase" "erase" [TObj iterator] TVoid
-        , just $ mkMethod' "erase" "eraseRange" [TObj iterator, TObj iterator] TVoid
-        , just $ mkMethod' "front" "front" [] $ TRef t
-        , just $ mkConstMethod' "front" "frontConst" [] $ TRef $ TConst t
-        , just $ mkMethod "insert" [TObj iterator, t] $ TToGc $ TObj iterator
-        , just $ mkConstMethod' "max_size" "maxSize" [] TSize
-        , test (elem Comparable features) $ mkMethod "merge" [TRef $ TObj list] TVoid
+        [ just $ mkMethod' "back" "back" [] $ refT t
+        , just $ mkConstMethod' "back" "backConst" [] $ refT $ constT t
+        , just $ mkMethod' "begin" "begin" [] $ toGcT $ objT iterator
+        , just $ mkConstMethod' "begin" "beginConst" [] $ toGcT $ objT constIterator
+        , just $ mkMethod "clear" [] voidT
+        , just $ mkConstMethod "empty" [] boolT
+        , just $ mkMethod' "end" "end" [] $ toGcT $ objT iterator
+        , just $ mkConstMethod' "end" "endConst" [] $ toGcT $ objT constIterator
+        , just $ mkMethod' "erase" "erase" [objT iterator] voidT
+        , just $ mkMethod' "erase" "eraseRange" [objT iterator, objT iterator] voidT
+        , just $ mkMethod' "front" "front" [] $ refT t
+        , just $ mkConstMethod' "front" "frontConst" [] $ refT $ constT t
+        , just $ mkMethod "insert" [objT iterator, t] $ toGcT $ objT iterator
+        , just $ mkConstMethod' "max_size" "maxSize" [] sizeT
+        , test (elem Comparable features) $ mkMethod "merge" [refT $ objT list] voidT
           -- TODO merge(list&, Comparator)
-        , just $ mkMethod' "pop_back" "popBack" [] TVoid
-        , just $ mkMethod' "pop_front" "popFront" [] TVoid
-        , just $ mkMethod' "push_back" "pushBack" [t] TVoid
-        , just $ mkMethod' "push_front" "pushFront" [t] TVoid
-        , test (elem Equatable features) $ mkMethod "remove" [t] TVoid
+        , just $ mkMethod' "pop_back" "popBack" [] voidT
+        , just $ mkMethod' "pop_front" "popFront" [] voidT
+        , just $ mkMethod' "push_back" "pushBack" [t] voidT
+        , just $ mkMethod' "push_front" "pushFront" [t] voidT
+        , test (elem Equatable features) $ mkMethod "remove" [t] voidT
           -- TODO remove_if(UnaryPredicate)
-        , just $ mkMethod' "resize" "resize" [TSize] TVoid
-        , just $ mkMethod' "resize" "resizeWith" [TSize, t] TVoid
-        , just $ mkMethod "reverse" [] TVoid
-        , just $ mkConstMethod "size" [] TSize
-        , test (elem Comparable features) $ mkMethod "sort" [] TVoid
+        , just $ mkMethod' "resize" "resize" [sizeT] voidT
+        , just $ mkMethod' "resize" "resizeWith" [sizeT, t] voidT
+        , just $ mkMethod "reverse" [] voidT
+        , just $ mkConstMethod "size" [] sizeT
+        , test (elem Comparable features) $ mkMethod "sort" [] voidT
           -- TODO sort(Comparator)
-        , just $ mkMethod' "splice" "spliceAll" [TObj iterator, TRef $ TObj list] TVoid
+        , just $ mkMethod' "splice" "spliceAll" [objT iterator, refT $ objT list] voidT
         , just $ mkMethod' "splice" "spliceOne"
-          [TObj iterator, TRef $ TObj list, TObj iterator] TVoid
+          [objT iterator, refT $ objT list, objT iterator] voidT
         , just $ mkMethod' "splice" "spliceRange"
-          [TObj iterator, TRef $ TObj list, TObj iterator, TObj iterator] TVoid
-        , just $ mkMethod "swap" [TRef $ TObj list] TVoid
-        , test (Equatable `elem` features) $ mkMethod "unique" [] TVoid
+          [objT iterator, refT $ objT list, objT iterator, objT iterator] voidT
+        , just $ mkMethod "swap" [refT $ objT list] voidT
+        , test (Equatable `elem` features) $ mkMethod "unique" [] voidT
           -- TODO unique(BinaryPredicate)
         ]
 
@@ -147,10 +148,10 @@ instantiate' listName t tReqs opts =
         makeClass (identT' [("std", Nothing), ("list", Just [t]), ("const_iterator", Nothing)])
         (Just $ toExtName constIteratorName)
         []
-        [ mkCtor "newFromConst" [TObj iterator]
+        [ mkCtor "newFromConst" [objT iterator]
         ]
         [ makeFnMethod (ident2 "hoppy" "iterator" "deconst") "deconst" MConst Nonpure
-          [TObj constIterator, TRef $ TObj list] $ TToGc $ TObj iterator
+          [objT constIterator, refT $ objT list] $ toGcT $ objT iterator
         ]
 
       -- The addendum for the list class contains HasContents and FromContents
@@ -167,10 +168,10 @@ instantiate' listName t tReqs opts =
           hsValueType <-
             cppTypeToHsTypeAndUse HsHsSide $
             (case conversion of
-               ConvertPtr -> TPtr
+               ConvertPtr -> ptrT
                ConvertValue -> id) $
             case cst of
-              Const -> TConst t
+              Const -> constT t
               Nonconst -> t
 
           -- Generate const and nonconst HasContents instances.

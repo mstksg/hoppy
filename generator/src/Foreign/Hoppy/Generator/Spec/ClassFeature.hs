@@ -27,6 +27,7 @@ module Foreign.Hoppy.Generator.Spec.ClassFeature (
 import Data.Monoid (mempty)
 #endif
 import Foreign.Hoppy.Generator.Spec
+import Foreign.Hoppy.Generator.Types
 
 -- | Sets of functionality that can be stamped onto a class with
 -- 'classAddFeatures'.
@@ -54,23 +55,23 @@ featureContents feature cls = case feature of
 assignableContents :: Class -> ([Ctor], [Method], Reqs)
 assignableContents cls =
   ([],
-   [ mkMethod OpAssign [TRef $ TConst $ TObj cls] $ TRef $ TObj cls
+   [ mkMethod OpAssign [refT $ constT $ objT cls] $ refT $ objT cls
    ],
    mempty)
 
 comparableContents :: Class -> ([Ctor], [Method], Reqs)
 comparableContents cls =
   ([],
-   [ mkConstMethod OpLt [TRef $ TConst $ TObj cls] TBool
-   , mkConstMethod OpLe [TRef $ TConst $ TObj cls] TBool
-   , mkConstMethod OpGt [TRef $ TConst $ TObj cls] TBool
-   , mkConstMethod OpGe [TRef $ TConst $ TObj cls] TBool
+   [ mkConstMethod OpLt [refT $ constT $ objT cls] boolT
+   , mkConstMethod OpLe [refT $ constT $ objT cls] boolT
+   , mkConstMethod OpGt [refT $ constT $ objT cls] boolT
+   , mkConstMethod OpGe [refT $ constT $ objT cls] boolT
    ],
    mempty)
 
 copyableContents :: Class -> ([Ctor], [Method], Reqs)
 copyableContents cls =
-  ([ mkCtor "newCopy" [TObj cls]
+  ([ mkCtor "newCopy" [objT cls]
    ],
    [],
    mempty)
@@ -78,8 +79,8 @@ copyableContents cls =
 equatableContents :: Class -> ([Ctor], [Method], Reqs)
 equatableContents cls =
   ([],
-   [ mkConstMethod OpEq [TObj cls] TBool
-   , mkConstMethod OpNe [TObj cls] TBool
+   [ mkConstMethod OpEq [objT cls] boolT
+   , mkConstMethod OpNe [objT cls] boolT
    ],
    mempty)
 
