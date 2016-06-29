@@ -1,6 +1,8 @@
 # Hoppy Changelog
 
 ## Unreleased
+
+## 0.2.0 (2016-06-29)
 ### Added
 
 - Added foreign garbage collector support (issue #5).
@@ -14,12 +16,13 @@
 
 ### Changed
 
-- Major API change for specifying C++ types.  A set of bindings replaces the
-  data constructors of `Type`.  This is to make it easier to create new types in
-  the future.
+- Major API change for specifying C++ types (issue #9).  A set of bindings
+  replaces the data constructors of `Type`.  This is to make it easier to create
+  new types in the future.
 
 - `intT`, `floatT`, and `doubleT` now use `Int`, `Float`, and `Double` as their
-  Haskell types, rather than the awkward `CInt`, `CFloat`, and `CDouble`.
+  Haskell types, rather than the awkward `CInt`, `CFloat`, and `CDouble`
+  (issue #3).
 
 ### Fixed
 
