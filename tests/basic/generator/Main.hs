@@ -140,6 +140,15 @@ testModule =
   , ExportClass c_InheritanceA
   , ExportClass c_InheritanceB
   , ExportClass c_InheritanceC
+    -- Enum and bitspace tests.
+  , ExportEnum e_BetterBool
+  , ExportBitspace bs_BetterBools
+  , ExportFn f_betterBoolId
+  , ExportFn f_betterBoolsId
+  , ExportCallback cb_BetterBoolCallback
+  , ExportCallback cb_BetterBoolsCallback
+  , ExportFn f_takesBetterBoolCallback
+  , ExportFn f_takesBetterBoolsCallback
   ]
 
 c_IntBox :: Class
@@ -586,3 +595,49 @@ c_InheritanceC =
   makeClass (ident "InheritanceC") Nothing [c_InheritanceA, c_InheritanceB]
   [ mkCtor "new" [] ]
   []
+
+(e_BetterBool, bs_BetterBools) =
+  let enum = makeEnum (ident "BetterBool") Nothing values
+  in (enum,
+      bitspaceAddEnum enum $
+      bitspaceAddCppType (ident "BetterBool") (Just "static_cast<BetterBool>") Nothing $
+      makeBitspace (toExtName "BetterBools") TInt values)
+  where values =
+          [ (0, ["true"])
+          , (1, ["false"])
+          , (4, ["file", "not", "found"])
+          ]
+
+f_betterBoolId :: Function
+f_betterBoolId =
+  addReqIncludes [includeLocal "functions.hpp"] $
+  makeFn (ident "betterBoolId") Nothing Pure [TEnum e_BetterBool] $ TEnum e_BetterBool
+
+f_betterBoolsId :: Function
+f_betterBoolsId =
+  addReqIncludes [includeLocal "functions.hpp"] $
+  makeFn (ident "betterBoolId") (Just $ toExtName "betterBoolsId") Pure
+  [TBitspace bs_BetterBools] $ TBitspace bs_BetterBools
+
+cb_BetterBoolCallback :: Callback
+cb_BetterBoolCallback =
+  addReqIncludes [includeLocal "enum.hpp"] $
+  makeCallback (toExtName "BetterBoolCallback") [TEnum e_BetterBool] $ TEnum e_BetterBool
+
+cb_BetterBoolsCallback :: Callback
+cb_BetterBoolsCallback =
+  addReqIncludes [includeLocal "enum.hpp"] $
+  makeCallback (toExtName "BetterBoolsCallback")
+  [TBitspace bs_BetterBools] $ TBitspace bs_BetterBools
+
+f_takesBetterBoolCallback :: Function
+f_takesBetterBoolCallback =
+  addReqIncludes [includeLocal "functions.hpp"] $
+  makeFn (ident "takesBetterBoolCallback") Nothing Pure
+  [TCallback cb_BetterBoolCallback, TEnum e_BetterBool] $ TEnum e_BetterBool
+
+f_takesBetterBoolsCallback :: Function
+f_takesBetterBoolsCallback =
+  addReqIncludes [includeLocal "functions.hpp"] $
+  makeFn (ident "takesBetterBoolsCallback") Nothing Pure
+  [TCallback cb_BetterBoolsCallback, TBitspace bs_BetterBools] $ TBitspace bs_BetterBools

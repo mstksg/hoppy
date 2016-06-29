@@ -228,10 +228,9 @@ sayExportEnum mode enum =
         ln
         forM_ values $ \(num, hsCtorName) ->
           saysLn ["toEnum (", show num, ") = ", hsCtorName]
-        -- TODO Fix the potential name collision of 'n'.
-        saysLn ["toEnum n = HoppyP.error $ ",
+        saysLn ["toEnum n' = HoppyP.error $ ",
                 show (concat ["Unknown ", hsTypeName, " numeric value: "]),
-                " ++ HoppyP.show n"]
+                " ++ HoppyP.show n'"]
 
     SayExportBoot -> do
       let hsTypeName = toHsEnumTypeName enum

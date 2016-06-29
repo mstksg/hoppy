@@ -23,6 +23,7 @@ module Main (main) where
 import Control.Applicative ((<$>), (<*>))
 #endif
 import Control.Monad (when)
+import Data.Bits ((.&.), (.|.), xor)
 import Foreign.C (
   CChar,
   CDouble,
@@ -92,6 +93,8 @@ tests =
   , numericTypePassingTests
   , rawPointerTests
   , inheritanceTests
+  , enumTests
+  , bitspaceTests
   ]
 
 functionTests :: Test
@@ -483,3 +486,74 @@ inheritanceTests =
     cac @?= c
     cbc @?= castInheritanceCToConst c
   ]
+
+enumTests :: Test
+enumTests =
+  "enums" ~: TestList
+  [ "fromEnum" ~: do
+    fromEnum BetterBool_True @?= 0
+    fromEnum BetterBool_False @?= 1
+    fromEnum BetterBool_FileNotFound @?= 4
+
+  , "toEnum" ~: do
+    toEnum 0 @?= BetterBool_True
+    toEnum 1 @?= BetterBool_False
+    toEnum 4 @?= BetterBool_FileNotFound
+
+  , "calling a C++ function" ~: do
+    betterBoolId BetterBool_True @?= BetterBool_True
+    betterBoolId BetterBool_False @?= BetterBool_False
+    betterBoolId BetterBool_FileNotFound @?= BetterBool_FileNotFound
+
+  , "calling a callback" ~: do
+    takesBetterBoolCallback rot BetterBool_True @?= BetterBool_False
+    takesBetterBoolCallback rot BetterBool_False @?= BetterBool_FileNotFound
+    takesBetterBoolCallback rot BetterBool_FileNotFound @?= BetterBool_True
+  ]
+  where rot BetterBool_True = return BetterBool_False
+        rot BetterBool_False = return BetterBool_FileNotFound
+        rot BetterBool_FileNotFound = return BetterBool_True
+
+bitspaceTests :: Test
+bitspaceTests =
+  "bitspaces" ~: TestList
+  [ "to CInt" ~: do
+    fromBetterBools betterBools_True @?= 0
+    fromBetterBools betterBools_False @?= 1
+    fromBetterBools betterBools_FileNotFound @?= 4
+
+  , "from Int" ~: do
+    toBetterBools (0 :: Int) @?= betterBools_True
+    toBetterBools (1 :: Int) @?= betterBools_False
+    toBetterBools (4 :: Int) @?= betterBools_FileNotFound
+
+  , "from CInt" ~: do
+    toBetterBools (0 :: CInt) @?= betterBools_True
+    toBetterBools (1 :: CInt) @?= betterBools_False
+    toBetterBools (4 :: CInt) @?= betterBools_FileNotFound
+
+  , "from enum" ~: do
+    toBetterBools BetterBool_True @?= betterBools_True
+    toBetterBools BetterBool_False @?= betterBools_False
+    toBetterBools BetterBool_FileNotFound @?= betterBools_FileNotFound
+
+  , "from bitspace" ~: do
+    toBetterBools betterBools_True @?= betterBools_True
+    toBetterBools betterBools_False @?= betterBools_False
+    toBetterBools betterBools_FileNotFound @?= betterBools_FileNotFound
+
+  , "Bits instance" ~: do
+    betterBools_True .|. betterBools_False @?= betterBools_False
+    betterBools_True .&. betterBools_FileNotFound @?= betterBools_True
+
+  , "calling a C++ function" ~: do
+    betterBoolsId betterBools_True @?= betterBools_True
+    betterBoolsId betterBools_False @?= betterBools_False
+    betterBoolsId betterBools_FileNotFound @?= betterBools_FileNotFound
+
+  , "calling a callback" ~: do
+    takesBetterBoolsCallback op betterBools_True @?= betterBools_False .|. betterBools_FileNotFound
+    takesBetterBoolsCallback op betterBools_False @?= betterBools_FileNotFound
+    takesBetterBoolsCallback op betterBools_FileNotFound @?= betterBools_False
+  ]
+  where op x = return $ x `xor` toBetterBools (5 :: Int)

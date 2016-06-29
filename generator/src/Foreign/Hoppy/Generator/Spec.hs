@@ -985,7 +985,7 @@ data Bitspace = Bitspace
     -- ^ The bitspace's external name.
   , bitspaceType :: Type
     -- ^ The C++ type used for bits values.  This should be a primitive numeric
-    -- type.
+    -- type, usually 'TInt'.
   , bitspaceValueNames :: [(Int, [String])]
     -- ^ The numeric values and names of the bitspace values.  See
     -- 'enumValueNames'.

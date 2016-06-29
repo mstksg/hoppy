@@ -19,6 +19,7 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #include "basic.hpp"
+#include "enum.hpp"
 #include "intbox.hpp"
 #include "ptrctr.hpp"
 
@@ -98,5 +99,10 @@ void doubleIntBoxPtrPtr(IntBox**);
 void doubleIntPtr(int*);
 void doubleIntPtrPtr(int**);
 void doubleIntRef(int&);
+
+// Enum and bitspace tests.
+BetterBool betterBoolId(BetterBool);
+BetterBool takesBetterBoolCallback(BetterBoolCallback callback, BetterBool value);
+BetterBool takesBetterBoolsCallback(BetterBoolsCallback callback, BetterBool value);
 
 #endif

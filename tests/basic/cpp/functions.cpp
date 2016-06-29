@@ -257,3 +257,15 @@ void doubleIntPtrPtr(int** p) {
 void doubleIntRef(int& n) {
     n *= 2;
 }
+
+BetterBool betterBoolId(BetterBool x) {
+    return x;
+}
+
+BetterBool takesBetterBoolCallback(BetterBoolCallback callback, BetterBool value) {
+    return callback(value);
+}
+
+BetterBool takesBetterBoolsCallback(BetterBoolsCallback callback, BetterBool value) {
+    return callback(value);
+}
