@@ -282,6 +282,8 @@ sayExportBitspace mode bitspace =
       indent $ saysLn [toFnName, " = ", hsTypeName]
       saysLn ["instance ", className, " (", prettyPrint hsHsNumType, ") where"]
       indent $ saysLn [toFnName, " = ", hsTypeName, " . HoppyFHR.coerceIntegral"]
+      saysLn ["instance ", className, " ", hsTypeName, " where"]
+      indent $ saysLn [toFnName, " = HoppyP.id"]
 
       -- If the bitspace has an associated enum, then print out a conversion
       -- instance for it as well.
@@ -324,6 +326,7 @@ sayExportBitspace mode bitspace =
       ln
       saysLn ["instance ", className, " (", prettyPrint hsCNumType, ")"]
       saysLn ["instance ", className, " (", prettyPrint hsHsNumType, ")"]
+      saysLn ["instance ", className, " ", hsTypeName]
       forM_ (bitspaceEnum bitspace) $ \enum -> do
         let enumTypeName = toHsEnumTypeName enum
         importHsModuleForExtName $ enumExtName enum
@@ -532,7 +535,12 @@ sayArgProcessing dir t fromVar toVar =
               fromVar, " in"]
     TBitspace b -> do
       importHsModuleForExtName $ bitspaceExtName b
-      saysLn ["let ", toVar, " = ", bitspaceConvFn dir b, " ", fromVar, " in"]
+      saysLn $ concat [ ["let ", toVar, " = "]
+                      , case dir of
+                          ToCpp -> [toHsBitspaceToNumName b, " $ ", toHsBitspaceFromValueName b]
+                          FromCpp -> [toHsBitspaceTypeName b],
+                        [" ", fromVar, " in"]
+                      ]
     -- References and pointers are handled equivalently.
     TPtr (TObj cls) -> do
       addImportForClass cls
@@ -606,9 +614,6 @@ sayArgProcessing dir t fromVar toVar =
         sayCoerceFloating = do
           addImports hsImportForPrelude
           saysLn ["let ", toVar, " = HoppyP.realToFrac ", fromVar, " in"]
-        bitspaceConvFn dir = case dir of
-          ToCpp -> toHsBitspaceToNumName
-          FromCpp -> toHsBitspaceFromValueName
 
 -- | Note that the 'CallDirection' is the direction of the call, not the
 -- direction of the return.  'ToCpp' means we're returning to the foreign
@@ -736,7 +741,7 @@ sayCallAndProcessReturn dir t callWords =
         sayCoerceFloating = do addImports hsImportForPrelude
                                sayLn "HoppyP.fmap HoppyP.realToFrac"
         bitspaceConvFn dir = case dir of
-          ToCpp -> toHsBitspaceFromValueName
+          ToCpp -> toHsBitspaceTypeName
           FromCpp -> toHsBitspaceToNumName
 
 sayExportClass :: SayExportMode -> Class -> Generator ()
@@ -1294,6 +1299,7 @@ fnToHsTypeAndUse side methodInfo purity paramTypes returnType = do
 
   where contextForParam :: (String, Type) -> Generator (Maybe HsAsst, HsType)
         contextForParam (s, t) = case t of
+          TBitspace b -> receiveBitspace s t b
           TPtr (TObj cls) -> receivePtr s cls Nonconst
           TPtr (TConst (TObj cls)) -> receiveValue s t cls
           TRef (TObj cls) -> receivePtr s cls Nonconst
@@ -1307,7 +1313,16 @@ fnToHsTypeAndUse side methodInfo purity paramTypes returnType = do
         handoff :: HsTypeSide -> Type -> Generator (Maybe HsAsst, HsType)
         handoff side t = (,) Nothing <$> cppTypeToHsTypeAndUse side t
 
-        -- Receive a @FooPtr this => this@.
+        -- Receives a @IsFooBitspace a => a@.
+        receiveBitspace s t b = case side of
+          HsCSide -> handoff side t
+          HsHsSide -> do
+            importHsModuleForExtName $ bitspaceExtName b
+            let t' = HsTyVar $ HsIdent s
+            return (Just (UnQual $ HsIdent $ toHsBitspaceClassName b, [t']),
+                    t')
+
+        -- Receives a @FooPtr this => this@.
         receivePtr :: String -> Class -> Constness -> Generator (Maybe HsAsst, HsType)
         receivePtr s cls cst = do
           addImportForClass cls
@@ -1321,7 +1336,7 @@ fnToHsTypeAndUse side methodInfo purity paramTypes returnType = do
               return (Nothing, HsTyApp (HsTyCon $ UnQual $ HsIdent "HoppyF.Ptr") $
                                HsTyVar $ HsIdent $ toHsDataTypeName cst cls)
 
-        -- Receive a @FooValue a => a@.
+        -- Receives a @FooValue a => a@.
         receiveValue :: String -> Type -> Class -> Generator (Maybe HsAsst, HsType)
         receiveValue s t cls = case side of
           HsCSide -> handoff side t

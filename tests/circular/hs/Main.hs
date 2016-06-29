@@ -19,7 +19,7 @@ module Main (main) where
 
 import Control.Monad (when)
 import Data.Bits ((.|.))
-import Foreign.C (castCCharToChar, castCharToCChar)
+import Foreign.C (CInt, castCCharToChar, castCharToCChar)
 import Foreign.Hoppy.Runtime (nullptr, toPtr)
 import Foreign.Hoppy.Test.Flob
 import Foreign.Hoppy.Test.Flub
@@ -51,7 +51,12 @@ tests =
     flobObj <- flobClass_new
     flubObj <- flubClass_new
     takesFlobValues flobObj
+    -- TODO Testing accepted bitspace argument types should not be done here.
+    -- Write proper tests for this.
+    takesFlubValues flubObj FlubEnum_OptionA FlubEnum_OptionB
     takesFlubValues flubObj FlubEnum_OptionA flubBitspace_OptionB
+    takesFlubValues flubObj FlubEnum_OptionA (0 :: Int)
+    takesFlubValues flubObj FlubEnum_OptionA (2 :: CInt)
     fmap toPtr returnsFlubClass >>= (@?= toPtr nullptr)
     returnsFlubEnum >>= (@?= FlubEnum_OptionB)
     returnsFlubBitspace >>= (@?= flubBitspace_OptionA .|. flubBitspace_OptionC)
