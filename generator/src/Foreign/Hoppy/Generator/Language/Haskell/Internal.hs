@@ -943,7 +943,8 @@ sayExportClassHsType doDecls cls cst = do
                         "(HoppyF.castPtr ptr' :: HoppyF.Ptr ())"]
                 saysLn ["toGc this'@(", hsCtorGc, " {}) = HoppyP.return this'"]
     else do saysLn ["instance HoppyFHR.CppPtr ", hsTypeName]
-            saysLn ["instance HoppyFHR.Deletable ", hsTypeName]
+            when (classDtorIsPublic cls) $
+              saysLn ["instance HoppyFHR.Deletable ", hsTypeName]
 
   -- Generate instances for all superclasses' typeclasses.
   genInstances [] cls
