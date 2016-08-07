@@ -122,8 +122,8 @@ class CppPtr this where
   -- pointers.  Has no effect on unmanaged pointers.
   touchCppPtr :: this -> IO ()
 
--- | C++ values that can be deleted.  All C++ classes bound by Hoppy have
--- instances of @Deletable@.
+-- | C++ values that can be deleted.  By default, C++ classes bound by Hoppy are
+-- assumed to be deletable, so they get instances of @Deletable@.
 class Deletable this where
   -- | Deletes the object with the C++ @delete@ operator.
   delete :: this -> IO ()
