@@ -58,10 +58,11 @@ HTML files in `docs/dist/doc` after building.
 
 ## Developing
 
-When creating patches, please enable the pre-commit hook at
-`scripts/git-pre-commit` which checks lint and copyright/license issues.  Also
-try to ensure that your changes compile cleanly without warnings when `-W` is
-used, pass the unit tests in the `tests/` directory, add new tests as
-appropriate, and follow the style guide at:
+Patches welcome!  Please enable the pre-commit hook at `scripts/git-pre-commit`
+which checks lint and copyright/license issues:
 
-https://gitlab.com/khumba/haskell-style/blob/master/haskell-style.md
+    $ ln -s ../../scripts/git-pre-commit .git/hooks/pre-commit
+
+Also please try to fix warnings that your changes introduce, check that the unit
+tests in the `tests/` directory pass, and follow local style, or the
+[style guide](https://gitlab.com/khumba/haskell-style/blob/master/haskell-style.md).
