@@ -15,9 +15,11 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+#include "exceptions.hpp"
 #include "functions.hpp"
 
 #include <cstddef>
+#include <string>
 #include "constants.hpp"
 
 int piapprox() {
@@ -268,4 +270,33 @@ BetterBool takesBetterBoolCallback(BetterBoolCallback callback, BetterBool value
 
 BetterBool takesBetterBoolsCallback(BetterBoolsCallback callback, BetterBool value) {
     return callback(value);
+}
+
+void throwsBaseException() {
+    throw BaseException();
+}
+
+void throwsFileException() {
+    throw FileException();
+}
+
+void throwsReadException() {
+    throw ReadException();
+}
+
+void throwsWriteException() {
+    throw WriteException();
+}
+
+void throwsPtrCtr() {
+    throw PtrCtr();
+}
+
+void throwsAny(int i) {
+    switch (i) {
+    case 0: throw 0;  // A number.
+    case 1: throw "hi";  // A C string.
+    case 2: throw nullptr;  // A pointer.
+    case 3: throw std::string("hi");  // A class non-exception class to Hoppy.
+    }
 }

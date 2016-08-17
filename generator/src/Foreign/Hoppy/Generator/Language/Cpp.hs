@@ -27,6 +27,9 @@ module Foreign.Hoppy.Generator.Language.Cpp (
   callbackFnName,
   toArgName,
   toArgNameAlt,
+  exceptionIdArgName,
+  exceptionPtrArgName,
+  exceptionVarName,
   Chunk (..),
   runChunkWriter,
   evalChunkWriter,
@@ -107,6 +110,20 @@ toArgName = ("arg" ++) . show
 -- @toArgName n@ and @toArgNameAlt n@.
 toArgNameAlt :: Int -> String
 toArgNameAlt n = "arg" ++ show n ++ "_"
+
+-- | The C++ variable name to use for the exception ID argument in a gateway
+-- function.
+exceptionIdArgName :: String
+exceptionIdArgName = "excId"
+
+-- | The C++ variable name to use for the exception pointer argument in a
+-- gateway function.
+exceptionPtrArgName :: String
+exceptionPtrArgName = "excPtr"
+
+-- | The C++ variable name to use in a @catch@ statement in a gateway function.
+exceptionVarName :: String
+exceptionVarName = "exc_"
 
 -- TODO Fixme, this is most likely backwards, it should be a finite set of
 -- non-identifier chars.  Also (maybe) share some logic with the toExtName

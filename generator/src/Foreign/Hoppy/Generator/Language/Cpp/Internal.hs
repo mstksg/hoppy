@@ -161,6 +161,7 @@ sayExport sayBody export = case export of
                   Nothing
                   (fnParams fn)
                   (fnReturn fn)
+                  (fnExceptionHandlers fn)
                   sayBody
 
   ExportClass cls -> when sayBody $ do
@@ -176,6 +177,7 @@ sayExport sayBody export = case export of
                   Nothing
                   (ctorParams ctor)
                   clsPtr
+                  (ctorExceptionHandlers ctor)
                   sayBody
 
     -- Export a delete function for the class.
@@ -208,6 +210,7 @@ sayExport sayBody export = case export of
                   (if nonMemberCall then Nothing else justClsPtr)
                   (methodParams method)
                   (methodReturn method)
+                  (methodExceptionHandlers method)
                   sayBody
 
     -- Export upcast functions for the class to its direct superclasses.
@@ -254,6 +257,7 @@ sayExportVariable v = do
               Nothing
               []
               deconstType
+              mempty
               True
 
   -- Say a setter function.
@@ -263,6 +267,7 @@ sayExportVariable v = do
                 Nothing
                 [deconstType]
                 voidT
+                mempty
                 True
 
 data CallType =
@@ -276,10 +281,17 @@ sayExportFn :: ExtName
             -> Maybe Type
             -> [Type]
             -> Type
+            -> ExceptionHandlers
             -> Bool
             -> Generator ()
-sayExportFn extName callType maybeThisType paramTypes retType sayBody = do
-  let paramCount = length paramTypes
+sayExportFn extName callType maybeThisType paramTypes retType exceptionHandlers sayBody = do
+  handlerList <- exceptionHandlersList <$> getEffectiveExceptionHandlers exceptionHandlers
+  let catches = not $ null handlerList
+      addExceptionParamNames =
+        if catches then (++ [exceptionIdArgName, exceptionPtrArgName]) else id
+      addExceptionParamTypes = if catches then (++ [ptrT intT, ptrT $ ptrT voidT]) else id
+
+      paramCount = length paramTypes
       paramCTypeMaybes = map typeToCType paramTypes
       paramCTypes = zipWith fromMaybe paramTypes paramCTypeMaybes
       retCTypeMaybe = typeToCType retType
@@ -289,14 +301,20 @@ sayExportFn extName callType maybeThisType paramTypes retType sayBody = do
 
   sayFunction (externalNameToCpp extName)
               (maybe id (const ("self":)) maybeThisType $
+               addExceptionParamNames $
                zipWith3 (\t ctm -> case t of
                            Internal_TCallback {} -> toArgNameAlt
                            _ -> if isJust ctm then toArgNameAlt else toArgName)
                paramTypes paramCTypeMaybes [1..paramCount])
-              (fnT (maybe id (:) maybeThisType paramCTypes) retCType) $
+              (fnT (addExceptionParamTypes $ maybe id (:) maybeThisType paramCTypes)
+                   retCType) $
     if not sayBody
     then Nothing
     else Just $ do
+      when catches $ do
+        say "try {\n"
+        says ["*", exceptionIdArgName, " = 0;\n"]
+
       -- Convert arguments that aren't passed in directly.
       mapM_ (sayArgRead DoDecode) $ zip3 [1..] paramTypes paramCTypeMaybes
 
@@ -357,6 +375,39 @@ sayExportFn extName callType maybeThisType paramTypes retType sayBody = do
                                   "while generating binding for ", show extName, "."]
 
       sayCallAndReturn retType retCTypeMaybe
+
+      when catches $ do
+        iface <- askInterface
+
+        forM_ handlerList $ \handler -> do
+          say "} catch ("
+          case handler of
+            CatchClass cls -> sayVar exceptionVarName Nothing $ refT $ constT $ objT cls
+            CatchAll -> say "..."
+          say ") {\n"
+
+          exceptionId <- case handler of
+            CatchClass cls -> case interfaceExceptionClassId iface cls of
+              Just exceptionId -> return exceptionId
+              Nothing -> abort $ concat
+                         ["sayExportFn: Trying to catch non-exception class ", show cls,
+                          " while generating binding for ", show extName, "."]
+            CatchAll -> return exceptionCatchAllId
+          says ["*", exceptionIdArgName, " = ", show $ getExceptionId exceptionId, ";\n"]
+
+          case handler of
+            CatchAll -> says ["*", exceptionPtrArgName, " = 0;\n"]
+            CatchClass cls -> do
+              -- Object pointers don't convert automatically to void*.
+              says ["*", exceptionPtrArgName, " = reinterpret_cast<void*>(new "]
+              sayType Nothing $ objT cls
+              says ["(", exceptionVarName, "));\n"]
+
+          -- For all of the types our gateway functions actually return, "return
+          -- 0" is a valid statement.
+          when (retType /= Internal_TVoid) $ say "return 0;\n"
+
+        say "}\n"
 
   where sayReturnNew cls sayCall =
           say "return new" >> sayIdentifier (classIdentifier cls) >> say "(" >>
@@ -643,3 +694,11 @@ findExportModule extName =
   fromMaybeM (abort $ concat
               ["findExportModule: Can't find module exporting ", fromExtName extName, "."]) =<<
   fmap (M.lookup extName . interfaceNamesToModules) askInterface
+
+getEffectiveExceptionHandlers :: ExceptionHandlers -> Generator ExceptionHandlers
+getEffectiveExceptionHandlers handlers = do
+  ifaceHandlers <- interfaceExceptionHandlers <$> askInterface
+  moduleHandlers <- getExceptionHandlers <$> askModule
+  -- Exception handlers declared lower in the hierarchy take precedence over
+  -- those in the hierarchy; ExceptionHandlers is a left-biased monoid.
+  return $ mconcat [handlers, moduleHandlers, ifaceHandlers]

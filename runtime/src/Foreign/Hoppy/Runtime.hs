@@ -32,19 +32,39 @@ module Foreign.Hoppy.Runtime (
   decodeAndDelete,
   withCppObj,
   withScopedPtr,
+  -- * Exceptions
+  CppException (..),
+  catchCpp,
+  UnknownCppException,
   -- * Containers
   HasContents (..),
   FromContents (..),
   -- * Internal
   CCallback (..),
   freeHaskellFunPtrFunPtr,
+  ExceptionId (..),
+  SomeCppException (..),
+  internalHandleExceptions,
+  ExceptionDb (..),
+  ExceptionClassInfo (..),
   ) where
 
-import Control.Exception (bracket)
+import Control.Exception (Exception, bracket, catch, throwIO)
 import Data.Int (Int8, Int16, Int32, Int64)
+import qualified Data.Map as M
+import Data.Map (Map)
 import Data.Typeable (Typeable, typeOf)
 import Data.Word (Word8, Word16, Word32, Word64)
-import Foreign (FunPtr, Ptr, Storable, freeHaskellFunPtr, peek, poke)
+import Foreign (
+  ForeignPtr,
+  FunPtr,
+  Ptr,
+  Storable,
+  alloca,
+  freeHaskellFunPtr,
+  peek,
+  poke,
+  )
 import Foreign.C (
   CChar,
   CDouble,
@@ -63,6 +83,7 @@ import Foreign.C (
   )
 import System.IO.Unsafe (unsafePerformIO)
 import System.Posix.Types (CSsize)
+import Unsafe.Coerce (unsafeCoerce)
 
 foreign import ccall "wrapper" newFreeHaskellFunPtrFunPtr
   :: (FunPtr (IO ()) -> IO ())
@@ -106,20 +127,20 @@ class CppPtr this where
   nullptr :: this
 
   -- | Runs an IO action on the 'Ptr' underlying this pointer.  Equivalent to
-  -- 'Foreign.ForeignPtr.withForeignPtr' for managed pointers: the 'Ptr' is only
+  -- 'ForeignPtr.withForeignPtr' for managed pointers: the 'Ptr' is only
   -- guaranteed to be valid until the action returns.  There is no such
   -- restriction for unmanaged pointers.
   withCppPtr :: this -> (Ptr this -> IO a) -> IO a
 
   -- | Converts to a regular pointer.  For objects managed by the garbage
   -- collector, this comes with the warnings associated with
-  -- 'Foreign.ForeignPtr.Unsafe.unsafeForeignPtrToPtr', namely that the object
-  -- may be collected immediately after this function returns unless there is a
+  -- 'ForeignPtr.Unsafe.unsafeForeignPtrToPtr', namely that the object may be
+  -- collected immediately after this function returns unless there is a
   -- 'touchCppPtr' call later on.
   toPtr :: this -> Ptr this
 
-  -- | Equivalent to 'Foreign.ForeignPtr.touchForeignPtr' for managed object
-  -- pointers.  Has no effect on unmanaged pointers.
+  -- | Equivalent to 'ForeignPtr.touchForeignPtr' for managed object pointers.
+  -- Has no effect on unmanaged pointers.
   touchCppPtr :: this -> IO ()
 
 -- | C++ values that can be deleted.  By default, C++ classes bound by Hoppy are
@@ -271,6 +292,136 @@ withCppObj x = bracket (encode x) delete
 -- execute.  When @f@ finishes, the pointer is deleted.
 withScopedPtr :: Deletable cppPtrType => IO cppPtrType -> (cppPtrType -> IO a) -> IO a
 withScopedPtr p = bracket p delete
+
+-- | A unique identifier for a C++ class.  The representation is internal to
+-- Hoppy.
+newtype ExceptionId = ExceptionId CInt
+                    deriving (Eq, Ord, Show)
+
+-- | A typeclass for C++ classes that are used as exceptions.  C++ classes that
+-- have been declared to be used as exceptions have instances of this class.
+class CppException e where
+  -- | Internal.  Returns metadata about the exception.
+  cppExceptionInfo :: e -> ExceptionClassInfo
+
+  -- | Internal.  Constructs an GC-unmanaged object handle from a raw pointer.
+  cppExceptionBuild :: Ptr () -> e
+
+  -- | Internal.  Constructs a GC-managed object handle from raw pointers.
+  cppExceptionBuildGc :: ForeignPtr () -> Ptr () -> e
+
+-- | Catches a C++ exception, similar to 'catch'.  Catching an exception class
+-- will also catch subtypes of the class, per normal C++ exception semantics.
+-- Catching 'UnknownCppException' will catch all C++ exceptions, but will
+-- provide no information about the caught exception.  Objects thrown from C++
+-- become GC-managed heap objects; you do not need to manually delete caught
+-- exceptions.
+catchCpp :: forall a e. CppException e => IO a -> (e -> IO a) -> IO a
+catchCpp action handler = do
+  let expectedId = exceptionClassId $ cppExceptionInfo (undefined :: e)
+
+  catch action $ \caughtEx -> case caughtEx of
+    SomeCppException classInfo caughtFPtr caughtPtr ->
+      if expectedId == exceptionClassId (cppExceptionInfo UnknownCppException)
+      then do
+        -- We're catching the top-level exception type, so we're done with the
+        -- actual exception object.  If it's not garbage collected, delete it.
+        case caughtFPtr of
+          Nothing -> exceptionClassDelete classInfo caughtPtr
+          Just _ -> return ()
+
+        -- UnknownCppException is the only type with ID 1, so e ~ UnknownCppException.
+        handler $ unsafeCoerce UnknownCppException
+
+      else do
+        -- Attempt to get a pointer for the type we're hoping to catch.
+        let maybeUpcastedPtr :: Maybe (Ptr ())
+            maybeUpcastedPtr =
+              if expectedId == exceptionClassId classInfo
+              then Just caughtPtr
+              else case M.lookup expectedId $ exceptionClassUpcasts classInfo of
+                Just upcast -> Just $ upcast caughtPtr
+                Nothing -> Nothing
+
+        case maybeUpcastedPtr of
+          Just upcastedPtr -> handler $ case caughtFPtr of
+            Just fptr -> cppExceptionBuildGc fptr upcastedPtr
+            Nothing -> cppExceptionBuild upcastedPtr
+          Nothing -> throwIO caughtEx
+
+    SomeUnknownCppException ->
+      if expectedId == exceptionClassId (cppExceptionInfo UnknownCppException)
+      then handler $ unsafeCoerce UnknownCppException  -- Same as above, this is safe.
+      else throwIO caughtEx
+
+-- | Internal.  Holds an arbitrary 'CppException'.
+data SomeCppException =
+    SomeCppException ExceptionClassInfo (Maybe (ForeignPtr ())) (Ptr ())
+  | SomeUnknownCppException
+
+instance Exception SomeCppException
+
+instance Show SomeCppException where
+  show (SomeCppException info _ _) =
+    "<SomeCppException " ++ exceptionClassName info ++ ">"
+  show SomeUnknownCppException =
+    exceptionClassName $ cppExceptionInfo (undefined :: UnknownCppException)
+
+-- | A top type for C++ exceptions.  Catching this type with 'catchCpp' will
+-- catch all C++ exceptions.  (You still have to declare what exceptions can be
+-- thrown from each function, to make exceptions pass through the gateway
+-- properly.)
+data UnknownCppException = UnknownCppException
+
+instance CppException UnknownCppException where
+  cppExceptionInfo _ = ExceptionClassInfo
+    { exceptionClassId = ExceptionId 1
+    , exceptionClassName = "<Unhandled C++ exception>"
+    , exceptionClassUpcasts = M.empty
+    , exceptionClassDelete = error "UnknownCppException.exceptionClassDelete: Should not get here."
+    , exceptionClassToGc = error "UnknownCppException.exceptionClassToGc: Should not get here."
+    }
+
+  cppExceptionBuild _ =
+    error "Internal error: cppExceptionBuild called for UnknownCppException"
+
+  cppExceptionBuildGc _ _ =
+    error "Internal error: cppExceptionBuildGc called for UnknownCppException"
+
+-- | Internal.  Wraps a call to a C++ gateway function, and provides propagation
+-- of C++ exceptions to Haskell.
+internalHandleExceptions :: ExceptionDb -> (Ptr CInt -> Ptr (Ptr ()) -> IO a) -> IO a
+internalHandleExceptions (ExceptionDb db) f =
+  alloca $ \excIdPtr ->
+  alloca $ \excPtrPtr -> do
+  result <- f excIdPtr excPtrPtr
+  excId <- peek excIdPtr
+  case excId of
+    0 -> return result
+    1 -> throwIO SomeUnknownCppException
+    _ -> do excPtr <- peek excPtrPtr
+            case M.lookup (ExceptionId excId) db of
+              Just info -> do
+                fptr <- exceptionClassToGc info excPtr
+                throwIO $ SomeCppException info (Just fptr) excPtr
+              Nothing ->
+                fail $
+                "internalHandleExceptions: Received C++ exception with unknown exception ID " ++
+                show excId ++ "."
+
+-- | Internal.  A database of information about exceptions an interface uses.
+newtype ExceptionDb = ExceptionDb (Map ExceptionId ExceptionClassInfo)
+
+-- | Internal.  Information about a C++ exception class.
+data ExceptionClassInfo = ExceptionClassInfo
+  { exceptionClassId :: ExceptionId
+  , exceptionClassName :: String
+  , exceptionClassUpcasts :: Map ExceptionId (Ptr () -> Ptr ())
+    -- ^ This maps ancestor classes' exception IDs to functions that cast
+    -- pointers from the current type to the ancestor type.
+  , exceptionClassDelete :: Ptr () -> IO ()
+  , exceptionClassToGc :: Ptr () -> IO (ForeignPtr ())
+  }
 
 -- | Containers whose contents can be convered to a list.
 --

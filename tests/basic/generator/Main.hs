@@ -150,6 +150,17 @@ testModule =
   , ExportCallback cb_BetterBoolsCallback
   , ExportFn f_takesBetterBoolCallback
   , ExportFn f_takesBetterBoolsCallback
+    -- Exception tests.
+  , ExportClass c_BaseException
+  , ExportClass c_FileException
+  , ExportClass c_ReadException
+  , ExportClass c_WriteException
+  , ExportFn f_throwsBaseException
+  , ExportFn f_throwsFileException
+  , ExportFn f_throwsReadException
+  , ExportFn f_throwsWriteException
+  , ExportFn f_throwsPtrCtr
+  , ExportFn f_throwsAny
   ]
 
 c_IntBox :: Class
@@ -176,6 +187,9 @@ c_IntBox =
 c_PtrCtr :: Class
 c_PtrCtr =
   addReqIncludes [includeLocal "ptrctr.hpp"] $
+  -- This class is an exception, so that we can test the lifecycle of exception
+  -- objects.
+  makeClassException $
   makeClass (ident "PtrCtr") Nothing []
   [ mkCtor "new" [] ]
   [ mkStaticMethod "newGcedObj" [] $ toGcT $ objT c_PtrCtr
@@ -642,3 +656,63 @@ f_takesBetterBoolsCallback =
   addReqIncludes [includeLocal "functions.hpp"] $
   makeFn (ident "takesBetterBoolsCallback") Nothing Pure
   [callbackT cb_BetterBoolsCallback, bitspaceT bs_BetterBools] $ bitspaceT bs_BetterBools
+
+c_BaseException :: Class
+c_BaseException =
+  addReqIncludes [includeLocal "exceptions.hpp"] $
+  makeClassException $
+  makeClass (ident "BaseException") Nothing [] [] []
+
+c_FileException :: Class
+c_FileException =
+  addReqIncludes [includeLocal "exceptions.hpp"] $
+  makeClassException $
+  makeClass (ident "FileException") Nothing [c_BaseException] [] []
+
+c_ReadException :: Class
+c_ReadException =
+  addReqIncludes [includeLocal "exceptions.hpp"] $
+  makeClassException $
+  makeClass (ident "ReadException") Nothing [c_FileException] [] []
+
+c_WriteException :: Class
+c_WriteException =
+  addReqIncludes [includeLocal "exceptions.hpp"] $
+  makeClassException $
+  makeClass (ident "WriteException") Nothing [c_FileException] [] []
+
+f_throwsBaseException :: Function
+f_throwsBaseException =
+  addReqIncludes [includeLocal "functions.hpp"] $
+  handleExceptions [CatchClass c_BaseException] $
+  makeFn (ident "throwsBaseException") Nothing Nonpure [] voidT
+
+f_throwsFileException :: Function
+f_throwsFileException =
+  addReqIncludes [includeLocal "functions.hpp"] $
+  handleExceptions [CatchClass c_FileException] $
+  makeFn (ident "throwsFileException") Nothing Nonpure [] voidT
+
+f_throwsReadException :: Function
+f_throwsReadException =
+  addReqIncludes [includeLocal "functions.hpp"] $
+  handleExceptions [CatchClass c_ReadException] $
+  makeFn (ident "throwsReadException") Nothing Nonpure [] voidT
+
+f_throwsWriteException :: Function
+f_throwsWriteException =
+  addReqIncludes [includeLocal "functions.hpp"] $
+  handleExceptions [CatchClass c_WriteException] $
+  makeFn (ident "throwsWriteException") Nothing Nonpure [] voidT
+
+f_throwsPtrCtr :: Function
+f_throwsPtrCtr =
+  addReqIncludes [includeLocal "functions.hpp"] $
+  handleExceptions [CatchClass c_PtrCtr] $
+  makeFn (ident "throwsPtrCtr") Nothing Nonpure [] voidT
+
+f_throwsAny :: Function
+f_throwsAny =
+  addReqIncludes [includeLocal "functions.hpp"] $
+  handleExceptions [CatchAll] $
+  makeFn (ident "throwsAny") Nothing Nonpure [intT] voidT

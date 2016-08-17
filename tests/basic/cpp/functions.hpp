@@ -105,4 +105,12 @@ BetterBool betterBoolId(BetterBool);
 BetterBool takesBetterBoolCallback(BetterBoolCallback callback, BetterBool value);
 BetterBool takesBetterBoolsCallback(BetterBoolsCallback callback, BetterBool value);
 
+// Exception tests.
+void throwsBaseException();
+void throwsFileException();
+void throwsReadException();
+void throwsWriteException();
+void throwsPtrCtr();
+void throwsAny(int i);
+
 #endif

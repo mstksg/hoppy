@@ -15,7 +15,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-{ mkDerivation, base, HUnit, stdenv
+{ mkDerivation, base, containers, HUnit, stdenv
 , hoppy-runtime, hoppy-tests-basic-cpp, hoppy-tests-basic-generator
 }:
 mkDerivation {
@@ -24,7 +24,7 @@ mkDerivation {
   src = ./.;
   libraryHaskellDepends = [ base hoppy-runtime ];
   librarySystemDepends = [ hoppy-tests-basic-cpp ];
-  testHaskellDepends = [ base hoppy-runtime HUnit ];
+  testHaskellDepends = [ base containers hoppy-runtime HUnit ];
   license = stdenv.lib.licenses.agpl3Plus;
   doCheck = true;
   doHaddock = false;

@@ -31,6 +31,9 @@ module Foreign.Hoppy.Generator.Language.Haskell (
   evalGenerator,
   execGenerator,
   renderPartial,
+  askInterface,
+  askModule,
+  askModuleName,
   withErrorContext,
   inFunction,
   -- * Exports
@@ -46,6 +49,7 @@ module Foreign.Hoppy.Generator.Language.Haskell (
   saysLn,
   ln,
   indent,
+  indentSpaces,
   sayLet,
   toHsEnumTypeName,
   toHsEnumCtorName,
@@ -250,19 +254,26 @@ type Generator = ReaderT Env (WriterT Output (Either ErrorMsg))
 -- | Context information for generating Haskell code.
 data Env = Env
   { envInterface :: Interface
+  , envModule :: Module
   , envModuleName :: String
   }
 
+-- | Returns the currently generating interface.
 askInterface :: Generator Interface
 askInterface = envInterface <$> ask
 
+-- | Returns the currently generating module.
+askModule :: Generator Module
+askModule = envModule <$> ask
+
+-- | Returns the currently generating module's Haskell module name.
 askModuleName :: Generator String
 askModuleName = envModuleName <$> ask
 
 -- | A partially-rendered 'Module'.  Contains all of the module's bindings, but
 -- may be subject to further processing.
 data Partial = Partial
-  { partialModuleHsName :: String
+  { partialModuleHsName :: String  -- ^ This is just the module name.
   , partialOutput :: Output
   }
 
@@ -302,24 +313,23 @@ instance Monoid Output where
 -- | Runs a generator action for the given interface and module name string.
 -- Returns an error message if an error occurred, otherwise the action's output
 -- together with its value.
-runGenerator :: Interface -> String -> Generator a -> Either ErrorMsg (Partial, a)
-runGenerator iface modName generator =
-  fmap (first (Partial modName) . swap) $
+runGenerator :: Interface -> Module -> Generator a -> Either ErrorMsg (Partial, a)
+runGenerator iface mod generator =
+  let modName = getModuleName iface mod
+  in fmap (first (Partial modName) . swap) $
 #if MIN_VERSION_mtl(2,2,1)
-  runExcept $
+     runExcept $
 #endif
-  flip catchError (\msg -> throwError $ msg ++ ".") $
-  runWriterT $ runReaderT generator $ Env iface modName
+     flip catchError (\msg -> throwError $ msg ++ ".") $
+     runWriterT $ runReaderT generator $ Env iface mod modName
 
 -- | Runs a generator action and returns the its value.
-evalGenerator :: Interface -> String -> Generator a -> Either ErrorMsg a
-evalGenerator iface modName =
-  fmap snd . runGenerator iface modName
+evalGenerator :: Interface -> Module -> Generator a -> Either ErrorMsg a
+evalGenerator iface mod = fmap snd . runGenerator iface mod
 
 -- | Runs a generator action and returns its output.
-execGenerator :: Interface -> String -> Generator a -> Either ErrorMsg Partial
-execGenerator iface modName =
-  fmap fst . runGenerator iface modName
+execGenerator :: Interface -> Module -> Generator a -> Either ErrorMsg Partial
+execGenerator iface mod = fmap fst . runGenerator iface mod
 
 -- | Converts a 'Partial' into a complete Haskell module.
 renderPartial :: Partial -> String
@@ -417,6 +427,11 @@ ln = sayLn ""
 -- | Runs the given action, indenting all code output by the action one level.
 indent :: Generator a -> Generator a
 indent = censor $ \o -> o { outputBody = map (\x -> ' ':' ':x) $ outputBody o }
+
+-- | Runs the given action, indenting all code output by the action N spaces.
+indentSpaces :: Int -> Generator a -> Generator a
+indentSpaces n = censor $ \o -> o { outputBody = map (\x -> indentation ++ x) $ outputBody o }
+  where indentation = replicate n ' '
 
 -- | Takes a list of binding actions and a body action, and outputs a @let@
 -- expression.  By passing in 'Nothing' for the body, it will be omitted, so

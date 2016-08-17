@@ -27,13 +27,19 @@ module Foreign.Hoppy.Generator.Spec (
   -- * Interfaces
   Interface,
   ErrorMsg,
+  InterfaceOptions (..),
+  defaultInterfaceOptions,
   interface,
+  interface',
   interfaceName,
   interfaceModules,
   interfaceNamesToModules,
   interfaceHaskellModuleBase,
   interfaceDefaultHaskellModuleBase,
   interfaceAddHaskellModuleBase,
+  interfaceExceptionHandlers,
+  interfaceExceptionClassId,
+  interfaceExceptionSupportModule,
   -- * C++ includes
   Include,
   includeStd,
@@ -46,6 +52,7 @@ module Foreign.Hoppy.Generator.Spec (
   moduleCppPath,
   moduleExports,
   moduleReqs,
+  moduleExceptionHandlers,
   moduleHaskellName,
   makeModule,
   moduleModify,
@@ -97,14 +104,15 @@ module Foreign.Hoppy.Generator.Spec (
   bitspaceAddCppType, bitspaceReqs,
   -- ** Functions
   Purity (..),
-  Function, makeFn, fnCName, fnExtName, fnPurity, fnParams, fnReturn, fnReqs,
+  Function, makeFn, fnCName, fnExtName, fnPurity, fnParams, fnReturn, fnReqs, fnExceptionHandlers,
   -- ** Classes
   Class, makeClass, classIdentifier, classExtName, classSuperclasses, classCtors, classDtorIsPublic,
   classMethods, classConversion, classReqs, classAddCtors, classSetDtorPrivate, classAddMethods,
   classIsMonomorphicSuperclass, classSetMonomorphicSuperclass,
   classIsSubclassOfMonomorphic, classSetSubclassOfMonomorphic,
+  classIsException, makeClassException,
   HasClassyExtName (..),
-  Ctor, makeCtor, mkCtor, ctorExtName, ctorParams,
+  Ctor, makeCtor, mkCtor, ctorExtName, ctorParams, ctorExceptionHandlers,
   Method,
   MethodImpl (..),
   MethodApplicability (..),
@@ -115,7 +123,7 @@ module Foreign.Hoppy.Generator.Spec (
   mkStaticMethod, mkStaticMethod',
   mkProps, mkProp, mkStaticProp, mkBoolIsProp, mkBoolHasProp,
   methodImpl, methodExtName, methodApplicability, methodPurity, methodParams,
-  methodReturn, methodConst, methodStatic,
+  methodReturn, methodExceptionHandlers, methodConst, methodStatic,
   -- *** Conversion to and from foreign values
   ClassConversion (..),
   ClassConversionMode (..),
@@ -128,6 +136,13 @@ module Foreign.Hoppy.Generator.Spec (
   ClassHaskellConversion (..),
   -- ** Callbacks
   Callback, makeCallback, callbackExtName, callbackParams, callbackReturn, callbackReqs,
+  -- * Exceptions
+  ExceptionId (..),
+  exceptionCatchAllId,
+  ExceptionHandler (..),
+  ExceptionHandlers (..),
+  HandlesExceptions (getExceptionHandlers),
+  handleExceptions,
   -- * Addenda
   Addendum (..),
   HasAddendum,
@@ -139,17 +154,21 @@ module Foreign.Hoppy.Generator.Spec (
   -- * Internal to Hoppy
   stringOrIdentifier,
   callbackToTFn,
+  interfaceAllExceptionClasses,
   -- ** Haskell imports
   makeHsImportSet,
   getHsImportSet,
   hsImportForBits,
+  hsImportForException,
   hsImportForInt,
   hsImportForWord,
   hsImportForForeign,
   hsImportForForeignC,
+  hsImportForMap,
   hsImportForPrelude,
   hsImportForRuntime,
   hsImportForSystemPosixTypes,
+  hsImportForTypeable,
   hsImportForUnsafeIO,
   -- ** Error messages
   objToHeapTWrongDirectionErrorMsg,
@@ -172,7 +191,7 @@ import Data.Char (isAlpha, isAlphaNum, toUpper)
 import Data.Function (on)
 import Data.List (intercalate, intersperse)
 import qualified Data.Map as M
-import Data.Maybe (fromMaybe)
+import Data.Maybe (catMaybes, fromMaybe)
 #if !MIN_VERSION_base(4,8,0)
 import Data.Monoid (Monoid, mappend, mconcat, mempty)
 #endif
@@ -185,6 +204,10 @@ type ErrorMsg = String
 
 -- | A complete specification of a C++ API.  Generators for different languages,
 -- including the binding generator for C++, use these to produce their output.
+--
+-- 'Interface' does not have a 'HandlesExceptions' instance because
+-- 'modifyExceptionHandlers' does not work for it (handled exceptions cannot be
+-- modified after an 'Interface' is constructed).
 data Interface = Interface
   { interfaceName :: String
     -- ^ The textual name of the interface.
@@ -195,18 +218,45 @@ data Interface = Interface
     -- the name.
   , interfaceHaskellModuleBase' :: Maybe [String]
     -- ^ See 'interfaceHaskellModuleBase'.
+  , interfaceExceptionHandlers :: ExceptionHandlers
+    -- ^ Exceptions that all functions in the interface may throw.
+  , interfaceExceptionNamesToIds :: M.Map ExtName ExceptionId
+    -- ^ Maps from external names of exception classes to their exception IDs.
+  , interfaceExceptionSupportModule :: Maybe Module
+    -- ^ When an interface uses C++ exceptions, then one module is selected
+    -- automatically to contain some interface-specific runtime support.  This
+    -- is the module that gets selected.  This is present when exceptions are
+    -- used.
   }
 
 instance Show Interface where
   show iface = concat ["<Interface ", show (interfaceName iface), ">"]
 
+-- | Optional parameters when constructing an 'Interface' with 'interface'.
+data InterfaceOptions = InterfaceOptions
+  { interfaceOptionsExceptionHandlers :: ExceptionHandlers
+  }
+
+-- | Options used by 'interface'.  This contains no exception handlers.
+defaultInterfaceOptions :: InterfaceOptions
+defaultInterfaceOptions = InterfaceOptions mempty
+
 -- | Constructs an 'Interface' from the required parts.  Some validation is
 -- performed; if the resulting interface would be invalid, an error message is
 -- returned instead.
+--
+-- This function passes 'defaultInterfaceOptions' to 'interface''.
 interface :: String  -- ^ 'interfaceName'
           -> [Module]  -- ^ 'interfaceModules'
           -> Either ErrorMsg Interface
-interface ifName modules = do
+interface ifName modules = interface' ifName modules defaultInterfaceOptions
+
+-- | Same as 'interface', but accepts some optional arguments.
+interface' :: String  -- ^ 'interfaceName'
+           -> [Module]  -- ^ 'interfaceModules'
+           -> InterfaceOptions
+           -> Either ErrorMsg Interface
+interface' ifName modules options = do
   -- TODO Check for duplicate module names.
   -- TODO Check for duplicate module file paths.
 
@@ -231,11 +281,28 @@ interface ifName modules = do
           concat $ "- " : show extName : ": " : intersperse ", " (map show modules))
         extNamesInMultipleModules
 
+  -- Generate a unique exception ID integer for each exception class.  IDs 0 and
+  -- 1 are reserved.
+  let exceptionNamesToIds =
+        M.fromList $
+        zip (map classExtName $ interfaceAllExceptionClasses' modules)
+            (map ExceptionId [exceptionFirstFreeId..])
+
+      -- To select a module to contain exception runtime support, we arbitrarily
+      -- pick the lexicographically last module in the interface.
+      exceptionSupportModule =
+        if M.null exceptionNamesToIds
+        then Nothing
+        else Just $ maximum modules
+
   return Interface
     { interfaceName = ifName
     , interfaceModules = M.fromList $ map (moduleName &&& id) modules
     , interfaceNamesToModules = M.map (\[x] -> x) extNamesToModules
     , interfaceHaskellModuleBase' = Nothing
+    , interfaceExceptionHandlers = interfaceOptionsExceptionHandlers options
+    , interfaceExceptionNamesToIds = exceptionNamesToIds
+    , interfaceExceptionSupportModule = exceptionSupportModule
     }
 
 -- | The name of the parent Haskell module under which a Haskell module will be
@@ -266,6 +333,24 @@ interfaceAddHaskellModuleBase modulePath iface = case interfaceHaskellModuleBase
     , intercalate "." modulePath, " to ", show iface
     , " which already has a module base ", intercalate "." existingPath
     ]
+
+-- | Returns the the exception ID for a class in an interface, if it has one
+-- (i.e. if it's been marked as an exception class with 'makeClassException').
+interfaceExceptionClassId :: Interface -> Class -> Maybe ExceptionId
+interfaceExceptionClassId iface cls =
+  M.lookup (classExtName cls) $ interfaceExceptionNamesToIds iface
+
+-- | Returns all of the exception classes in an interface.
+interfaceAllExceptionClasses :: Interface -> [Class]
+interfaceAllExceptionClasses = interfaceAllExceptionClasses' . M.elems . interfaceModules
+
+interfaceAllExceptionClasses' :: [Module] -> [Class]
+interfaceAllExceptionClasses' modules =
+  flip concatMap modules $ \mod ->
+  catMaybes $
+  flip map (M.elems $ moduleExports mod) $ \export -> case export of
+    ExportClass cls | classIsException cls -> Just cls
+    _ -> Nothing
 
 -- | An @#include@ directive in a C++ file.
 data Include = Include
@@ -309,6 +394,8 @@ data Module = Module
     -- ^ The generated Haskell module name, underneath the
     -- 'interfaceHaskellModuleBase'.  If absent (by default), the 'moduleName'
     -- is used.  May be modified with 'moduleAddHaskellName'.
+  , moduleExceptionHandlers :: ExceptionHandlers
+    -- ^ Exceptions that all functions in the module may throw.
   }
 
 instance Eq Module where
@@ -324,6 +411,10 @@ instance HasReqs Module where
   getReqs = moduleReqs
   setReqs reqs m = m { moduleReqs = reqs }
 
+instance HandlesExceptions Module where
+  getExceptionHandlers = moduleExceptionHandlers
+  modifyExceptionHandlers f m = m { moduleExceptionHandlers = f $ moduleExceptionHandlers m }
+
 -- | Creates an empty module, ready to be configured with 'moduleModify'.
 makeModule :: String  -- ^ 'moduleName'
            -> String  -- ^ 'moduleHppPath'
@@ -336,6 +427,7 @@ makeModule name hppPath cppPath = Module
   , moduleExports = M.empty
   , moduleReqs = mempty
   , moduleHaskellName = Nothing
+  , moduleExceptionHandlers = mempty
   }
 
 -- | Extends a module.  To be used with the module state-monad actions in this
@@ -872,7 +964,7 @@ data Variable = Variable
   }
 
 instance Eq Variable where
-  (==) = (==) `on` varIdentifier
+  (==) = (==) `on` varExtName
 
 instance Show Variable where
   show v = concat ["<Variable ", show (varExtName v), " ", show (varType v), ">"]
@@ -923,7 +1015,7 @@ data CppEnum = CppEnum
   }
 
 instance Eq CppEnum where
-  (==) = (==) `on` enumIdentifier
+  (==) = (==) `on` enumExtName
 
 instance Show CppEnum where
   show e = concat ["<Enum ", show (enumExtName e), " ", show (enumIdentifier e), ">"]
@@ -1072,6 +1164,8 @@ data Function = Function
     -- ^ The function's return type.
   , fnReqs :: Reqs
     -- ^ Requirements for a binding to call the function.
+  , fnExceptionHandlers :: ExceptionHandlers
+    -- ^ Exceptions that the function might throw.
   , fnAddendum :: Addendum
     -- ^ The function's addendum.
   }
@@ -1084,6 +1178,10 @@ instance Show Function where
 instance HasReqs Function where
   getReqs = fnReqs
   setReqs reqs fn = fn { fnReqs = reqs }
+
+instance HandlesExceptions Function where
+  getExceptionHandlers = fnExceptionHandlers
+  modifyExceptionHandlers f fn = fn { fnExceptionHandlers = f $ fnExceptionHandlers fn }
 
 instance HasAddendum Function where
   getAddendum = fnAddendum
@@ -1103,7 +1201,7 @@ makeFn cName maybeExtName purity paramTypes retType =
   let fnName = toFnName cName
   in Function fnName
               (extNameOrFnIdentifier fnName maybeExtName)
-              purity paramTypes retType mempty mempty
+              purity paramTypes retType mempty mempty mempty
 
 -- | A C++ class declaration.  A class's external name is automatically combined
 -- with the external names of things inside the class, by way of
@@ -1133,10 +1231,15 @@ data Class = Class
   , classIsSubclassOfMonomorphic :: Bool
     -- ^ This is true for classes passed through
     -- 'classSetSubclassOfMonomorphic'.
+  , classIsException :: Bool
+    -- ^ Whether to support using the class as a C++ exception.
   }
 
 instance Eq Class where
-  (==) = (==) `on` classIdentifier
+  (==) = (==) `on` classExtName
+
+instance Ord Class where
+  compare = compare `on` classExtName
 
 instance Show Class where
   show cls =
@@ -1171,6 +1274,7 @@ makeClass identifier maybeExtName supers ctors methods = Class
   , classAddendum = mempty
   , classIsMonomorphicSuperclass = False
   , classIsSubclassOfMonomorphic = False
+  , classIsException = False
   }
 
 -- | Adds constructors to a class.
@@ -1198,6 +1302,13 @@ classSetMonomorphicSuperclass cls = cls { classIsMonomorphicSuperclass = True }
 -- applied to the subclass instead.
 classSetSubclassOfMonomorphic :: Class -> Class
 classSetSubclassOfMonomorphic cls = cls { classIsSubclassOfMonomorphic = True }
+
+-- | Marks a class as being used as an exception.  This makes the class
+-- throwable and catchable.
+makeClassException :: Class -> Class
+makeClassException cls = case classIsException cls of
+  False -> cls { classIsException = True }
+  True -> cls
 
 -- | Adds methods to a class.
 classAddMethods :: [Method] -> Class -> Class
@@ -1336,10 +1447,16 @@ data Ctor = Ctor
     -- ^ The constructor's external name.
   , ctorParams :: [Type]
     -- ^ The constructor's parameter types.
+  , ctorExceptionHandlers :: ExceptionHandlers
+    -- ^ Exceptions that the constructor may throw.
   }
 
 instance Show Ctor where
   show ctor = concat ["<Ctor ", show (ctorExtName ctor), " ", show (ctorParams ctor), ">"]
+
+instance HandlesExceptions Ctor where
+  getExceptionHandlers = ctorExceptionHandlers
+  modifyExceptionHandlers f ctor = ctor { ctorExceptionHandlers = f $ ctorExceptionHandlers ctor }
 
 instance HasClassyExtName Ctor where
   getClassyExtNameSuffix = ctorExtName
@@ -1348,7 +1465,7 @@ instance HasClassyExtName Ctor where
 makeCtor :: ExtName
          -> [Type]  -- ^ Parameter types.
          -> Ctor
-makeCtor = Ctor
+makeCtor extName paramTypes = Ctor extName paramTypes mempty
 
 -- | @mkCtor name@ creates a 'Ctor' whose external name is @className_name@.
 mkCtor :: String
@@ -1374,6 +1491,8 @@ data Method = Method
     -- ^ The method's parameter types.
   , methodReturn :: Type
     -- ^ The method's return type.
+  , methodExceptionHandlers :: ExceptionHandlers
+    -- ^ Exceptions that the method might throw.
   }
 
 instance Show Method where
@@ -1386,6 +1505,12 @@ instance Show Method where
             show (methodPurity method), " ",
             show (methodParams method), " ",
             show (methodReturn method), ">"]
+
+instance HandlesExceptions Method where
+  getExceptionHandlers = methodExceptionHandlers
+
+  modifyExceptionHandlers f method =
+    method { methodExceptionHandlers = f $ methodExceptionHandlers method }
 
 instance HasClassyExtName Method where
   getClassyExtNameSuffix = methodExtName
@@ -1440,7 +1565,8 @@ makeMethod :: IsFnName String name
            -> [Type]  -- ^ Parameter types.
            -> Type  -- ^ Return type.
            -> Method
-makeMethod name = Method $ RealMethod $ toFnName name
+makeMethod cName extName appl purity paramTypes retType =
+  Method (RealMethod $ toFnName cName) extName appl purity paramTypes retType mempty
 
 -- | Creates a 'Method' that is in fact backed by a C++ non-member function (a
 -- la 'makeFn'), but appears to be a regular method.  This is useful for
@@ -1457,7 +1583,9 @@ makeFnMethod :: IsFnName Identifier name
              -> [Type]
              -> Type
              -> Method
-makeFnMethod cName foreignName = Method (FnMethod $ toFnName cName) (toExtName foreignName)
+makeFnMethod cName foreignName appl purity paramTypes retType =
+  Method (FnMethod $ toFnName cName) (toExtName foreignName)
+         appl purity paramTypes retType mempty
 
 -- | This function is internal.
 --
@@ -1665,6 +1793,56 @@ makeCallback extName paramTypes retType = Callback extName paramTypes retType me
 callbackToTFn :: Callback -> Type
 callbackToTFn = Internal_TFn <$> callbackParams <*> callbackReturn
 
+-- | Each exception class has a unique exception ID.
+newtype ExceptionId = ExceptionId
+  { getExceptionId :: Int  -- ^ Internal.
+  } deriving (Eq, Show)
+
+-- | The exception ID that represents the catch-all type.
+exceptionCatchAllId :: ExceptionId
+exceptionCatchAllId = ExceptionId 1
+
+-- | The lowest exception ID to be used for classes.
+exceptionFirstFreeId :: Int
+exceptionFirstFreeId = getExceptionId exceptionCatchAllId + 1
+
+-- | Indicates the ability to handle a certain type of C++ exception.
+data ExceptionHandler =
+    CatchClass Class
+    -- ^ Indicates that instances of the given class are handled (including
+    -- derived types).
+  | CatchAll
+    -- ^ Indicates that all C++ exceptions are handled, i.e. @catch (...)@.
+  deriving (Eq, Ord)
+
+-- | Represents a list of exception handlers to be used for a body of code.
+-- Order is important; a 'CatchAll' will prevent all subsequent handlers from
+-- being invoked.
+data ExceptionHandlers = ExceptionHandlers
+  { exceptionHandlersList :: [ExceptionHandler]
+    -- ^ Extracts the list of exception handlers.
+  }
+
+instance Monoid ExceptionHandlers where
+  mempty = ExceptionHandlers []
+
+  mappend e1 e2 =
+    ExceptionHandlers
+    (S.toList $ S.fromList $ exceptionHandlersList e1 ++ exceptionHandlersList e2)
+
+-- | Types that can handle exceptions.
+class HandlesExceptions a where
+  -- | Extracts the exception handlers for an object.
+  getExceptionHandlers :: a -> ExceptionHandlers
+
+  -- | Modifies an object's exception handlers with a given function.
+  modifyExceptionHandlers :: (ExceptionHandlers -> ExceptionHandlers) -> a -> a
+
+-- | Appends additional exception handlers to an object.
+handleExceptions :: HandlesExceptions a => [ExceptionHandler] -> a -> a
+handleExceptions classes =
+  modifyExceptionHandlers $ mappend mempty {exceptionHandlersList = classes}
+
 -- | A collection of imports for a Haskell module.  This is a monoid: import
 -- Statements are merged to give the union of imported bindings.
 --
@@ -1817,6 +1995,10 @@ hsImports' moduleName values =
 hsImportForBits :: HsImportSet
 hsImportForBits = hsQualifiedImport "Data.Bits" "HoppyDB"
 
+-- | Imports "Control.Exception" qualified as @HoppyCE@.
+hsImportForException :: HsImportSet
+hsImportForException = hsQualifiedImport "Control.Exception" "HoppyCE"
+
 -- | Imports "Data.Int" qualified as @HoppyDI@.
 hsImportForInt :: HsImportSet
 hsImportForInt = hsQualifiedImport "Data.Int" "HoppyDI"
@@ -1833,6 +2015,10 @@ hsImportForForeign = hsQualifiedImport "Foreign" "HoppyF"
 hsImportForForeignC :: HsImportSet
 hsImportForForeignC = hsQualifiedImport "Foreign.C" "HoppyFC"
 
+-- | Imports "Data.Map" qualified as @HoppyDM@.
+hsImportForMap :: HsImportSet
+hsImportForMap = hsQualifiedImport "Data.Map" "HoppyDM"
+
 -- | Imports "Prelude" qualified as @HoppyP@.
 hsImportForPrelude :: HsImportSet
 hsImportForPrelude = hsQualifiedImport "Prelude" "HoppyP"
@@ -1844,6 +2030,10 @@ hsImportForRuntime = hsQualifiedImport "Foreign.Hoppy.Runtime" "HoppyFHR"
 -- | Imports "System.Posix.Types" qualified as @HoppySPT@.
 hsImportForSystemPosixTypes :: HsImportSet
 hsImportForSystemPosixTypes = hsQualifiedImport "System.Posix.Types" "HoppySPT"
+
+-- | Imports "Data.Typeable" qualified as @HoppyDT@.
+hsImportForTypeable :: HsImportSet
+hsImportForTypeable = hsQualifiedImport "Data.Typeable" "HoppyDT"
 
 -- | Imports "System.IO.Unsafe" qualified as @HoppySIU@.
 hsImportForUnsafeIO :: HsImportSet

@@ -22,8 +22,10 @@ module Main (main) where
 #if !MIN_VERSION_base(4,8,0)
 import Control.Applicative ((<$>), (<*>))
 #endif
-import Control.Monad (when)
+import Control.Exception (evaluate)
+import Control.Monad (forM_, unless, when)
 import Data.Bits ((.&.), (.|.), xor)
+import Data.IORef (newIORef, readIORef, writeIORef)
 import Foreign.C (
   CChar,
   CDouble,
@@ -38,7 +40,9 @@ import Foreign.C (
 import Foreign.ForeignPtr (ForeignPtr, castForeignPtr, withForeignPtr)
 import Foreign.Hoppy.Runtime (
   CBool,
+  UnknownCppException,
   assign,
+  catchCpp,
   decode,
   decodeAndDelete,
   delete,
@@ -65,6 +69,7 @@ import Test.HUnit (
   (~:),
   (@?=),
   assert,
+  assertBool,
   assertFailure,
   errors,
   failures,
@@ -95,6 +100,7 @@ tests =
   , inheritanceTests
   , enumTests
   , bitspaceTests
+  , exceptionTests
   ]
 
 functionTests :: Test
@@ -347,9 +353,6 @@ classConversionTests =
     readCounts >>= assertNAlive 0
 
   , "ClassConversionToGc" ~: do
-    let readCounts = (,) <$>
-                     ptrCtrWithToGcConversion_getConstructionCount <*>
-                     ptrCtrWithToGcConversion_getDestructionCount
     ptrCtrWithToGcConversion_resetCounters
     p <- ptrCtrWithToGcConversion_newGcedObj
     readCounts >>= assertNAlive 1
@@ -358,7 +361,11 @@ classConversionTests =
     performGC
     readCounts >>= assertNAlive 0
   ]
-  where assertNAlive n calls@(ctorCalls, _) =
+  where readCounts = (,) <$>
+                     ptrCtrWithToGcConversion_getConstructionCount <*>
+                     ptrCtrWithToGcConversion_getDestructionCount
+
+        assertNAlive n calls@(ctorCalls, _) =
           calls @?= (ctorCalls, ctorCalls - n)
 
 fnMethodTests :: Test
@@ -557,3 +564,92 @@ bitspaceTests =
     takesBetterBoolsCallback op betterBools_FileNotFound @?= betterBools_False
   ]
   where op x = return $ x `xor` toBetterBools (5 :: Int)
+
+exceptionTests :: Test
+exceptionTests =
+  "exceptions" ~: TestList
+  [ "catching the thrown type" ~: TestList
+    [ "throwing BaseException, catching BaseException" ~:
+      expectException throwsBaseException (undefined :: BaseException)
+    , "throwing ReadException, catching ReadException" ~:
+      expectException throwsReadException (undefined :: ReadException)
+    , "throwing BaseException, should not catch ReadException" ~:
+      expectExceptionButNot throwsBaseException
+      (undefined :: BaseException) (undefined :: ReadException)
+    ]
+
+  , "catching supertypes of thrown types" ~: TestList
+    [ "throwing FileException, catching BaseException" ~:
+      expectException throwsFileException (undefined :: FileException)
+    , "throwing ReadException, catching BaseException" ~:
+      expectException throwsReadException (undefined :: ReadException)
+    , "throwing WriteException, catching BaseException" ~:
+      expectException throwsWriteException (undefined :: WriteException)
+    ]
+
+  , "catching (...)" ~: TestList
+    [ "throwing BaseException, catching (...)" ~:
+      expectException throwsBaseException (undefined :: UnknownCppException)
+    , "throwing ReadException, catching (...)" ~:
+      expectException throwsReadException (undefined :: UnknownCppException)
+    , "throwing types Hoppy doesn't catch" ~:
+      forM_ [0..3] $ \i -> do
+        threw <- newIORef False
+        catchCpp (throwsAny i) $ \(_ :: UnknownCppException) ->
+          writeIORef threw True
+        readIORef threw >>= assertBool "Expected an exception to be thrown."
+    ]
+
+  , "exception lifecycle" ~: TestList
+    [ "a caught exception object is GCable" ~: do
+      ptrCtr_resetCounters
+      threw <- newIORef False
+      catchCpp throwsPtrCtr $ \(e :: PtrCtr) -> do
+        writeIORef threw True
+        performGC
+        readCounts >>= assertNAlive 1
+        touchCppPtr e
+        performGC
+        readCounts >>= assertNAlive 0
+      readIORef threw >>= assertBool "Expected an exception to be thrown."
+
+    , "catching a SomeCppException as (...) deletes the object" ~: do
+      ptrCtr_resetCounters
+      threw <- newIORef False
+      catchCpp throwsPtrCtr $ \(e :: UnknownCppException) -> do
+        writeIORef threw True
+        performGC
+        readCounts >>= assertNAlive 0
+        _ <- evaluate e
+        return ()
+      readIORef threw >>= assertBool "Expected an exception to be thrown."
+    ]
+  ]
+  where expectException action excType = do
+          threwRef <- newIORef False
+          catchCpp action $ \e ->
+            asTypeOf e excType `seq` writeIORef threwRef True
+          threw <- readIORef threwRef
+          unless threw $ assertFailure "Expected to catch an exception."
+
+        expectExceptionButNot action expectedExcType unexpectedExcType = do
+          caughtExpectedRef <- newIORef False
+          caughtUnexpectedRef <- newIORef False
+          catchCpp (catchCpp action $
+                    \e -> asTypeOf e unexpectedExcType `seq` writeIORef caughtUnexpectedRef True) $
+            \e -> asTypeOf e expectedExcType `seq` writeIORef caughtExpectedRef True
+
+          caughtExpected <- readIORef caughtExpectedRef
+          caughtUnexpected <- readIORef caughtUnexpectedRef
+          case (caughtExpected, caughtUnexpected) of
+            (True, False) -> return ()
+            (False, True) -> assertFailure "Caught an exception of unexpected type."
+            (False, False) -> assertFailure "Expected to catch an exception."
+            (True, True) -> assertFailure "Through magic, we caught two exceptions."
+
+        readCounts = (,) <$>
+                     ptrCtrWithToGcConversion_getConstructionCount <*>
+                     ptrCtrWithToGcConversion_getDestructionCount
+
+        assertNAlive n calls@(ctorCalls, _) =
+          calls @?= (ctorCalls, ctorCalls - n)
