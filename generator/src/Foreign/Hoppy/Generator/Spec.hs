@@ -196,6 +196,7 @@ import Data.Maybe (catMaybes, fromMaybe)
 import Data.Monoid (Monoid, mappend, mconcat, mempty)
 #endif
 import qualified Data.Set as S
+import Foreign.Hoppy.Generator.Common
 import {-# SOURCE #-} qualified Foreign.Hoppy.Generator.Language.Haskell as Haskell
 import Language.Haskell.Syntax (HsType)
 
@@ -348,7 +349,7 @@ interfaceAllExceptionClasses' :: [Module] -> [Class]
 interfaceAllExceptionClasses' modules =
   flip concatMap modules $ \mod ->
   catMaybes $
-  flip map (M.elems $ moduleExports mod) $ \export -> case export of
+  for (M.elems $ moduleExports mod) $ \export -> case export of
     ExportClass cls | classIsException cls -> Just cls
     _ -> Nothing
 

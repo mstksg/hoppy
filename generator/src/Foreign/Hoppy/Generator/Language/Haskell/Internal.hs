@@ -86,7 +86,7 @@ generate iface = do
       partialsByHsName = M.fromList $ map ((partialModuleHsName &&& id) . snd) modPartials
 
       sccInput :: [((Module, Partial), Partial, [Partial])]
-      sccInput = flip map modPartials $ \x@(_, p) ->
+      sccInput = for modPartials $ \x@(_, p) ->
         (x, p,
          mapMaybe (flip M.lookup partialsByHsName . hsImportModule) $
          M.keys $ getHsImportSet $ outputImports $ partialOutput p)

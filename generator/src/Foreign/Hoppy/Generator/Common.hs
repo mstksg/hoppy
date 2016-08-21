@@ -22,6 +22,7 @@ module Foreign.Hoppy.Generator.Common (
   fromMaybeM,
   fromEitherM,
   maybeFail,
+  for,
   listSubst,
   zipWithM,
   writeFileIfDifferent,
@@ -51,6 +52,10 @@ fromEitherM = flip either return
 -- | @maybeFail s x = maybe (fail s) x@
 maybeFail :: Monad m => String -> Maybe a -> m a
 maybeFail = fromMaybeM . fail
+
+-- | @for = flip map@
+for :: [a] -> (a -> b) -> [b]
+for = flip map
 
 -- | @listSubst a b xs@ replaces all @x@ in @xs@ such that @x == a@ with @b@.
 listSubst :: Eq a => a -> a -> [a] -> [a]
