@@ -37,6 +37,7 @@ module Foreign.Hoppy.Generator.Spec (
   interfaceHaskellModuleBase,
   interfaceDefaultHaskellModuleBase,
   interfaceAddHaskellModuleBase,
+  interfaceHaskellModuleImportNames,
   interfaceExceptionHandlers,
   interfaceExceptionClassId,
   interfaceExceptionSupportModule,
@@ -219,6 +220,9 @@ data Interface = Interface
     -- the name.
   , interfaceHaskellModuleBase' :: Maybe [String]
     -- ^ See 'interfaceHaskellModuleBase'.
+  , interfaceHaskellModuleImportNames :: M.Map Module String
+    -- ^ Short qualified module import names that generated modules use to refer
+    -- to each other tersely.
   , interfaceExceptionHandlers :: ExceptionHandlers
     -- ^ Exceptions that all functions in the interface may throw.
   , interfaceExceptionNamesToIds :: M.Map ExtName ExceptionId
@@ -282,6 +286,11 @@ interface' ifName modules options = do
           concat $ "- " : show extName : ": " : intersperse ", " (map show modules))
         extNamesInMultipleModules
 
+  let haskellModuleImportNames =
+        M.fromList $
+        (\a b f -> zipWith f a b) modules [1..] $
+        \mod index -> (mod, 'M' : show index)
+
   -- Generate a unique exception ID integer for each exception class.  IDs 0 and
   -- 1 are reserved.
   let exceptionNamesToIds =
@@ -301,6 +310,7 @@ interface' ifName modules options = do
     , interfaceModules = M.fromList $ map (moduleName &&& id) modules
     , interfaceNamesToModules = M.map (\[x] -> x) extNamesToModules
     , interfaceHaskellModuleBase' = Nothing
+    , interfaceHaskellModuleImportNames = haskellModuleImportNames
     , interfaceExceptionHandlers = interfaceOptionsExceptionHandlers options
     , interfaceExceptionNamesToIds = exceptionNamesToIds
     , interfaceExceptionSupportModule = exceptionSupportModule
