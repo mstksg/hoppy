@@ -177,7 +177,7 @@ instantiate' mapName k v userReqs opts =
                               hsImportForRuntime]
 
         forM_ [Const, Nonconst] $ \cst -> do
-          let hsDataTypeName = toHsDataTypeName cst map
+          hsDataTypeName <- toHsDataTypeName cst map
 
           keyHsType <-
             cppTypeToHsTypeAndUse HsHsSide $
@@ -202,42 +202,47 @@ instantiate' mapName k v userReqs opts =
           indent $ do
             sayLn "toContents this' = do"
             indent $ do
-              let mapBegin = case cst of
-                    Const -> "beginConst"
-                    Nonconst -> "begin"
-                  mapEnd = case cst of
-                    Const -> "endConst"
-                    Nonconst -> "end"
-                  iter = case cst of
+              mapEmpty <- toHsMethodName' map "empty"
+              mapBegin <- toHsMethodName' map $ case cst of
+                Const -> "beginConst"
+                Nonconst -> "begin"
+              mapEnd <- toHsMethodName' map $ case cst of
+                Const -> "endConst"
+                Nonconst -> "end"
+              let iter = case cst of
                     Const -> constIterator
                     Nonconst -> iterator
-                  iterGetValue = case cst of
-                    Const -> "getValueConst"
-                    Nonconst -> "getValue"
-              saysLn ["empty' <- ", toHsMethodName' map "empty", " this'"]
+              iterEq <- toHsMethodName' iter OpEq
+              iterGetKey <- toHsMethodName' iter "getKey"
+              iterGetValue <- toHsMethodName' iter $ case cst of
+                Const -> "getValueConst"
+                Nonconst -> "getValue"
+              iterPrev <- toHsMethodName' iter "prev"
+
+              saysLn ["empty' <- ", mapEmpty, " this'"]
               sayLn "if empty' then HoppyP.return [] else do"
               indent $ do
-                saysLn ["begin' <- ", toHsMethodName' map mapBegin, " this'"]
-                saysLn ["iter' <- ", toHsMethodName' map mapEnd, " this'"]
+                saysLn ["begin' <- ", mapBegin, " this'"]
+                saysLn ["iter' <- ", mapEnd, " this'"]
                 sayLn "go' iter' begin' []"
               sayLn "where"
               indent $ do
                 sayLn "go' iter' begin' acc' = do"
                 indent $ do
-                  saysLn ["stop' <- ", toHsMethodName' iter OpEq, " iter' begin'"]
+                  saysLn ["stop' <- ", iterEq, " iter' begin'"]
                   sayLn "if stop' then HoppyP.return acc' else do"
                   indent $ do
-                    saysLn ["_ <- ", toHsMethodName' iter "prev", " iter'"]
+                    saysLn ["_ <- ", iterPrev, " iter'"]
                     saysLn ["key' <- ",
                             case keyConv of
                               ConvertPtr -> ""
                               ConvertValue -> "HoppyFHR.decode =<< ",
-                            toHsMethodName' iter "getKey", " iter'"]
+                            iterGetKey, " iter'"]
                     saysLn ["value' <- ",
                             case valueConv of
                               ConvertPtr -> ""
                               ConvertValue -> "HoppyFHR.decode =<< ",
-                            toHsMethodName' iter iterGetValue, " iter'"]
+                            iterGetValue, " iter'"]
                     sayLn "go' iter' begin' $ (key', value'):acc'"
 
           -- Only generate a nonconst FromContents instance.
@@ -248,9 +253,11 @@ instantiate' mapName k v userReqs opts =
             indent $ do
               sayLn "fromContents values' = do"
               indent $ do
-                saysLn ["map' <- ", toHsMethodName' map "new"]
+                mapNew <- toHsMethodName' map "new"
+                mapAt <- toHsMethodName' map "at"
+                saysLn ["map' <- ", mapNew]
                 saysLn ["HoppyP.mapM_ (\\(k, v) -> HoppyP.flip HoppyFHR.assign v =<< ",
-                        toHsMethodName' map "at", " map' k) values'"]
+                        mapAt, " map' k) values'"]
                 sayLn "HoppyP.return map'"
 
   in Contents

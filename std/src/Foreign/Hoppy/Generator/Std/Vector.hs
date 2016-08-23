@@ -153,7 +153,7 @@ instantiate' vectorName t tReqs opts =
           addImports $ hsImport1 "Control.Monad" "(<=<)"
 
         forM_ [Const, Nonconst] $ \cst -> do
-          let hsDataTypeName = toHsDataTypeName cst vector
+          hsDataTypeName <- toHsDataTypeName cst vector
           hsValueType <-
             cppTypeToHsTypeAndUse HsHsSide $
             (case conversion of
@@ -170,15 +170,17 @@ instantiate' vectorName t tReqs opts =
           indent $ do
             sayLn "toContents this' = do"
             indent $ do
-              let vectorAt = case cst of
-                    Const -> "atConst"
-                    Nonconst -> "at"
-              saysLn ["size' <- ", toHsMethodName' vector "size", " this'"]
+              vectorAt <- toHsMethodName' vector $ case cst of
+                Const -> "atConst"
+                Nonconst -> "at"
+              vectorSize <- toHsMethodName' vector "size"
+
+              saysLn ["size' <- ", vectorSize, " this'"]
               saysLn ["HoppyP.mapM (",
                       case conversion of
                         ConvertPtr -> ""
                         ConvertValue -> "HoppyFHR.decode <=< ",
-                      toHsMethodName' vector vectorAt, " this') [0..size'-1]"]
+                      vectorAt, " this') [0..size'-1]"]
 
           -- Only generate a nonconst FromContents instance.
           when (cst == Nonconst) $ do
@@ -188,10 +190,12 @@ instantiate' vectorName t tReqs opts =
             indent $ do
               sayLn "fromContents values' = do"
               indent $ do
-                saysLn ["vector' <- ", toHsMethodName' vector "new"]
-                saysLn [toHsMethodName' vector "reserve",
-                        " vector' $ HoppyFHR.coerceIntegral $ HoppyP.length values'"]
-                saysLn ["HoppyP.mapM_ (", toHsMethodName' vector "pushBack", " vector') values'"]
+                vectorNew <- toHsMethodName' vector "new"
+                vectorPushBack <- toHsMethodName' vector "pushBack"
+                vectorReserve <- toHsMethodName' vector "reserve"
+                saysLn ["vector' <- ", vectorNew]
+                saysLn [vectorReserve, " vector' $ HoppyFHR.coerceIntegral $ HoppyP.length values'"]
+                saysLn ["HoppyP.mapM_ (", vectorPushBack, " vector') values'"]
                 sayLn "HoppyP.return vector'"
 
   in Contents

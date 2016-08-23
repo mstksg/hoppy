@@ -164,7 +164,7 @@ instantiate' listName t tReqs opts =
           addImports $ hsImport1 "Prelude" "(=<<)"
 
         forM_ [Const, Nonconst] $ \cst -> do
-          let hsDataTypeName = toHsDataTypeName cst list
+          hsDataTypeName <- toHsDataTypeName cst list
           hsValueType <-
             cppTypeToHsTypeAndUse HsHsSide $
             (case conversion of
@@ -181,37 +181,41 @@ instantiate' listName t tReqs opts =
           indent $ do
             sayLn "toContents this' = do"
             indent $ do
-              let listBegin = case cst of
-                    Const -> "beginConst"
-                    Nonconst -> "begin"
-                  listEnd = case cst of
-                    Const -> "endConst"
-                    Nonconst -> "end"
-                  iter = case cst of
+              listEmpty <- toHsMethodName' list "empty"
+              listBegin <- toHsMethodName' list $ case cst of
+                Const -> "beginConst"
+                Nonconst -> "begin"
+              listEnd <- toHsMethodName' list $ case cst of
+                Const -> "endConst"
+                Nonconst -> "end"
+              let iter = case cst of
                     Const -> constIterator
                     Nonconst -> iterator
-                  iterGet = case cst of
-                    Const -> "getConst"
-                    Nonconst -> "get"
-              saysLn ["empty' <- ", toHsMethodName' list "empty", " this'"]
+              iterEq <- toHsMethodName' iter OpEq
+              iterGet <- toHsMethodName' iter $ case cst of
+                Const -> "getConst"
+                Nonconst -> "get"
+              iterPrev <- toHsMethodName' iter "prev"
+
+              saysLn ["empty' <- ", listEmpty, " this'"]
               sayLn "if empty' then HoppyP.return [] else do"
               indent $ do
-                saysLn ["begin' <- ", toHsMethodName' list listBegin, " this'"]
-                saysLn ["iter' <- ", toHsMethodName' list listEnd, " this'"]
+                saysLn ["begin' <- ", listBegin, " this'"]
+                saysLn ["iter' <- ", listEnd, " this'"]
                 sayLn "go' iter' begin' []"
               sayLn "where"
               indent $ do
                 sayLn "go' iter' begin' acc' = do"
                 indent $ do
-                  saysLn ["stop' <- ", toHsMethodName' iter OpEq, " iter' begin'"]
+                  saysLn ["stop' <- ", iterEq, " iter' begin'"]
                   sayLn "if stop' then HoppyP.return acc' else do"
                   indent $ do
-                    saysLn ["_ <- ", toHsMethodName' iter "prev", " iter'"]
+                    saysLn ["_ <- ", iterPrev, " iter'"]
                     saysLn ["value' <- ",
                             case conversion of
                               ConvertPtr -> ""
                               ConvertValue -> "HoppyFHR.decode =<< ",
-                            toHsMethodName' iter iterGet, " iter'"]
+                            iterGet, " iter'"]
                     sayLn "go' iter' begin' $ value':acc'"
 
           -- Only generate a nonconst FromContents instance.
@@ -222,8 +226,10 @@ instantiate' listName t tReqs opts =
             indent $ do
               sayLn "fromContents values' = do"
               indent $ do
-                saysLn ["list' <- ", toHsMethodName' list "new"]
-                saysLn ["HoppyP.mapM_ (", toHsMethodName' list "pushBack", " list') values'"]
+                listNew <- toHsMethodName' list "new"
+                listPushBack <- toHsMethodName' list "pushBack"
+                saysLn ["list' <- ", listNew]
+                saysLn ["HoppyP.mapM_ (", listPushBack, " list') values'"]
                 sayLn "HoppyP.return list'"
 
   in Contents

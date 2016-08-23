@@ -27,7 +27,7 @@ module Foreign.Hoppy.Generator.Language.Haskell.Internal (
 #if !MIN_VERSION_base(4,8,0)
 import Control.Applicative ((<$>), (<*>), pure)
 #endif
-import Control.Arrow ((&&&), second)
+import Control.Arrow ((&&&))
 import Control.Monad (forM, unless, when)
 #if MIN_VERSION_mtl(2,2,1)
 import Control.Monad.Except (throwError)
@@ -215,9 +215,10 @@ sayExportEnum mode enum =
     SayExportForeignImports -> return ()
 
     SayExportDecls -> do
-      let hsTypeName = toHsEnumTypeName enum
-          values :: [(Int, String)]
-          values = map (second $ toHsEnumCtorName enum) $ enumValueNames enum
+      hsTypeName <- toHsEnumTypeName enum
+      values <- forM (enumValueNames enum) $ \(value, name) -> do
+        ctorName <- toHsEnumCtorName enum name
+        return (value, ctorName)
       addImports $ mconcat [hsImports "Prelude" ["($)", "(++)"], hsImportForPrelude]
 
       -- Print out the data declaration.
@@ -243,7 +244,7 @@ sayExportEnum mode enum =
                 " ++ HoppyP.show n'"]
 
     SayExportBoot -> do
-      let hsTypeName = toHsEnumTypeName enum
+      hsTypeName <- toHsEnumTypeName enum
       addImports hsImportForPrelude
       addExport hsTypeName
       ln
@@ -256,19 +257,20 @@ sayExportEnum mode enum =
 
 sayExportBitspace :: SayExportMode -> Bitspace -> Generator ()
 sayExportBitspace mode bitspace =
-  withErrorContext ("generating bitspace " ++ show (bitspaceExtName bitspace)) $
-  let hsTypeName = toHsBitspaceTypeName bitspace
-      fromFnName = toHsBitspaceToNumName bitspace
-      className = toHsBitspaceClassName bitspace
-      toFnName = toHsBitspaceFromValueName bitspace
-      hsType = HsTyCon $ UnQual $ HsIdent hsTypeName
-  in case mode of
+  withErrorContext ("generating bitspace " ++ show (bitspaceExtName bitspace)) $ do
+  hsTypeName <- toHsBitspaceTypeName bitspace
+  fromFnName <- toHsBitspaceToNumName bitspace
+  className <- toHsBitspaceClassName bitspace
+  toFnName <- toHsBitspaceFromValueName bitspace
+  let hsType = HsTyCon $ UnQual $ HsIdent hsTypeName
+  case mode of
     -- Nothing to import from the C++ side of a bitspace.
     SayExportForeignImports -> return ()
 
     SayExportDecls -> do
-      let values :: [(Int, String)]
-          values = map (second $ toHsBitspaceValueName bitspace) $ bitspaceValueNames bitspace
+      values <- forM (bitspaceValueNames bitspace) $ \(value, name) -> do
+        bindingName <- toHsBitspaceValueName bitspace name
+        return (value, bindingName)
 
       hsCNumType <- cppTypeToHsTypeAndUse HsCSide $ bitspaceType bitspace
       hsHsNumType <- cppTypeToHsTypeAndUse HsHsSide $ bitspaceType bitspace
@@ -297,8 +299,7 @@ sayExportBitspace mode bitspace =
       -- If the bitspace has an associated enum, then print out a conversion
       -- instance for it as well.
       forM_ (bitspaceEnum bitspace) $ \enum -> do
-        let enumTypeName = toHsEnumTypeName enum
-        importHsModuleForExtName $ enumExtName enum
+        enumTypeName <- toHsEnumTypeName enum
         addImports $ mconcat [hsImport1 "Prelude" "(.)", hsImportForPrelude, hsImportForRuntime]
         ln
         saysLn ["instance ", className, " ", enumTypeName, " where"]
@@ -337,8 +338,7 @@ sayExportBitspace mode bitspace =
       saysLn ["instance ", className, " (", prettyPrint hsHsNumType, ")"]
       saysLn ["instance ", className, " ", hsTypeName]
       forM_ (bitspaceEnum bitspace) $ \enum -> do
-        let enumTypeName = toHsEnumTypeName enum
-        importHsModuleForExtName $ enumExtName enum
+        enumTypeName <- toHsEnumTypeName enum
         saysLn ["instance ", className, " ", enumTypeName]
 
 sayExportFn :: SayExportMode
@@ -354,8 +354,9 @@ sayExportFn mode name methodInfo purity paramTypes retType exceptionHandlers = d
   let handlerList = exceptionHandlersList effectiveHandlers
       catches = not $ null handlerList
 
-      hsFnName = toHsFnName name
-      hsFnImportedName = hsFnName ++ "'"
+  hsFnName <- toHsFnName name
+  let hsFnImportedName = hsFnName ++ "'"
+
   case mode of
     SayExportForeignImports ->
       withErrorContext ("generating imports for function " ++ show name) $ do
@@ -401,12 +402,13 @@ sayExportFn mode name methodInfo purity paramTypes retType exceptionHandlers = d
           addImports $ mconcat [hsImport1 "Prelude" "($)", hsImportForRuntime]
           sayLn "HoppyFHR.internalHandleExceptions exceptionDb' $"
 
-        sayCallAndProcessReturn ToCpp retType $
-          hsFnImportedName :
-          (case methodInfo of
-             Just (cst, cls) -> " (" ++ toHsCastMethodName cst cls ++ " this)"
-             Nothing -> "") :
-          map (' ':) convertedArgNames
+        callWords <- case methodInfo of
+          Nothing -> return $ hsFnImportedName : map (' ':) convertedArgNames
+          Just (cst, cls) -> do
+            castMethodName <- toHsCastMethodName cst cls
+            return $
+              hsFnImportedName : " (" : castMethodName : " this)" : map (' ':) convertedArgNames
+        sayCallAndProcessReturn ToCpp retType callWords
 
     SayExportBoot ->
       -- Functions (methods included) cannot be referenced from other exports,
@@ -447,8 +449,8 @@ sayExportCallback mode cb =
         paramTypes = callbackParams cb
         retType = callbackReturn cb
         fnType = callbackToTFn cb
-        hsFnName = toHsCallbackCtorName cb
-        hsFnName'newCallback = hsFnName ++ "'newCallback"
+    hsFnName <- toHsCallbackCtorName cb
+    let hsFnName'newCallback = hsFnName ++ "'newCallback"
         hsFnName'newFunPtr = hsFnName ++ "'newFunPtr"
 
     hsFnCType <- cppTypeToHsTypeAndUse HsCSide fnType
@@ -558,56 +560,54 @@ sayArgProcessing dir t fromVar toVar =
                 ToCpp -> " = HoppyFHR.coerceIntegral $ HoppyP.fromEnum "
                 FromCpp -> " = HoppyP.toEnum $ HoppyFHR.coerceIntegral ",
               fromVar, " in"]
-    Internal_TBitspace b -> do
-      importHsModuleForExtName $ bitspaceExtName b
-      saysLn $ concat [ ["let ", toVar, " = "]
-                      , case dir of
-                          ToCpp -> [toHsBitspaceToNumName b, " $ ", toHsBitspaceFromValueName b]
-                          FromCpp -> [toHsBitspaceTypeName b],
-                        [" ", fromVar, " in"]
-                      ]
+    Internal_TBitspace b -> case dir of
+      ToCpp -> do
+        toNumName <- toHsBitspaceToNumName b
+        fromValueName <- toHsBitspaceFromValueName b
+        saysLn ["let ", toVar, " = ", toNumName, " $ ", fromValueName, " ", fromVar, " in"]
+      FromCpp -> do
+        typeName <- toHsBitspaceTypeName b
+        saysLn ["let ", toVar, " = " , typeName, " ", fromVar, " in"]
     -- References and pointers are handled equivalently.
-    Internal_TPtr (Internal_TObj cls) -> do
-      addImportForClass cls
-      case dir of
-        ToCpp -> do
-          addImports $ mconcat [hsImport1 "Prelude" "($)",
-                                hsImportForRuntime]
-          saysLn ["HoppyFHR.withCppPtr (", toHsCastMethodName Nonconst cls, " ", fromVar,
-                  ") $ \\", toVar, " ->"]
-        FromCpp ->
-          saysLn ["let ", toVar, " = ", toHsDataCtorName Unmanaged Nonconst cls,
-                  " ", fromVar, " in"]
-    Internal_TPtr (Internal_TConst (Internal_TObj cls)) -> do
-      addImportForClass cls
-      case dir of
-        ToCpp -> do
-          -- Same as the (TObj _), ToCpp case.
-          addImports $ mconcat [hsImport1 "Prelude" "($)",
-                                hsImportForPrelude,
-                                hsImportForRuntime]
-          saysLn [toHsWithValuePtrName cls, " ", fromVar,
-                  " $ HoppyP.flip HoppyFHR.withCppPtr $ \\", toVar, " ->"]
-        FromCpp ->
-          saysLn ["let ", toVar, " = ", toHsDataCtorName Unmanaged Const cls,
-                  " ", fromVar, " in"]
+    Internal_TPtr (Internal_TObj cls) -> case dir of
+      ToCpp -> do
+        addImports $ mconcat [hsImport1 "Prelude" "($)",
+                              hsImportForRuntime]
+        castMethodName <- toHsCastMethodName Nonconst cls
+        saysLn ["HoppyFHR.withCppPtr (", castMethodName, " ", fromVar,
+                ") $ \\", toVar, " ->"]
+      FromCpp -> do
+        ctorName <- toHsDataCtorName Unmanaged Nonconst cls
+        saysLn ["let ", toVar, " = ", ctorName, " ", fromVar, " in"]
+    Internal_TPtr (Internal_TConst (Internal_TObj cls)) -> case dir of
+      ToCpp -> do
+        -- Same as the (TObj _), ToCpp case.
+        addImports $ mconcat [hsImport1 "Prelude" "($)",
+                              hsImportForPrelude,
+                              hsImportForRuntime]
+        withValuePtrName <- toHsWithValuePtrName cls
+        saysLn [withValuePtrName, " ", fromVar,
+                " $ HoppyP.flip HoppyFHR.withCppPtr $ \\", toVar, " ->"]
+      FromCpp -> do
+        ctorName <- toHsDataCtorName Unmanaged Const cls
+        saysLn ["let ", toVar, " = ", ctorName, " ", fromVar, " in"]
     Internal_TPtr _ -> noConversion
     Internal_TRef t' -> sayArgProcessing dir (ptrT t') fromVar toVar
     Internal_TFn {} -> throwError "TFn unimplemented"
     Internal_TCallback cb -> case dir of
       ToCpp -> do
         addImports $ hsImport1 "Prelude" "(>>=)"
-        importHsModuleForExtName $ callbackExtName cb
-        saysLn [toHsCallbackCtorName cb, " ", fromVar, " >>= \\", toVar, " ->"]
+        callbackCtorName <- toHsCallbackCtorName cb
+        saysLn [callbackCtorName, " ", fromVar, " >>= \\", toVar, " ->"]
       FromCpp -> throwError "Can't receive a callback from C++"
     Internal_TObj cls -> case dir of
       ToCpp -> do
         -- Same as the (TPtr (TConst (TObj _))), ToPtr case.
-        addImportForClass cls
         addImports $ mconcat [hsImport1 "Prelude" "($)",
                               hsImportForPrelude,
                               hsImportForRuntime]
-        saysLn [toHsWithValuePtrName cls, " ", fromVar,
+        withValuePtrName <- toHsWithValuePtrName cls
+        saysLn [withValuePtrName, " ", fromVar,
                 " $ HoppyP.flip HoppyFHR.withCppPtr $ \\", toVar, " ->"]
       FromCpp -> case classHaskellConversion $ classConversion cls of
         ClassConversionNone ->
@@ -615,11 +615,10 @@ sayArgProcessing dir t fromVar toVar =
           ["Can't pass a TObj of ", show cls,
            " from C++ to Haskell because no class conversion is defined"]
         ClassConversionManual _ -> do
-          addImportForClass cls
           addImports $ mconcat [hsImport1 "Prelude" "(>>=)",
                                 hsImportForRuntime]
-          saysLn ["HoppyFHR.decode (", toHsDataCtorName Unmanaged Const cls, " ",
-                  fromVar, ") >>= \\", toVar, " ->"]
+          ctorName <- toHsDataCtorName Unmanaged Const cls
+          saysLn ["HoppyFHR.decode (", ctorName, " ", fromVar, ") >>= \\", toVar, " ->"]
         ClassConversionToHeap -> sayArgProcessing dir (objToHeapT cls) fromVar toVar
         ClassConversionToGc -> sayArgProcessing dir (toGcT t) fromVar toVar
     Internal_TObjToHeap cls -> case dir of
@@ -687,33 +686,32 @@ sayCallAndProcessReturn dir t callWords =
       sayCall
     Internal_TBitspace b -> do
       addImports hsImportForPrelude
-      importHsModuleForExtName $ bitspaceExtName b
-      saysLn ["HoppyP.fmap ", bitspaceConvFn dir b]
+      convFn <- bitspaceConvFn dir b
+      saysLn ["HoppyP.fmap ", convFn]
       sayCall
     -- The same as TPtr (TConst (TObj _)), but nonconst.
     Internal_TPtr (Internal_TObj cls) -> do
-      addImportForClass cls
       case dir of
         ToCpp -> do
           addImports hsImportForPrelude
-          saysLn ["HoppyP.fmap ", toHsDataCtorName Unmanaged Nonconst cls]
+          ctorName <- toHsDataCtorName Unmanaged Nonconst cls
+          saysLn ["HoppyP.fmap ", ctorName]
           sayCall
         FromCpp -> do
           addImports $ mconcat [hsImportForPrelude, hsImportForRuntime]
           sayLn "HoppyP.fmap HoppyFHR.toPtr"
           sayCall
     -- The same as TPtr (TConst (TObj _)), but nonconst.
-    Internal_TPtr (Internal_TConst (Internal_TObj cls)) -> do
-      addImportForClass cls
-      case dir of
-        ToCpp -> do
-          addImports hsImportForPrelude
-          saysLn ["HoppyP.fmap ", toHsDataCtorName Unmanaged Const cls]
-          sayCall
-        FromCpp -> do
-          addImports $ mconcat [hsImportForPrelude, hsImportForRuntime]
-          sayLn "HoppyP.fmap HoppyFHR.toPtr"
-          sayCall
+    Internal_TPtr (Internal_TConst (Internal_TObj cls)) -> case dir of
+      ToCpp -> do
+        addImports hsImportForPrelude
+        ctorName <- toHsDataCtorName Unmanaged Const cls
+        saysLn ["HoppyP.fmap ", ctorName]
+        sayCall
+      FromCpp -> do
+        addImports $ mconcat [hsImportForPrelude, hsImportForRuntime]
+        sayLn "HoppyP.fmap HoppyFHR.toPtr"
+        sayCall
     Internal_TPtr _ -> sayCall
     Internal_TRef t' -> sayCallAndProcessReturn dir (ptrT t') callWords
     Internal_TFn {} -> throwError "TFn unimplemented"
@@ -721,8 +719,8 @@ sayCallAndProcessReturn dir t callWords =
       ToCpp -> throwError "Can't receive a callback from C++"
       FromCpp -> do
         addImports $ hsImport1 "Prelude" "(=<<)"
-        importHsModuleForExtName $ callbackExtName cb
-        saysLn [toHsCallbackCtorName cb, "=<<"]
+        ctorName <- toHsCallbackCtorName cb
+        saysLn [ctorName, "=<<"]
         sayCall
     Internal_TObj cls -> case dir of
       ToCpp -> case classHaskellConversion $ classConversion cls of
@@ -731,15 +729,14 @@ sayCallAndProcessReturn dir t callWords =
           ["Can't return a TObj of ", show cls,
            " from C++ to Haskell because no class conversion is defined"]
         ClassConversionManual _ -> do
-          addImportForClass cls
           addImports $ mconcat [hsImports "Prelude" ["(.)", "(=<<)"],
                                 hsImportForRuntime]
-          saysLn ["(HoppyFHR.decodeAndDelete . ", toHsDataCtorName Unmanaged Const cls, ") =<<"]
+          ctorName <- toHsDataCtorName Unmanaged Const cls
+          saysLn ["(HoppyFHR.decodeAndDelete . ", ctorName, ") =<<"]
           sayCall
         ClassConversionToHeap -> sayCallAndProcessReturn dir (objToHeapT cls) callWords
         ClassConversionToGc -> sayCallAndProcessReturn dir (toGcT t) callWords
       FromCpp -> do
-        addImportForClass cls
         addImports $ mconcat [hsImports "Prelude" ["(.)", "(=<<)"],
                               hsImportForPrelude,
                               hsImportForRuntime]
@@ -770,7 +767,7 @@ sayCallAndProcessReturn dir t callWords =
           FromCpp -> toHsBitspaceToNumName
 
 sayExportClass :: SayExportMode -> Class -> Generator ()
-sayExportClass mode cls = do
+sayExportClass mode cls = withErrorContext ("generating class " ++ show (classExtName cls)) $ do
   case mode of
     SayExportForeignImports -> do
       sayExportClassHsCtors mode cls
@@ -809,22 +806,22 @@ sayExportClass mode cls = do
 
 sayExportClassHsClass :: Bool -> Class -> Constness -> Generator ()
 sayExportClassHsClass doDecls cls cst = do
-  let hsTypeName = toHsDataTypeName cst cls
-      hsValueClassName = toHsValueClassName cls
-      hsWithValuePtrName = toHsWithValuePtrName cls
-      hsPtrClassName = toHsPtrClassName cst cls
-      hsCastMethodName = toHsCastMethodName cst cls
-      supers = classSuperclasses cls
+  hsTypeName <- toHsDataTypeName cst cls
+  hsValueClassName <- toHsValueClassName cls
+  hsWithValuePtrName <- toHsWithValuePtrName cls
+  hsPtrClassName <- toHsPtrClassName cst cls
+  hsCastMethodName <- toHsCastMethodName cst cls
+  let supers = classSuperclasses cls
 
-  forM_ supers $ importHsModuleForExtName . classExtName
   hsSupers <-
     (\x -> if null x
            then do addImports hsImportForRuntime
                    return ["HoppyFHR.CppPtr"]
-           else return x) $
+           else return x) =<<
     case cst of
-      Const -> map (toHsPtrClassName Const) supers
-      Nonconst -> toHsPtrClassName Const cls : map (toHsPtrClassName Nonconst) supers
+      Const -> mapM (toHsPtrClassName Const) supers
+      Nonconst ->
+        (:) <$> toHsPtrClassName Const cls <*> mapM (toHsPtrClassName Nonconst) supers
 
   -- Print the value class definition.  There is only one of these, and it is
   -- spiritually closer to the const version of the pointers for this class, so
@@ -893,6 +890,11 @@ sayExportClassHsStaticMethods cls =
 
 sayExportClassHsType :: Bool -> Class -> Constness -> Generator ()
 sayExportClassHsType doDecls cls cst = do
+  hsTypeName <- toHsDataTypeName cst cls
+  hsCtor <- toHsDataCtorName Unmanaged cst cls
+  hsCtorGc <- toHsDataCtorName Managed cst cls
+  constCastFnName <- toHsConstCastFnName cst cls
+
   addImports $ mconcat [hsImportForForeign, hsImportForPrelude, hsImportForRuntime]
   -- Unfortunately, we must export the data constructor, so that GHC can marshal
   -- it in foreign calls in other modules.
@@ -915,15 +917,17 @@ sayExportClassHsType doDecls cls cst = do
   -- Generate const_cast functions:
   --   castFooToConst :: Foo -> FooConst
   --   castFooToNonconst :: FooConst -> Foo
+  hsTypeNameOppConst <- toHsDataTypeName (constNegate cst) cls
   ln
-  let constCastFnName = toHsConstCastFnName cst cls
   addExport constCastFnName
-  saysLn [constCastFnName, " :: ", toHsDataTypeName (constNegate cst) cls, " -> ", hsTypeName]
+  saysLn [constCastFnName, " :: ", hsTypeNameOppConst, " -> ", hsTypeName]
   when doDecls $ do
     addImports $ hsImport1 "Prelude" "($)"
-    saysLn [constCastFnName, " (", toHsDataCtorName Unmanaged (constNegate cst) cls,
+    hsCtorOppConst <- toHsDataCtorName Unmanaged (constNegate cst) cls
+    hsCtorGcOppConst <- toHsDataCtorName Managed (constNegate cst) cls
+    saysLn [constCastFnName, " (", hsCtorOppConst,
             " ptr') = ", hsCtor, " $ HoppyF.castPtr ptr'"]
-    saysLn [constCastFnName, " (", toHsDataCtorName Managed (constNegate cst) cls,
+    saysLn [constCastFnName, " (", hsCtorGcOppConst,
             " fptr' ptr') = ", hsCtorGc, " fptr' $ HoppyF.castPtr ptr'"]
 
   -- Generate an instance of CppPtr.
@@ -932,7 +936,7 @@ sayExportClassHsType doDecls cls cst = do
     then do addImports $ hsImport1 "Prelude" "($)"
             saysLn ["instance HoppyFHR.CppPtr ", hsTypeName, " where"]
             indent $ do
-              saysLn ["nullptr = ", toHsDataCtorName Unmanaged cst cls, " HoppyF.nullPtr"]
+              saysLn ["nullptr = ", hsCtor, " HoppyF.nullPtr"]
               ln
               saysLn ["withCppPtr (", hsCtor, " ptr') f' = f' ptr'"]
               saysLn ["withCppPtr (", hsCtorGc,
@@ -950,14 +954,14 @@ sayExportClassHsType doDecls cls cst = do
               indent $ do
                 -- Note, similar "delete" and "toGc" functions are generated for exception
                 -- classes' ExceptionClassInfo structures.
-                saysLn $
-                  "delete (" : toHsDataCtorName Unmanaged cst cls : " ptr') = " :
-                  toHsClassDeleteFnName cls :
-                  case cst of
-                    Const -> [" ptr'"]
-                    Nonconst -> [" $ (HoppyF.castPtr ptr' :: HoppyF.Ptr ",
-                                 toHsDataTypeName Const cls, ")"]
-                saysLn ["delete (", toHsDataCtorName Managed cst cls,
+                case cst of
+                  Const ->
+                    saysLn ["delete (", hsCtor, " ptr') = ", toHsClassDeleteFnName' cls, " ptr'"]
+                  Nonconst -> do
+                    constTypeName <- toHsDataTypeName Const cls
+                    saysLn ["delete (",hsCtor, " ptr') = ", toHsClassDeleteFnName' cls,
+                            " $ (HoppyF.castPtr ptr' :: HoppyF.Ptr ", constTypeName, ")"]
+                saysLn ["delete (", hsCtorGc,
                         " _ _) = HoppyP.fail $ HoppyP.concat ",
                         "[\"Deletable.delete: Asked to delete a GC-managed \", ",
                         show hsTypeName, ", \" object.\"]"]
@@ -970,7 +974,7 @@ sayExportClassHsType doDecls cls cst = do
                         -- The foreign delete function takes a const pointer; we cast it to
                         -- take a Ptr () to match up with the ForeignPtr () we're creating,
                         -- assuming that data pointers have the same representation.
-                        "(HoppyF.castFunPtr ", toHsClassDeleteFnPtrName cls,
+                        "(HoppyF.castFunPtr ", toHsClassDeleteFnPtrName' cls,
                         " :: HoppyF.FunPtr (HoppyF.Ptr () -> HoppyP.IO ())) ",
                         "(HoppyF.castPtr ptr' :: HoppyF.Ptr ())"]
                 saysLn ["toGc this'@(", hsCtorGc, " {}) = HoppyP.return this'"]
@@ -979,19 +983,10 @@ sayExportClassHsType doDecls cls cst = do
               saysLn ["instance HoppyFHR.Deletable ", hsTypeName]
 
   -- Generate instances for all superclasses' typeclasses.
-  genInstances [] cls
+  genInstances hsTypeName [] cls
 
-  where hsTypeName :: String
-        hsTypeName = toHsDataTypeName cst cls
-
-        hsCtor :: String
-        hsCtor = toHsDataCtorName Unmanaged cst cls
-
-        hsCtorGc :: String
-        hsCtorGc = toHsDataCtorName Managed cst cls
-
-        genInstances :: [Class] -> Class -> Generator ()
-        genInstances path ancestorCls = do
+  where genInstances :: String -> [Class] -> Class -> Generator ()
+        genInstances hsTypeName path ancestorCls = do
           -- In this example Bar inherits from Foo.  We are generating instances
           -- either for BarConst or Bar, depending on 'cst'.
           --
@@ -1027,15 +1022,15 @@ sayExportClassHsType doDecls cls cst = do
           -- upcast, maybe remove const, then rewrap the pointer.  The identity
           -- cases are where we just unwrap and wrap again.
 
-          addImportForClass ancestorCls
           forM_ (case cst of
                    Const -> [Const]
                    Nonconst -> [Const, Nonconst]) $ \ancestorCst -> do
             ln
-            saysLn ["instance ", toHsPtrClassName ancestorCst ancestorCls, " ", hsTypeName,
+            ancestorPtrClassName <- toHsPtrClassName ancestorCst ancestorCls
+            saysLn ["instance ", ancestorPtrClassName, " ", hsTypeName,
                     if doDecls then " where" else ""]
             when doDecls $ indent $ do
-              let castMethodName = toHsCastMethodName ancestorCst ancestorCls
+              castMethodName <- toHsCastMethodName ancestorCst ancestorCls
               if null path && cst == ancestorCst
                 then do addImports hsImportForPrelude
                         saysLn [castMethodName, " = HoppyP.id"]
@@ -1044,32 +1039,45 @@ sayExportClassHsType doDecls cls cst = do
                         when (addConst || removeConst) $
                           addImports hsImportForForeign
                         forM_ ([minBound..] :: [Managed]) $ \managed -> do
-                          let ancestorCtor = case managed of
-                                Unmanaged -> [toHsDataCtorName Unmanaged ancestorCst ancestorCls]
-                                Managed -> [toHsDataCtorName Managed ancestorCst ancestorCls,
-                                            " fptr'"]
-                              ptrPattern = case managed of
-                                Unmanaged -> [toHsDataCtorName Unmanaged cst cls, " ptr'"]
-                                Managed -> [toHsDataCtorName Managed cst cls, " fptr' ptr'"]
-                          saysLn $ concat
-                            [ [castMethodName, " ("], ptrPattern, [") = "], ancestorCtor
+                          ancestorCtor <- case managed of
+                            Unmanaged -> (\x -> [x]) <$>
+                                         toHsDataCtorName Unmanaged ancestorCst ancestorCls
+                            Managed -> (\x -> [x, " fptr'"]) <$>
+                                       toHsDataCtorName Managed ancestorCst ancestorCls
+                          ptrPattern <- case managed of
+                            Unmanaged -> (\x -> [x, " ptr'"]) <$>
+                                         toHsDataCtorName Unmanaged cst cls
+                            Managed -> (\x -> [x, " fptr' ptr'"]) <$>
+                                       toHsDataCtorName Managed cst cls
+                          saysLn . concat =<< sequence
+                            [ return $
+                              [castMethodName, " ("] ++ ptrPattern ++ [") = "] ++ ancestorCtor
                             , if removeConst
-                              then [" $ (HoppyF.castPtr :: HoppyF.Ptr ",
-                                    toHsDataTypeName Const ancestorCls, " -> HoppyF.Ptr ",
-                                    toHsDataTypeName Nonconst ancestorCls, ")"]
-                              else []
+                              then do ancestorConstType <- toHsDataTypeName Const ancestorCls
+                                      ancestorNonconstType <- toHsDataTypeName Nonconst ancestorCls
+                                      return [" $ (HoppyF.castPtr :: HoppyF.Ptr ",
+                                              ancestorConstType, " -> HoppyF.Ptr ",
+                                              ancestorNonconstType, ")"]
+                              else return []
                             , if not $ null path
-                              then [" $ ", toHsCastPrimitiveName cls ancestorCls]
-                              else []
+                              then do addImports $ hsImport1 "Prelude" "($)"
+                                      castPrimitiveName <- toHsCastPrimitiveName cls cls ancestorCls
+                                      return [" $ ", castPrimitiveName]
+                              else return []
                             , if addConst
-                              then [" $ (HoppyF.castPtr :: HoppyF.Ptr ",
-                                    toHsDataTypeName Nonconst cls, " -> HoppyF.Ptr ",
-                                    toHsDataTypeName Const cls, ")"]
-                              else []
-                            , [" ptr'"]
+                              then do addImports $ hsImport1 "Prelude" "($)"
+                                      nonconstTypeName <- toHsDataTypeName Nonconst cls
+                                      constTypeName <- toHsDataTypeName Const cls
+                                      return [" $ (HoppyF.castPtr :: HoppyF.Ptr ",
+                                              nonconstTypeName, " -> HoppyF.Ptr ",
+                                              constTypeName, ")"]
+                              else return []
+                            , return [" ptr'"]
                             ]
 
-          forM_ (classSuperclasses ancestorCls) $ genInstances $ ancestorCls : path
+          forM_ (classSuperclasses ancestorCls) $
+            genInstances hsTypeName $
+            ancestorCls : path
 
 sayExportClassHsCtors :: SayExportMode -> Class -> Generator ()
 sayExportClassHsCtors mode cls =
@@ -1080,19 +1088,19 @@ sayExportClassHsCtors mode cls =
 
 sayExportClassHsSpecialFns :: SayExportMode -> Class -> Generator ()
 sayExportClassHsSpecialFns mode cls = do
-  let typeName = toHsDataTypeName Nonconst cls
-      typeNameConst = toHsDataTypeName Const cls
+  typeName <- toHsDataTypeName Nonconst cls
+  typeNameConst <- toHsDataTypeName Const cls
 
   -- Say the delete function.
   case mode of
     SayExportForeignImports -> when (classDtorIsPublic cls) $ do
       addImports $ mconcat [hsImportForForeign, hsImportForPrelude]
       saysLn ["foreign import ccall \"", classDeleteFnCppName cls, "\" ",
-              toHsClassDeleteFnName cls, " :: HoppyF.Ptr ",
-              toHsDataTypeName Const cls, " -> HoppyP.IO ()"]
+              toHsClassDeleteFnName' cls, " :: HoppyF.Ptr ",
+              typeNameConst, " -> HoppyP.IO ()"]
       saysLn ["foreign import ccall \"&", classDeleteFnCppName cls, "\" ",
-              toHsClassDeleteFnPtrName cls, " :: HoppyF.FunPtr (HoppyF.Ptr ",
-              toHsDataTypeName Const cls, " -> HoppyP.IO ())"]
+              toHsClassDeleteFnPtrName' cls, " :: HoppyF.FunPtr (HoppyF.Ptr ",
+              typeNameConst, " -> HoppyP.IO ())"]
     -- The user interface to this is the generic 'delete' function, rendered
     -- elsewhere.
     SayExportDecls -> return ()
@@ -1127,12 +1135,12 @@ sayExportClassHsSpecialFns mode cls = do
           " because it has multiple assignment operators ", show assignmentMethods]
   when (mode == SayExportDecls) $ withAssignmentMethod $ \m -> do
     addImports $ mconcat [hsImport1 "Prelude" "(>>)", hsImportForPrelude]
+    valueClassName <- toHsValueClassName cls
+    assignmentMethodName <- toHsFnName $ getClassyExtName cls m
     ln
-    saysLn ["instance ", toHsValueClassName cls, " a => HoppyFHR.Assignable ", typeName,
-            " a where"]
+    saysLn ["instance ", valueClassName, " a => HoppyFHR.Assignable ", typeName, " a where"]
     indent $
-      saysLn ["assign x' y' = ", toHsFnName $ getClassyExtName cls m,
-                " x' y' >> HoppyP.return ()"]
+      saysLn ["assign x' y' = ", assignmentMethodName, " x' y' >> HoppyP.return ()"]
 
   -- A pointer to an object pointer is decodable to an object pointer by peeking
   -- at the value, so generate a Decodable instance.  You are now a two-star
@@ -1149,9 +1157,9 @@ sayExportClassHsSpecialFns mode cls = do
       ln
       saysLn ["instance HoppyFHR.Decodable (HoppyF.Ptr (HoppyF.Ptr ",
               typeName, ")) ", typeName, " where"]
-      indent $
-        saysLn ["decode = HoppyP.fmap ",
-                toHsDataCtorName Unmanaged Nonconst cls, " . HoppyF.peek"]
+      indent $ do
+        ctorName <- toHsDataCtorName Unmanaged Nonconst cls
+        saysLn ["decode = HoppyP.fmap ", ctorName, " . HoppyF.peek"]
 
     SayExportBoot -> do
       addImports $ mconcat [hsImportForForeign, hsImportForRuntime]
@@ -1169,6 +1177,7 @@ sayExportClassHsSpecialFns mode cls = do
 
       SayExportDecls -> do
         addImports $ mconcat [hsImportForPrelude, hsImportForRuntime]
+        castMethodName <- toHsCastMethodName Const cls
 
         -- Say the Encodable instances.
         ln
@@ -1179,14 +1188,14 @@ sayExportClassHsSpecialFns mode cls = do
         ln
         saysLn ["instance HoppyFHR.Encodable ", typeNameConst, " ", hsTypeStr, " where"]
         indent $
-          saysLn ["encode = HoppyP.fmap (", toHsCastMethodName Const cls,
+          saysLn ["encode = HoppyP.fmap (", castMethodName,
                   ") . HoppyFHR.encodeAs (HoppyP.undefined :: ", typeName, ")"]
 
         -- Say the Decodable instances.
         ln
         saysLn ["instance HoppyFHR.Decodable ", typeName, " ", hsTypeStr, " where"]
         indent $
-          saysLn ["decode = HoppyFHR.decode . ", toHsCastMethodName Const cls]
+          saysLn ["decode = HoppyFHR.decode . ", castMethodName]
         ln
         saysLn ["instance HoppyFHR.Decodable ", typeNameConst, " ", hsTypeStr, " where"]
         indent $ do
@@ -1205,8 +1214,8 @@ sayExportClassHsSpecialFns mode cls = do
 -- class.
 sayExportClassExceptionSupport :: Bool -> Class -> Generator ()
 sayExportClassExceptionSupport doDecls cls = when (classIsException cls) $ do
-  let typeName = toHsDataTypeName Nonconst cls
-      typeNameConst = toHsDataTypeName Const cls
+  typeName <- toHsDataTypeName Nonconst cls
+  typeNameConst <- toHsDataTypeName Const cls
 
   -- Generate a non-const CppException instance.
   exceptionId <- getClassExceptionId cls
@@ -1214,7 +1223,8 @@ sayExportClassExceptionSupport doDecls cls = when (classIsException cls) $ do
   saysLn ["instance HoppyFHR.CppException ", typeName,
           if doDecls then " where" else ""]
   when doDecls $ indent $ do
-    let ctorName = toHsDataCtorName Unmanaged Nonconst cls
+    ctorName <- toHsDataCtorName Unmanaged Nonconst cls
+    ctorGcName <- toHsDataCtorName Managed Nonconst cls
     addImports $ mconcat [hsImport1 "Prelude" "($)",
                           hsImportForForeign,
                           hsImportForMap,
@@ -1227,15 +1237,15 @@ sayExportClassExceptionSupport doDecls cls = when (classIsException cls) $ do
 
       -- Note, similar "delete" and "toGc" functions are generated for the class's
       -- Deletable instance.
-      saysLn ["where delete' ptr' = ", toHsClassDeleteFnName cls,
-              " (HoppyF.castPtr ptr' :: HoppyF.Ptr ", toHsDataTypeName Const cls, ")"]
+      saysLn ["where delete' ptr' = ", toHsClassDeleteFnName' cls,
+              " (HoppyF.castPtr ptr' :: HoppyF.Ptr ", typeNameConst, ")"]
 
       indentSpaces 6 $ do
         saysLn ["toGc' ptr' = HoppyF.newForeignPtr ",
                 -- The foreign delete function takes a const pointer; we cast it to
                 -- take a Ptr () to match up with the ForeignPtr () we're creating,
                 -- assuming that data pointers have the same representation.
-                "(HoppyF.castFunPtr ", toHsClassDeleteFnPtrName cls,
+                "(HoppyF.castFunPtr ", toHsClassDeleteFnPtrName' cls,
                 " :: HoppyF.FunPtr (HoppyF.Ptr () -> HoppyP.IO ())) ",
                 "ptr'"]
 
@@ -1248,14 +1258,16 @@ sayExportClassExceptionSupport doDecls cls = when (classIsException cls) $ do
                   when (classIsException ancestorCls) $ do
                     let path' = ancestorCls : path
                     ancestorId <- getClassExceptionId ancestorCls
+                    ancestorCastChain <- forM (zip path' $ drop 1 path') $ \(from, to) ->
+                      -- We're upcasting, so 'from' is the subclass.
+                      toHsCastPrimitiveName from to from
                     saysLn $ concat [ [if first then "[" else ",",
                                        " ( HoppyFHR.ExceptionId ",
                                        show $ getExceptionId ancestorId,
                                        ", \\(e' :: HoppyF.Ptr ()) -> "]
                                     , intersperse " $ " $
                                         "HoppyF.castPtr" :
-                                        map (uncurry $ flip toHsCastPrimitiveName)
-                                            (zip path' $ drop 1 path') ++
+                                        ancestorCastChain ++
                                         ["HoppyF.castPtr e' :: HoppyF.Ptr ()"]
                                     , [")"]
                                     ]
@@ -1269,7 +1281,7 @@ sayExportClassExceptionSupport doDecls cls = when (classIsException cls) $ do
     saysLn ["cppExceptionBuild ptr' = ", ctorName,
             " (HoppyF.castPtr ptr' :: HoppyF.Ptr ", typeName, ")"]
     ln
-    saysLn ["cppExceptionBuildGc fptr' ptr' = ", toHsDataCtorName Managed Nonconst cls,
+    saysLn ["cppExceptionBuildGc fptr' ptr' = ", ctorGcName,
             " fptr' (HoppyF.castPtr ptr' :: HoppyF.Ptr ", typeName, ")"]
 
   -- Generate a const CppException instance that piggybacks off of the
@@ -1279,22 +1291,23 @@ sayExportClassExceptionSupport doDecls cls = when (classIsException cls) $ do
   when doDecls $ indent $ do
     addImports $ mconcat [hsImport1 "Prelude" "(.)",
                           hsImportForPrelude]
+    constCastFnName <- toHsConstCastFnName Const cls
     saysLn ["cppExceptionInfo _ = HoppyFHR.cppExceptionInfo (HoppyP.undefined :: ",
             typeName, ")"]
-    saysLn ["cppExceptionBuild = ", toHsConstCastFnName Const cls,
+    saysLn ["cppExceptionBuild = ", constCastFnName,
             " . HoppyFHR.cppExceptionBuild"]
-    saysLn ["cppExceptionBuildGc = (", toHsConstCastFnName Const cls,
+    saysLn ["cppExceptionBuildGc = (", constCastFnName,
             " .) . HoppyFHR.cppExceptionBuildGc"]
 
 sayExportClassCastPrimitives :: SayExportMode -> Class -> Generator ()
 sayExportClassCastPrimitives mode cls = do
-  let clsType = toHsDataTypeName Const cls
+  clsType <- toHsDataTypeName Const cls
   case mode of
     SayExportForeignImports ->
       forAncestors cls $ \super -> do
-        let hsCastFnName = toHsCastPrimitiveName cls super
-            hsDownCastFnName = toHsCastPrimitiveName super cls
-            superType = toHsDataTypeName Const super
+        hsCastFnName <- toHsCastPrimitiveName cls cls super
+        hsDownCastFnName <- toHsCastPrimitiveName cls super cls
+        superType <- toHsDataTypeName Const super
         addImports hsImportForForeign
         addExport hsCastFnName
         saysLn [ "foreign import ccall \"", classCastFnCppName cls super
@@ -1313,21 +1326,21 @@ sayExportClassCastPrimitives mode cls = do
       -- since they're not used by other generated bindings.
       unless (classIsSubclassOfMonomorphic cls) $
       forM_ [minBound..] $ \cst -> do
-        let downCastClassName = toHsDownCastClassName cst cls
-            downCastMethodName = toHsDownCastMethodName cst cls
+        downCastClassName <- toHsDownCastClassName cst cls
+        downCastMethodName <- toHsDownCastMethodName cst cls
+        typeName <- toHsDataTypeName cst cls
         addExport' downCastClassName
         ln
         saysLn ["class ", downCastClassName, " a where"]
         indent $ saysLn [downCastMethodName, " :: ",
                          prettyPrint $ HsTyFun (HsTyVar $ HsIdent "a") $
-                         HsTyCon $ UnQual $ HsIdent $ toHsDataTypeName cst cls]
+                         HsTyCon $ UnQual $ HsIdent typeName]
         ln
         forAncestors cls $ \super -> case classIsMonomorphicSuperclass super of
           True -> return False
           False -> do
-            let superTypeName = toHsDataTypeName cst super
-                primitiveCastFn = toHsCastPrimitiveName super cls
-            addImportForClass super
+            superTypeName <- toHsDataTypeName cst super
+            primitiveCastFn <- toHsCastPrimitiveName cls super cls
             saysLn ["instance ", downCastClassName, " ", superTypeName, " where"]
 
             -- If Foo is a superclass of Bar:
@@ -1343,28 +1356,31 @@ sayExportClassCastPrimitives mode cls = do
             --           downcast' (FooConstGc fptr' ptr') = BarConstGc fptr' $ castFooToBar ptr'
 
             indent $ do
-              saysLn $
-                downCastMethodName : " = " :
-                case cst of
-                  Const -> ["cast'"]
-                  Nonconst -> [toHsConstCastFnName Nonconst cls,
-                               " . cast' . ",
-                               toHsConstCastFnName Const super]
+              case cst of
+                Const -> saysLn [downCastMethodName, " = cast'"]
+                Nonconst -> do
+                  addImports $ hsImport1 "Prelude" "(.)"
+                  castClsToNonconst <- toHsConstCastFnName Nonconst cls
+                  castSuperToConst <- toHsConstCastFnName Const super
+                  saysLn [downCastMethodName, " = ", castClsToNonconst, " . cast' . ",
+                          castSuperToConst]
               indent $ do
                 sayLn "where"
                 indent $ do
-                  saysLn ["cast' (", toHsDataCtorName Unmanaged Const super, " ptr') = ",
-                          toHsDataCtorName Unmanaged Const cls, " $ ",
-                          primitiveCastFn, " ptr'"]
-                  saysLn ["cast' (", toHsDataCtorName Managed Const super, " fptr' ptr') = ",
-                          toHsDataCtorName Managed Const cls, " fptr' $ ",
-                          primitiveCastFn, " ptr'"]
+                  clsCtorName <- toHsDataCtorName Unmanaged Const cls
+                  clsCtorGcName <- toHsDataCtorName Managed Const cls
+                  superCtorName <- toHsDataCtorName Unmanaged Const super
+                  superCtorGcName <- toHsDataCtorName Managed Const super
+                  saysLn ["cast' (", superCtorName, " ptr') = ",
+                          clsCtorName, " $ ", primitiveCastFn, " ptr'"]
+                  saysLn ["cast' (", superCtorGcName, " fptr' ptr') = ",
+                          clsCtorGcName , " fptr' $ ", primitiveCastFn, " ptr'"]
             return True
 
     SayExportBoot -> do
       forAncestors cls $ \super -> do
-        let hsCastFnName = toHsCastPrimitiveName cls super
-            superType = toHsDataTypeName Const super
+        hsCastFnName <- toHsCastPrimitiveName cls cls super
+        superType <- toHsDataTypeName Const super
         addImports $ hsImportForForeign
         addExport hsCastFnName
         saysLn [hsCastFnName, " :: HoppyF.Ptr ", clsType, " -> HoppyF.Ptr ", superType]
@@ -1399,11 +1415,11 @@ sayExceptionSupport doDecls = do
               fromMaybeM (throwError $ "sayExceptionSupport: Internal error, " ++ show cls ++
                           " has no exception ID.") $
               interfaceExceptionClassId iface cls
-            addImportForClass cls
+            typeName <- toHsDataTypeName Nonconst cls
             saysLn [if first then "[ (" else ", (",
                     "HoppyFHR.ExceptionId ", show $ getExceptionId exceptionId,
                     ", HoppyFHR.cppExceptionInfo (HoppyP.undefined :: ",
-                    toHsDataTypeName Nonconst cls, "))"]
+                    typeName, "))"]
           sayLn "]"
 
 -- | Implements special logic on top of 'cppTypeToHsTypeAndUse', that computes
@@ -1474,24 +1490,24 @@ fnToHsTypeAndUse side methodInfo purity paramTypes returnType exceptionHandlers 
         receiveBitspace s t b = case side of
           HsCSide -> handoff side t
           HsHsSide -> do
-            importHsModuleForExtName $ bitspaceExtName b
+            bitspaceClassName <- toHsBitspaceClassName b
             let t' = HsTyVar $ HsIdent s
-            return (Just (UnQual $ HsIdent $ toHsBitspaceClassName b, [t']),
+            return (Just (UnQual $ HsIdent bitspaceClassName, [t']),
                     t')
 
         -- Receives a @FooPtr this => this@.
         receivePtr :: String -> Class -> Constness -> Generator (Maybe HsAsst, HsType)
-        receivePtr s cls cst = do
-          addImportForClass cls
-          case side of
-            HsHsSide -> do
-              let t' = HsTyVar $ HsIdent s
-              return (Just (UnQual $ HsIdent $ toHsPtrClassName cst cls, [t']),
-                      t')
-            HsCSide -> do
-              addImports $ hsImportForForeign
-              return (Nothing, HsTyApp (HsTyCon $ UnQual $ HsIdent "HoppyF.Ptr") $
-                               HsTyVar $ HsIdent $ toHsDataTypeName cst cls)
+        receivePtr s cls cst = case side of
+          HsHsSide -> do
+            ptrClassName <- toHsPtrClassName cst cls
+            let t' = HsTyVar $ HsIdent s
+            return (Just (UnQual $ HsIdent ptrClassName, [t']),
+                    t')
+          HsCSide -> do
+            addImports $ hsImportForForeign
+            typeName <- toHsDataTypeName cst cls
+            return (Nothing, HsTyApp (HsTyCon $ UnQual $ HsIdent "HoppyF.Ptr") $
+                             HsTyVar $ HsIdent typeName)
 
         -- Receives a @FooValue a => a@.
         receiveValue :: String -> Type -> Class -> Generator (Maybe HsAsst, HsType)
@@ -1499,9 +1515,9 @@ fnToHsTypeAndUse side methodInfo purity paramTypes returnType exceptionHandlers 
           HsCSide -> handoff side t
           HsHsSide -> do
             addImports hsImportForRuntime
-            addImportForClass cls
+            valueClassName <- toHsValueClassName cls
             let t' = HsTyVar $ HsIdent s
-            return (Just (UnQual $ HsIdent $ toHsValueClassName cls, [t']),
+            return (Just (UnQual $ HsIdent valueClassName, [t']),
                     t')
 
 getMethodEffectiveParams :: Class -> Method -> [Type]
@@ -1528,7 +1544,3 @@ getClassExceptionId cls = do
   fromMaybeM (throwError $ concat
               ["Internal error, exception class ", show cls, " doesn't have an exception ID"]) $
     interfaceExceptionClassId iface cls
-
--- | Imports bindings for the given class into the Haskell module.
-addImportForClass :: Class -> Generator ()
-addImportForClass = importHsModuleForExtName . classExtName

@@ -43,7 +43,6 @@ module Foreign.Hoppy.Generator.Language.Haskell (
   addExports,
   -- * Imports
   addImports,
-  importHsModuleForExtName,
   -- * Code generation
   sayLn,
   saysLn,
@@ -68,8 +67,8 @@ module Foreign.Hoppy.Generator.Language.Haskell (
   toHsConstCastFnName,
   toHsDataTypeName,
   toHsDataCtorName,
-  toHsClassDeleteFnName,
-  toHsClassDeleteFnPtrName,
+  toHsClassDeleteFnName',
+  toHsClassDeleteFnPtrName',
   toHsMethodName,
   toHsMethodName',
   toHsCallbackCtorName,
@@ -85,7 +84,6 @@ module Foreign.Hoppy.Generator.Language.Haskell (
 import Control.Applicative ((<$>))
 #endif
 import Control.Arrow (first)
-import Control.Monad (when)
 #if MIN_VERSION_mtl(2,2,1)
 import Control.Monad.Except (Except, catchError, runExcept, throwError)
 #else
@@ -104,7 +102,7 @@ import Data.Maybe (fromMaybe, isJust)
 import Data.Monoid (Monoid, mappend, mconcat, mempty)
 #endif
 import Data.Tuple (swap)
-import Foreign.Hoppy.Generator.Common (capitalize, lowerFirst)
+import Foreign.Hoppy.Generator.Common
 import Foreign.Hoppy.Generator.Spec
 import Foreign.Hoppy.Generator.Types
 import qualified Language.Haskell.Pretty as P
@@ -386,25 +384,6 @@ addExports exports = tell $ mempty { outputExports = exports }
 addImports :: HsImportSet -> Generator ()
 addImports imports = tell mempty { outputImports = imports }
 
--- | Imports all of the objects for the given external name into the current
--- module.  This is a no-op of the external name is defined in the current
--- module.
-importHsModuleForExtName :: ExtName -> Generator ()
-importHsModuleForExtName extName = inFunction "importHsModuleForExtName" $ do
-  iface <- askInterface
-  case M.lookup extName $ interfaceNamesToModules iface of
-    Just ownerModule -> do
-      let ownerModuleName = getModuleName iface ownerModule
-      currentModuleName <- askModuleName
-      when (currentModuleName /= ownerModuleName) $
-        -- Yes, this currently imports the whole dang module to keep things
-        -- simple.
-        addImports $ hsWholeModuleImport ownerModuleName
-    Nothing ->
-      throwError $ concat
-      ["Couldn't find module for ", show extName,
-       " (maybe you forgot to include it in an exports list?)"]
-
 -- | Outputs a line of Haskell code.  A newline will be added on the end of the
 -- input.  Newline characters must not be given to this function.
 sayLn :: String -> Generator ()
@@ -457,11 +436,62 @@ sayLet bindings maybeBody = do
       sayLn "in"
       indent body
 
+getExtNameModule :: ExtName -> Generator Module
+getExtNameModule extName = inFunction "getExtNameModule" $ do
+  iface <- askInterface
+  fromMaybeM (throwError $ "Couldn't find module for " ++ show extName ++
+              " (is it included in a module's export list?)") $
+    M.lookup extName $
+    interfaceNamesToModules iface
+
+-- | Returns a module's unique short name that should be used for a qualified
+-- import of the module.
+getModuleImportName :: Module -> Generator String
+getModuleImportName mod = do
+  iface <- askInterface
+  fromMaybeM (throwError $ "Couldn't find a Haskell import name for " ++ show mod ++
+              " (is it included in the interface's module list?)") $
+    M.lookup mod $
+    interfaceHaskellModuleImportNames iface
+
+-- | Adds a qualified import of the given external name's module into the current
+-- module, and returns the qualified name of the import.  If the external name
+-- is defined in the current module, then this is a no-op and 'Nothing' is
+-- returned.
+importHsModuleForExtName :: ExtName -> Generator (Maybe String)
+importHsModuleForExtName extName = do
+  currentModule <- askModule
+  owningModule <- getExtNameModule extName
+  if currentModule == owningModule
+    then return Nothing
+    else do iface <- askInterface
+            let fullName = getModuleName iface owningModule
+            qualifiedName <- getModuleImportName owningModule
+            addImports $ hsQualifiedImport fullName qualifiedName
+            return $ Just qualifiedName
+
+-- | Used like @addExtNameModule extName hsEntity@.  @hsEntity@ is a name in
+-- Haskell code that is generated from the definition of @extName@, and thus
+-- lives in @extName@'s module.  This function adds imports and returns a
+-- qualified name as necessary to refer to the given entity.
+addExtNameModule :: ExtName -> String -> Generator String
+addExtNameModule extName hsEntity = do
+  maybeImportName <- importHsModuleForExtName extName
+  return $ case maybeImportName of
+    Nothing -> hsEntity  -- Same module.
+    Just importName -> concat [importName, ".", hsEntity]  -- Different module.
+
 -- | Internal helper function for constructing Haskell names from external
 -- names.  Returns a name that is a suitable Haskell type name for the external
 -- name, and if given 'Const', then with @\"Const\"@ appended.
-toHsTypeName :: Constness -> ExtName -> String
+toHsTypeName :: Constness -> ExtName -> Generator String
 toHsTypeName cst extName =
+  inFunction "toHsTypeName" $
+  addExtNameModule extName $ toHsTypeName' cst extName
+
+-- | Pure version of 'toHsTypeName' that doesn't create a qualified name.
+toHsTypeName' :: Constness -> ExtName -> String
+toHsTypeName' cst extName =
   (case cst of
       Const -> (++ "Const")
       Nonconst -> id) $
@@ -470,67 +500,141 @@ toHsTypeName cst extName =
     [] -> []
 
 -- | Returns the Haskell name for an enum.
-toHsEnumTypeName :: CppEnum -> String
-toHsEnumTypeName = toHsTypeName Nonconst . enumExtName
+toHsEnumTypeName :: CppEnum -> Generator String
+toHsEnumTypeName enum =
+  inFunction "toHsEnumTypeName" $
+  addExtNameModule (enumExtName enum) $ toHsEnumTypeName' enum
+
+-- | Pure version of 'toHsEnumTypeName' that doesn't create a qualified name.
+toHsEnumTypeName' :: CppEnum -> String
+toHsEnumTypeName' = toHsTypeName' Nonconst . enumExtName
 
 -- | Constructs the data constructor name for a value in an enum.  Like C++ and
 -- unlike say Java, Haskell enum values aren't in a separate enum-specific
 -- namespace, so we prepend the enum name to the value name to get the data
 -- constructor name.  The value name is a list of words; see 'enumValueNames'.
-toHsEnumCtorName :: CppEnum -> [String] -> String
+toHsEnumCtorName :: CppEnum -> [String] -> Generator String
 toHsEnumCtorName enum words =
-  concat $ toHsEnumTypeName enum : "_" : map capitalize words
+  inFunction "toHsEnumCtorName" $
+  addExtNameModule (enumExtName enum) $ toHsEnumCtorName' enum words
+
+-- | Pure version of 'toHsEnumCtorName' that doesn't create a qualified name.
+toHsEnumCtorName' :: CppEnum -> [String] -> String
+toHsEnumCtorName' enum words =
+  concat $ toHsEnumTypeName' enum : "_" : map capitalize words
 
 -- | Returns the Haskell name for a bitspace.  See 'toHsEnumTypeName'.
-toHsBitspaceTypeName :: Bitspace -> String
-toHsBitspaceTypeName = toHsTypeName Nonconst . bitspaceExtName
+toHsBitspaceTypeName :: Bitspace -> Generator String
+toHsBitspaceTypeName bitspace =
+  inFunction "toHsBitspaceTypeName" $
+  addExtNameModule (bitspaceExtName bitspace) $ toHsBitspaceTypeName' bitspace
+
+-- | Pure version of 'toHsBitspaceTypeName' that doesn't create a qualified name.
+toHsBitspaceTypeName' :: Bitspace -> String
+toHsBitspaceTypeName' = toHsTypeName' Nonconst . bitspaceExtName
 
 -- | Constructs the data constructor name for a value in a bitspace.  See
 -- 'toHsEnumCtorName'.
-toHsBitspaceValueName :: Bitspace -> [String] -> String
+toHsBitspaceValueName :: Bitspace -> [String] -> Generator String
 toHsBitspaceValueName bitspace words =
-  lowerFirst $ concat $ toHsBitspaceTypeName bitspace : "_" : map capitalize words
+  inFunction "toHsBitspaceValueName" $
+  addExtNameModule (bitspaceExtName bitspace) $
+  toHsBitspaceValueName' bitspace words
+
+-- | Pure version of 'toHsBitspaceValueName' that doesn't create a qualified name.
+toHsBitspaceValueName' :: Bitspace -> [String] -> String
+toHsBitspaceValueName' bitspace words =
+  lowerFirst $ concat $ toHsBitspaceTypeName' bitspace : "_" : map capitalize words
 
 -- | Returns the name of the function that will convert a bitspace value into a
 -- raw numeric value.
-toHsBitspaceToNumName :: Bitspace -> String
-toHsBitspaceToNumName = ("from" ++) . toHsBitspaceTypeName
+toHsBitspaceToNumName :: Bitspace -> Generator String
+toHsBitspaceToNumName bitspace =
+  inFunction "toHsBitspaceToNumName" $
+  addExtNameModule (bitspaceExtName bitspace) $ toHsBitspaceToNumName' bitspace
+
+-- | Pure version of 'toHsBitspaceToNumName' that doesn't create a qualified name.
+toHsBitspaceToNumName' :: Bitspace -> String
+toHsBitspaceToNumName' = ("from" ++) . toHsBitspaceTypeName'
 
 -- | The name of the Haskell typeclass that contains a method for converting to
 -- a bitspace value.
-toHsBitspaceClassName :: Bitspace -> String
-toHsBitspaceClassName bitspace = 'I':'s':toHsBitspaceTypeName bitspace
+toHsBitspaceClassName :: Bitspace -> Generator String
+toHsBitspaceClassName bitspace =
+  inFunction "toHsBitspaceClassName" $
+  addExtNameModule (bitspaceExtName bitspace) $ toHsBitspaceClassName' bitspace
+
+-- | Pure version of 'toHsBitspaceClassName' that doesn't create a qualified name.
+toHsBitspaceClassName' :: Bitspace -> String
+toHsBitspaceClassName' bitspace = 'I':'s':toHsBitspaceTypeName' bitspace
 
 -- | The name of the method in the 'toHsBitspaceClassName' typeclass that
 -- constructs bitspace values.
-toHsBitspaceFromValueName :: Bitspace -> String
-toHsBitspaceFromValueName = ("to" ++) . toHsBitspaceTypeName
+toHsBitspaceFromValueName :: Bitspace -> Generator String
+toHsBitspaceFromValueName bitspace =
+  inFunction "toHsBitspaceFromValueName" $
+  addExtNameModule (bitspaceExtName bitspace) $ toHsBitspaceFromValueName' bitspace
+
+-- | Pure version of 'toHsBitspaceFromValueName' that doesn't create a qualified name.
+toHsBitspaceFromValueName' :: Bitspace -> String
+toHsBitspaceFromValueName' = ("to" ++) . toHsBitspaceTypeName'
 
 -- | The name for the typeclass of types that can be represented as values of
 -- the given C++ class.
-toHsValueClassName :: Class -> String
-toHsValueClassName cls = toHsDataTypeName Nonconst cls ++ "Value"
+toHsValueClassName :: Class -> Generator String
+toHsValueClassName cls =
+  inFunction "toHsValueClassName" $
+  addExtNameModule (classExtName cls) $ toHsValueClassName' cls
+
+-- | Pure version of 'toHsValueClassName' that doesn't create a qualified name.
+toHsValueClassName' :: Class -> String
+toHsValueClassName' cls = toHsDataTypeName' Nonconst cls ++ "Value"
 
 -- | The name of the method within the 'toHsValueClassName' typeclass for
 -- accessing an object of the type as a pointer.
-toHsWithValuePtrName :: Class -> String
-toHsWithValuePtrName cls = concat ["with", toHsDataTypeName Nonconst cls, "Ptr"]
+toHsWithValuePtrName :: Class -> Generator String
+toHsWithValuePtrName cls =
+  inFunction "toHsWithValuePtrName" $
+  addExtNameModule (classExtName cls) $ toHsWithValuePtrName' cls
+
+-- | Pure version of 'toHsWithValuePtrName' that doesn't create a qualified name.
+toHsWithValuePtrName' :: Class -> String
+toHsWithValuePtrName' cls = concat ["with", toHsDataTypeName' Nonconst cls, "Ptr"]
 
 -- | The name for the typeclass of types that are (possibly const) pointers to
 -- objects of the given C++ class, or subclasses.
-toHsPtrClassName :: Constness -> Class -> String
-toHsPtrClassName cst cls = toHsDataTypeName cst cls ++ "Ptr"
+toHsPtrClassName :: Constness -> Class -> Generator String
+toHsPtrClassName cst cls =
+  inFunction "toHsPtrClassName" $
+  addExtNameModule (classExtName cls) $ toHsPtrClassName' cst cls
+
+-- | Pure version of 'toHsPtrClassName' that doesn't create a qualified name.
+toHsPtrClassName' :: Constness -> Class -> String
+toHsPtrClassName' cst cls = toHsDataTypeName' cst cls ++ "Ptr"
 
 -- | The name of the function that upcasts pointers to the specific class type
 -- and constness.
-toHsCastMethodName :: Constness -> Class -> String
-toHsCastMethodName cst cls = "to" ++ toHsDataTypeName cst cls
+toHsCastMethodName :: Constness -> Class -> Generator String
+toHsCastMethodName cst cls =
+  inFunction "toHsCastMethodName" $
+  addExtNameModule (classExtName cls) $ toHsCastMethodName' cst cls
+
+-- | Pure version of 'toHsCastMethodName' that doesn't create a qualified name.
+toHsCastMethodName' :: Constness -> Class -> String
+toHsCastMethodName' cst cls = "to" ++ toHsDataTypeName' cst cls
 
 -- | The name of the typeclass that provides a method to downcast to a specific
 -- class type.  See 'toHsDownCastMethodName'.
-toHsDownCastClassName :: Constness -> Class -> String
+toHsDownCastClassName :: Constness -> Class -> Generator String
 toHsDownCastClassName cst cls =
-  concat [toHsDataTypeName Nonconst cls,
+  inFunction "toHsDownCastClassName" $
+  addExtNameModule (classExtName cls) $ toHsDownCastClassName' cst cls
+
+-- | Pure version of 'toHsDownCastClassName' that doesn't create a qualified
+-- name.
+toHsDownCastClassName' :: Constness -> Class -> String
+toHsDownCastClassName' cst cls =
+  concat [toHsDataTypeName' Nonconst cls,
           "Super",
           case cst of
             Const -> "Const"
@@ -538,61 +642,104 @@ toHsDownCastClassName cst cls =
 
 -- | The name of the function that downcasts pointers to the specific class type
 -- and constness.
-toHsDownCastMethodName :: Constness -> Class -> String
-toHsDownCastMethodName cst cls = "downTo" ++ toHsDataTypeName cst cls
+toHsDownCastMethodName :: Constness -> Class -> Generator String
+toHsDownCastMethodName cst cls =
+  inFunction "toHsDownCastMethodName" $
+  addExtNameModule (classExtName cls) $ toHsDownCastMethodName' cst cls
+
+-- | Pure version of 'toHsDownCastMethodName' that doesn't create a qualified
+-- name.
+toHsDownCastMethodName' :: Constness -> Class -> String
+toHsDownCastMethodName' cst cls = "downTo" ++ toHsDataTypeName' cst cls
 
 -- | The import name for the foreign function that casts between two specific
 -- pointer types.  Used for upcasting and downcasting.
-toHsCastPrimitiveName :: Class -> Class -> String
-toHsCastPrimitiveName from to =
-  concat ["cast", toHsDataTypeName Nonconst from, "To", toHsDataTypeName Nonconst to]
+--
+-- We need to know which module the cast function resides in, and while we could
+-- look this up, the caller always knows, so we just have them pass it in.
+toHsCastPrimitiveName :: Class -> Class -> Class -> Generator String
+toHsCastPrimitiveName descendentClass from to =
+  inFunction "toHsCastPrimitiveName" $
+  addExtNameModule (classExtName descendentClass) $ toHsCastPrimitiveName' from to
+
+-- | Pure version of 'toHsCastPrimitiveName' that doesn't create a qualified
+-- name.
+toHsCastPrimitiveName' :: Class -> Class -> String
+toHsCastPrimitiveName' from to =
+  concat ["cast", toHsDataTypeName' Nonconst from, "To", toHsDataTypeName' Nonconst to]
 
 -- | The name of one of the functions that add/remove const to/from a class's
 -- pointer type.  Given 'Const', it will return the function that adds const,
 -- and given 'Nonconst', it will return the function that removes const.
-toHsConstCastFnName :: Constness -> Class -> String
+toHsConstCastFnName :: Constness -> Class -> Generator String
 toHsConstCastFnName cst cls =
-  concat ["cast", toHsDataTypeName Nonconst cls,
+  inFunction "toHsConstCastFnName" $
+  addExtNameModule (classExtName cls) $ toHsConstCastFnName' cst cls
+
+-- | Pure version of 'toHsConstCastFnName' that doesn't create a qualified name.
+toHsConstCastFnName' :: Constness -> Class -> String
+toHsConstCastFnName' cst cls =
+  concat ["cast", toHsDataTypeName' Nonconst cls,
           case cst of
             Const -> "ToConst"
             Nonconst -> "ToNonconst"]
 
 -- | The name of the data type that represents a pointer to an object of the
 -- given class and constness.
-toHsDataTypeName :: Constness -> Class -> String
-toHsDataTypeName cst cls = toHsTypeName cst $ classExtName cls
+toHsDataTypeName :: Constness -> Class -> Generator String
+toHsDataTypeName cst cls =
+  inFunction "toHsDataTypeName" $
+  addExtNameModule (classExtName cls) $ toHsDataTypeName' cst cls
+
+-- | Pure version of 'toHsDataTypeName' that doesn't create a qualified name.
+toHsDataTypeName' :: Constness -> Class -> String
+toHsDataTypeName' cst cls = toHsTypeName' cst $ classExtName cls
 
 -- | The name of a data constructor for one of the object pointer types.
-toHsDataCtorName :: Managed -> Constness -> Class -> String
-toHsDataCtorName m cst cls = case m of
+toHsDataCtorName :: Managed -> Constness -> Class -> Generator String
+toHsDataCtorName m cst cls =
+  inFunction "toHsDataCtorName" $
+  addExtNameModule (classExtName cls) $ toHsDataCtorName' m cst cls
+
+-- | Pure version of 'toHsDataCtorName' that doesn't create a qualified name.
+toHsDataCtorName' :: Managed -> Constness -> Class -> String
+toHsDataCtorName' m cst cls = case m of
   Unmanaged -> base
   Managed -> base ++ "Gc"
-  where base = toHsDataTypeName cst cls
+  where base = toHsDataTypeName' cst cls
 
 -- | The name of the foreign function import wrapping @delete@ for the given
 -- class type.  This is in internal to the binding; normal users should use
 -- 'Foreign.Hoppy.Runtime.delete'.
-toHsClassDeleteFnName :: Class -> String
-toHsClassDeleteFnName cls = 'd':'e':'l':'e':'t':'e':'\'':toHsDataTypeName Nonconst cls
+--
+-- This is internal to a generated Haskell module, so it does not have a public
+-- (qualified) form.
+toHsClassDeleteFnName' :: Class -> String
+toHsClassDeleteFnName' cls = 'd':'e':'l':'e':'t':'e':'\'':toHsDataTypeName' Nonconst cls
 
 -- | The name of the foreign import that imports the same function as
 -- 'toHsClassDeleteFnName', but as a 'Foreign.Ptr.FunPtr' rather than an actual
 -- function.
-toHsClassDeleteFnPtrName :: Class -> String
-toHsClassDeleteFnPtrName cls =
-  'd':'e':'l':'e':'t':'e':'P':'t':'r':'\'':toHsDataTypeName Nonconst cls
+--
+-- This is internal to a generated Haskell module, so it does not have a public
+-- (qualified) form.
+toHsClassDeleteFnPtrName' :: Class -> String
+toHsClassDeleteFnPtrName' cls =
+  'd':'e':'l':'e':'t':'e':'P':'t':'r':'\'':toHsDataTypeName' Nonconst cls
 
 -- | Returns the name of the Haskell function that invokes the given method.
 --
 -- See also 'getClassyExtName'.
-toHsMethodName :: Class -> Method -> String
-toHsMethodName cls method = toHsMethodName' cls $ fromExtName $ methodExtName method
+toHsMethodName :: Class -> Method -> Generator String
+toHsMethodName cls method =
+  inFunction "toHsMethodName" $
+  toHsMethodName' cls $ fromExtName $ methodExtName method
 
 -- | Returns the name of the Haskell function that invokes a method with a
 -- specific name in a class.
-toHsMethodName' :: IsFnName String name => Class -> name -> String
+toHsMethodName' :: IsFnName String name => Class -> name -> Generator String
 toHsMethodName' cls methodName =
-  lowerFirst $
+  addExtNameModule (classExtName cls) $ lowerFirst $
   concat [fromExtName $ classExtName cls, "_",
           case toFnName methodName of
             FnName name -> name
@@ -601,13 +748,26 @@ toHsMethodName' cls methodName =
 -- | The name of the function that takes a Haskell function and wraps it in a
 -- callback object.  This is internal to the binding; normal users can pass
 -- Haskell functions to be used as callbacks inplicitly.
-toHsCallbackCtorName :: Callback -> String
-toHsCallbackCtorName = toHsFnName . callbackExtName
+toHsCallbackCtorName :: Callback -> Generator String
+toHsCallbackCtorName callback =
+  inFunction "toHsCallbackCtorName" $
+  addExtNameModule (callbackExtName callback) $ toHsCallbackCtorName' callback
+
+-- | Pure version of 'toHsCallbackCtorName' that doesn't create a qualified
+-- name.
+toHsCallbackCtorName' :: Callback -> String
+toHsCallbackCtorName' = toHsFnName' . callbackExtName
 
 -- | Converts an external name into a name suitable for a Haskell function or
 -- variable.
-toHsFnName :: ExtName -> String
-toHsFnName = lowerFirst . fromExtName
+toHsFnName :: ExtName -> Generator String
+toHsFnName extName =
+  inFunction "toHsFnName" $
+  addExtNameModule extName $ toHsFnName' extName
+
+-- | Pure version of 'toHsFnName' that doesn't create a qualified name.
+toHsFnName' :: ExtName -> String
+toHsFnName' = lowerFirst . fromExtName
 
 -- | Returns a distinct argument variable name for each nonnegative number.
 toArgName :: Int -> String
@@ -667,15 +827,16 @@ cppTypeToHsTypeAndUse side t =
       addImports hsImportForSystemPosixTypes $> HsTyCon (UnQual $ HsIdent "HoppySPT.CSsize")
     Internal_TEnum e -> HsTyCon . UnQual . HsIdent <$> case side of
       HsCSide -> addImports hsImportForForeignC $> "HoppyFC.CInt"
-      HsHsSide -> importHsModuleForExtName (enumExtName e) $> toHsEnumTypeName e
+      HsHsSide -> toHsEnumTypeName e
     Internal_TBitspace b -> case side of
       HsCSide -> cppTypeToHsTypeAndUse side $ bitspaceType b
-      HsHsSide -> importHsModuleForExtName (bitspaceExtName b) $>
-                  HsTyCon (UnQual $ HsIdent $ toHsBitspaceTypeName b)
+      HsHsSide -> do
+        typeName <- toHsBitspaceTypeName b
+        return $ HsTyCon $ UnQual $ HsIdent typeName
     Internal_TPtr (Internal_TObj cls) -> do
       -- Same as TPtr (TConst (TObj cls)), but nonconst.
-      importHsModuleForExtName (classExtName cls)
-      let dataType = HsTyCon $ UnQual $ HsIdent $ toHsTypeName Nonconst $ classExtName cls
+      typeName <- toHsTypeName Nonconst $ classExtName cls
+      let dataType = HsTyCon $ UnQual $ HsIdent typeName
       case side of
         HsCSide -> do
           addImports hsImportForForeign
@@ -683,8 +844,8 @@ cppTypeToHsTypeAndUse side t =
         HsHsSide -> return dataType
     Internal_TPtr (Internal_TConst (Internal_TObj cls)) -> do
       -- Same as TPtr (TObj cls), but const.
-      importHsModuleForExtName (classExtName cls)
-      let dataType = HsTyCon $ UnQual $ HsIdent $ toHsTypeName Const $ classExtName cls
+      typeName <- toHsTypeName Const $ classExtName cls
+      let dataType = HsTyCon $ UnQual $ HsIdent typeName
       case side of
         HsCSide -> do
           addImports hsImportForForeign

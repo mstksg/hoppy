@@ -138,8 +138,8 @@ instantiate' setName t tReqs opts =
         when (conversion == ConvertValue) $
           addImports $ mconcat [hsImport1 "Prelude" "(=<<)"]
 
-        let hsDataNameConst = toHsDataTypeName Const set
-            hsDataName = toHsDataTypeName Nonconst set
+        hsDataNameConst <- toHsDataTypeName Const set
+        hsDataName <- toHsDataTypeName Nonconst set
         [hsValueTypeConst, hsValueType] <- forM [Const, Nonconst] $ \cst ->
             cppTypeToHsTypeAndUse HsHsSide $
             (case conversion of
@@ -149,6 +149,14 @@ instantiate' setName t tReqs opts =
               Const -> constT t
               Nonconst -> t
 
+        setConstCast <- toHsCastMethodName Const set
+        setEmpty <- toHsMethodName' set "empty"
+        setBegin <- toHsMethodName' set "begin"
+        setEnd <- toHsMethodName' set "end"
+        iterEq <- toHsMethodName' iterator OpEq
+        iterGetConst <- toHsMethodName' iterator "getConst"
+        iterPrev <- toHsMethodName' iterator "prev"
+
         -- Generate const and nonconst HasContents instances.
         ln
         saysLn ["instance HoppyFHR.HasContents ", hsDataNameConst,
@@ -156,31 +164,31 @@ instantiate' setName t tReqs opts =
         indent $ do
           sayLn "toContents this' = do"
           indent $ do
-            saysLn ["empty' <- ", toHsMethodName' set "empty", " this'"]
+            saysLn ["empty' <- ", setEmpty, " this'"]
             sayLn "if empty' then HoppyP.return [] else do"
             indent $ do
-              saysLn ["begin' <- ", toHsMethodName' set "begin", " this'"]
-              saysLn ["iter' <- ", toHsMethodName' set "end", " this'"]
+              saysLn ["begin' <- ", setBegin, " this'"]
+              saysLn ["iter' <- ", setEnd, " this'"]
               sayLn "go' iter' begin' []"
             sayLn "where"
             indent $ do
               sayLn "go' iter' begin' acc' = do"
               indent $ do
-                saysLn ["stop' <- ", toHsMethodName' iterator OpEq, " iter' begin'"]
+                saysLn ["stop' <- ", iterEq, " iter' begin'"]
                 sayLn "if stop' then HoppyP.return acc' else do"
                 indent $ do
-                  saysLn ["_ <- ", toHsMethodName' iterator "prev", " iter'"]
+                  saysLn ["_ <- ", iterPrev, " iter'"]
                   saysLn ["value' <- ",
                           case conversion of
                             ConvertPtr -> ""
                             ConvertValue -> "HoppyFHR.decode =<< ",
-                          toHsMethodName' iterator "getConst", " iter'"]
+                          iterGetConst, " iter'"]
                   sayLn "go' iter' begin' $ value':acc'"
         ln
         saysLn ["instance HoppyFHR.HasContents ", hsDataName,
                 " (", prettyPrint hsValueTypeConst, ") where"]
         indent $
-          saysLn ["toContents = HoppyFHR.toContents . ", toHsCastMethodName Const set]
+          saysLn ["toContents = HoppyFHR.toContents . ", setConstCast]
 
         -- Only generate a nonconst FromContents instance.
         ln
@@ -189,8 +197,10 @@ instantiate' setName t tReqs opts =
         indent $ do
           sayLn "fromContents values' = do"
           indent $ do
-            saysLn ["set' <- ", toHsMethodName' set "new"]
-            saysLn ["HoppyP.mapM_ (", toHsMethodName' set "insert", " set') values'"]
+            setNew <- toHsMethodName' set "new"
+            setInsert <- toHsMethodName' set "insert"
+            saysLn ["set' <- ", setNew]
+            saysLn ["HoppyP.mapM_ (", setInsert, " set') values'"]
             sayLn "HoppyP.return set'"
 
   in Contents
