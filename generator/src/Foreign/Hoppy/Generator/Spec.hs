@@ -73,6 +73,8 @@ module Foreign.Hoppy.Generator.Spec (
   ExtName,
   toExtName,
   fromExtName,
+  HasExtNames (..),
+  getAllExtNames,
   FnName (..),
   IsFnName (..),
   Operator (..),
@@ -81,7 +83,6 @@ module Foreign.Hoppy.Generator.Spec (
   operatorPreferredExtName',
   operatorType,
   Export (..),
-  exportExtName,
   exportAddendum,
   Identifier,
   identifierParts,
@@ -269,7 +270,9 @@ interface' ifName modules options = do
   let extNamesToModules :: M.Map ExtName [Module]
       extNamesToModules =
         M.unionsWith (++) $
-        map (\m -> const [m] <$> moduleExports m) modules
+        for modules $ \mod ->
+        let extNames = concatMap getAllExtNames $ moduleExports mod
+        in M.fromList $ zip extNames $ repeat [mod]
 
       extNamesInMultipleModules :: [(ExtName, [Module])]
       extNamesInMultipleModules =
@@ -469,7 +472,7 @@ moduleAddExports :: (MonadError String m, MonadState Module m) => [Export] -> m 
 moduleAddExports exports = do
   m <- get
   let existingExports = moduleExports m
-      newExports = M.fromList $ map (exportExtName &&& id) exports
+      newExports = M.fromList $ map (getPrimaryExtName &&& id) exports
       duplicateNames = (S.intersection `on` M.keysSet) existingExports newExports
   if S.null duplicateNames
     then modify $ \m -> m { moduleExports = existingExports `mappend` newExports }
@@ -584,6 +587,22 @@ extNameOrFnIdentifier name =
       [] -> error "extNameOrFnIdentifier: Empty idenfitier."
       parts -> toExtName $ idPartBase $ last parts
     FnOp op -> operatorPreferredExtName op
+
+-- | Types that have an external name, and also optionally have nested entities
+-- with external names as well.  See 'getAllExtNames'.
+class HasExtNames a where
+  -- | Returns the external name by which a given entity is referenced.
+  getPrimaryExtName :: a -> ExtName
+
+  -- | Returns external names nested within the given entity.  Does not include
+  -- the primary external name.
+  getNestedExtNames :: a -> [ExtName]
+  getNestedExtNames _ = []
+
+-- | Returns a list of all of the external names an entity contains.  This
+-- combines both 'getPrimaryExtName' and 'getNestedExtNames'.
+getAllExtNames :: HasExtNames a => a -> [ExtName]
+getAllExtNames x = getPrimaryExtName x : getNestedExtNames x
 
 -- | The C++ name of a function or method.
 data FnName name =
@@ -757,15 +776,22 @@ data Export =
   | ExportCallback Callback  -- ^ Exports a callback.
   deriving (Show)
 
--- | Returns the external name of an export.
-exportExtName :: Export -> ExtName
-exportExtName export = case export of
-  ExportVariable v -> varExtName v
-  ExportEnum e -> enumExtName e
-  ExportBitspace b -> bitspaceExtName b
-  ExportFn f -> fnExtName f
-  ExportClass c -> classExtName c
-  ExportCallback cb -> callbackExtName cb
+instance HasExtNames Export where
+  getPrimaryExtName x = case x of
+    ExportVariable v -> getPrimaryExtName v
+    ExportEnum e -> getPrimaryExtName e
+    ExportBitspace b -> getPrimaryExtName b
+    ExportFn f -> getPrimaryExtName f
+    ExportClass cls -> getPrimaryExtName cls
+    ExportCallback cb -> getPrimaryExtName cb
+
+  getNestedExtNames x = case x of
+    ExportVariable v -> getNestedExtNames v
+    ExportEnum e -> getNestedExtNames e
+    ExportBitspace b -> getNestedExtNames b
+    ExportFn f -> getNestedExtNames f
+    ExportClass cls -> getNestedExtNames cls
+    ExportCallback cb -> getNestedExtNames cb
 
 -- | Returns the export's addendum.  'Export' doesn't have a 'HasAddendum'
 -- instance because you normally wouldn't want to modify the addendum of one.
@@ -980,6 +1006,10 @@ instance Eq Variable where
 instance Show Variable where
   show v = concat ["<Variable ", show (varExtName v), " ", show (varType v), ">"]
 
+instance HasExtNames Variable where
+  getPrimaryExtName = varExtName
+  getNestedExtNames v = [varGetterExtName v, varSetterExtName v]
+
 instance HasReqs Variable where
   getReqs = varReqs
   setReqs reqs v = v { varReqs = reqs }
@@ -1030,6 +1060,9 @@ instance Eq CppEnum where
 
 instance Show CppEnum where
   show e = concat ["<Enum ", show (enumExtName e), " ", show (enumIdentifier e), ">"]
+
+instance HasExtNames CppEnum where
+  getPrimaryExtName = enumExtName
 
 instance HasReqs CppEnum where
   getReqs = enumReqs
@@ -1099,6 +1132,9 @@ instance Eq Bitspace where
 
 instance Show Bitspace where
   show e = concat ["<Bitspace ", show (bitspaceExtName e), " ", show (bitspaceType e), ">"]
+
+instance HasExtNames Bitspace where
+  getPrimaryExtName = bitspaceExtName
 
 instance HasReqs Bitspace where
   getReqs = bitspaceReqs
@@ -1186,6 +1222,9 @@ instance Show Function where
     concat ["<Function ", show (fnExtName fn), " ", show (fnCName fn),
             show (fnParams fn), " ", show (fnReturn fn), ">"]
 
+instance HasExtNames Function where
+  getPrimaryExtName = fnExtName
+
 instance HasReqs Function where
   getReqs = fnReqs
   setReqs reqs fn = fn { fnReqs = reqs }
@@ -1255,6 +1294,14 @@ instance Ord Class where
 instance Show Class where
   show cls =
     concat ["<Class ", show (classExtName cls), " ", show (classIdentifier cls), ">"]
+
+instance HasExtNames Class where
+  getPrimaryExtName = classExtName
+
+  getNestedExtNames cls =
+    concat [ map (getClassyExtName cls) $ classCtors cls
+           , map (getClassyExtName cls) $ classMethods cls
+           ]
 
 instance HasReqs Class where
   getReqs = classReqs
@@ -1783,6 +1830,9 @@ instance Show Callback where
   show cb =
     concat ["<Callback ", show (callbackExtName cb), " ", show (callbackParams cb), " ",
             show (callbackReturn cb)]
+
+instance HasExtNames Callback where
+  getPrimaryExtName = callbackExtName
 
 instance HasReqs Callback where
   getReqs = callbackReqs
