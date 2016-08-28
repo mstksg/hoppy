@@ -73,6 +73,7 @@ module Foreign.Hoppy.Generator.Language.Haskell (
   toHsMethodName',
   toHsCallbackCtorName,
   toHsFnName,
+  toHsFnName',
   toArgName,
   HsTypeSide (..),
   cppTypeToHsTypeAndUse,
@@ -739,11 +740,11 @@ toHsMethodName cls method =
 -- specific name in a class.
 toHsMethodName' :: IsFnName String name => Class -> name -> Generator String
 toHsMethodName' cls methodName =
-  addExtNameModule (classExtName cls) $ lowerFirst $
-  concat [fromExtName $ classExtName cls, "_",
-          case toFnName methodName of
-            FnName name -> name
-            FnOp op -> fromExtName $ operatorPreferredExtName op]
+  addExtNameModule (classExtName cls) $ lowerFirst $ fromExtName $
+  classEntityForeignName' cls $
+  case toFnName methodName of
+    FnName name -> toExtName name
+    FnOp op -> operatorPreferredExtName op
 
 -- | The name of the function that takes a Haskell function and wraps it in a
 -- callback object.  This is internal to the binding; normal users can pass

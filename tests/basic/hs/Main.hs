@@ -136,6 +136,10 @@ objectTests =
   , "undeletable instances compile" ~: do
     x <- undeletable_getInstance
     assert $ x /= nullptr
+
+  , "classes with alternate entity prefixes" ~: do
+    altPrefixClass_foo >>= (@?= 3)
+    withScopedPtr ctorWithNoPrefix methodWithNoPrefix >>= (@?= 4)
   ]
 
 objectGcTests :: Test

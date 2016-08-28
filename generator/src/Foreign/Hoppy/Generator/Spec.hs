@@ -15,7 +15,7 @@
 -- You should have received a copy of the GNU Affero General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-{-# LANGUAGE CPP #-}
+{-# LANGUAGE CPP, GeneralizedNewtypeDeriving #-}
 
 -- | The primary data types for specifying C++ interfaces.
 --
@@ -109,11 +109,12 @@ module Foreign.Hoppy.Generator.Spec (
   Function, makeFn, fnCName, fnExtName, fnPurity, fnParams, fnReturn, fnReqs, fnExceptionHandlers,
   -- ** Classes
   Class, makeClass, classIdentifier, classExtName, classSuperclasses, classCtors, classDtorIsPublic,
-  classMethods, classConversion, classReqs, classAddCtors, classSetDtorPrivate, classAddMethods,
+  classMethods, classConversion, classReqs, classEntityPrefix, classSetEntityPrefix,
+  classAddCtors, classSetDtorPrivate, classAddMethods,
   classIsMonomorphicSuperclass, classSetMonomorphicSuperclass,
   classIsSubclassOfMonomorphic, classSetSubclassOfMonomorphic,
   classIsException, makeClassException,
-  HasClassyExtName (..),
+  ClassEntity (..), classEntityExtName, classEntityForeignName, classEntityForeignName',
   Ctor, makeCtor, mkCtor, ctorExtName, ctorParams, ctorExceptionHandlers,
   Method,
   MethodImpl (..),
@@ -550,7 +551,7 @@ addReqIncludes includes =
 newtype ExtName = ExtName
   { fromExtName :: String
     -- ^ Returns the string an an 'ExtName' contains.
-  } deriving (Eq, Ord)
+  } deriving (Eq, Monoid, Ord)
 
 instance Show ExtName where
   show extName = concat ["$\"", fromExtName extName, "\"$"]
@@ -1253,9 +1254,9 @@ makeFn cName maybeExtName purity paramTypes retType =
               (extNameOrFnIdentifier fnName maybeExtName)
               purity paramTypes retType mempty mempty mempty
 
--- | A C++ class declaration.  A class's external name is automatically combined
--- with the external names of things inside the class, by way of
--- 'HasClassyExtName'.
+-- | A C++ class declaration.  See 'ClassEntity' for more information about the
+-- interaction between a class's names and the names of entities within the
+-- class.
 data Class = Class
   { classIdentifier :: Identifier
     -- ^ The identifier used to refer to the class.
@@ -1283,6 +1284,22 @@ data Class = Class
     -- 'classSetSubclassOfMonomorphic'.
   , classIsException :: Bool
     -- ^ Whether to support using the class as a C++ exception.
+  , classEntityPrefix :: String
+    -- ^ The prefix applied to the external names of entities (methods, etc.)
+    -- within this class when determining the names of foreign languages'
+    -- corresponding bindings.  This defaults to the external name of the class,
+    -- plus an underscore.  Changing this allows you to potentially have
+    -- entities with the same foreign name in separate modules.  This may be the
+    -- empty string, in which case the foreign name will simply be the external
+    -- name of the entity.
+    --
+    -- This does __not__ affect the things' external names themselves; external
+    -- names must still be unique in an interface.  For instance, a method with
+    -- external name @bar@ in a class with external name @Flab@ and prefix
+    -- @Flob_@ will use the effective external name @Flab_bar@, but the
+    -- generated name in say Haskell would be @Flob_bar@.
+    --
+    -- See 'ClassEntity' and 'classSetEntityPrefix'.
   }
 
 instance Eq Class where
@@ -1299,8 +1316,8 @@ instance HasExtNames Class where
   getPrimaryExtName = classExtName
 
   getNestedExtNames cls =
-    concat [ map (getClassyExtName cls) $ classCtors cls
-           , map (getClassyExtName cls) $ classMethods cls
+    concat [ map (classEntityExtName cls) $ classCtors cls
+           , map (classEntityExtName cls) $ classMethods cls
            ]
 
 instance HasReqs Class where
@@ -1320,20 +1337,30 @@ makeClass :: Identifier
           -> [Ctor]
           -> [Method]
           -> Class
-makeClass identifier maybeExtName supers ctors methods = Class
-  { classIdentifier = identifier
-  , classExtName = extNameOrIdentifier identifier maybeExtName
-  , classSuperclasses = supers
-  , classCtors = ctors
-  , classDtorIsPublic = True
-  , classMethods = methods
-  , classConversion = classConversionNone
-  , classReqs = mempty
-  , classAddendum = mempty
-  , classIsMonomorphicSuperclass = False
-  , classIsSubclassOfMonomorphic = False
-  , classIsException = False
-  }
+makeClass identifier maybeExtName supers ctors methods =
+  let extName = extNameOrIdentifier identifier maybeExtName
+  in Class
+     { classIdentifier = identifier
+     , classExtName = extName
+     , classSuperclasses = supers
+     , classCtors = ctors
+     , classDtorIsPublic = True
+     , classMethods = methods
+     , classConversion = classConversionNone
+     , classReqs = mempty
+     , classAddendum = mempty
+     , classIsMonomorphicSuperclass = False
+     , classIsSubclassOfMonomorphic = False
+     , classIsException = False
+     , classEntityPrefix = fromExtName extName ++ "_"
+     }
+
+-- | Sets the prefix applied to foreign languages' entities generated from
+-- methods, etc. within the class.
+--
+-- See 'ClassEntity' and 'classEntityPrefix'.
+classSetEntityPrefix :: String -> Class -> Class
+classSetEntityPrefix prefix cls = cls { classEntityPrefix = prefix }
 
 -- | Adds constructors to a class.
 classAddCtors :: [Ctor] -> Class -> Class
@@ -1487,17 +1514,33 @@ data ClassHaskellConversion = ClassHaskellConversion
 -- prepended to their own in generated code.  With an external name of @\"bar\"@
 -- and a class with external name @\"foo\"@, the resulting name will be
 -- @\"foo_bar\"@.
-class HasClassyExtName a where
+--
+-- See 'classEntityPrefix' and 'classSetEntityPrefix'.
+class ClassEntity a where
   -- | Extracts the external name of the object, without the class name added.
-  getClassyExtNameSuffix :: a -> ExtName
+  classEntityExtNameSuffix :: a -> ExtName
 
-  -- | Computes the external name to use in generated code, containing both the
-  -- class's and object's external names.
-  --
-  -- See also 'Foreign.Hoppy.Generator.Language.Haskell.General.toHsMethodName'.
-  getClassyExtName :: Class -> a -> ExtName
-  getClassyExtName cls x =
-    toExtName $ concat [fromExtName $ classExtName cls, "_", fromExtName $ getClassyExtNameSuffix x]
+-- | Computes the external name to use in generated code, containing both the
+-- class's and object's external names.  This is the concatenation of the
+-- class's and entity's external names, separated by an underscore.
+classEntityExtName :: ClassEntity a => Class -> a -> ExtName
+classEntityExtName cls x =
+  toExtName $ fromExtName (classExtName cls) ++ "_" ++ fromExtName (classEntityExtNameSuffix x)
+
+-- | Computes the name under which a class entity is to be exposed in foreign
+-- languages.  This is the concatenation of a class's entity prefix, and the
+-- external name of the entity.
+classEntityForeignName :: ClassEntity a => Class -> a -> ExtName
+classEntityForeignName cls x =
+  classEntityForeignName' cls $ classEntityExtNameSuffix x
+
+-- | Computes the name under which a class entity is to be exposed in foreign
+-- languages, given a class and an entity's external name.  The result is the
+-- concatenation of a class's entity prefix, and the external name of the
+-- entity.
+classEntityForeignName' :: Class -> ExtName -> ExtName
+classEntityForeignName' cls extName =
+  toExtName $ classEntityPrefix cls ++ fromExtName extName
 
 -- | A C++ class constructor declaration.
 data Ctor = Ctor
@@ -1516,8 +1559,8 @@ instance HandlesExceptions Ctor where
   getExceptionHandlers = ctorExceptionHandlers
   modifyExceptionHandlers f ctor = ctor { ctorExceptionHandlers = f $ ctorExceptionHandlers ctor }
 
-instance HasClassyExtName Ctor where
-  getClassyExtNameSuffix = ctorExtName
+instance ClassEntity Ctor where
+  classEntityExtNameSuffix = ctorExtName
 
 -- | Creates a 'Ctor' with full generality.
 makeCtor :: ExtName
@@ -1570,8 +1613,8 @@ instance HandlesExceptions Method where
   modifyExceptionHandlers f method =
     method { methodExceptionHandlers = f $ methodExceptionHandlers method }
 
-instance HasClassyExtName Method where
-  getClassyExtNameSuffix = methodExtName
+instance ClassEntity Method where
+  classEntityExtNameSuffix = methodExtName
 
 -- | The C++ code to which a 'Method' is bound.
 data MethodImpl =

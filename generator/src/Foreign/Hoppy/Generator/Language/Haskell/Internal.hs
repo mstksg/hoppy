@@ -189,7 +189,7 @@ sayExport mode export = do
     ExportEnum enum -> sayExportEnum mode enum
     ExportBitspace bitspace -> sayExportBitspace mode bitspace
     ExportFn fn ->
-      (sayExportFn mode <$> fnExtName <*> pure Nothing <*> fnPurity <*>
+      (sayExportFn mode <$> fnExtName <*> fnExtName <*> pure Nothing <*> fnPurity <*>
        fnParams <*> fnReturn <*> fnExceptionHandlers) fn
     ExportClass cls -> sayExportClass mode cls
     ExportCallback cb -> sayExportCallback mode cb
@@ -203,9 +203,11 @@ sayExportVar mode v = do
     let (isConst, deconstType) = case varType v of
           Internal_TConst t -> (True, t)
           t -> (False, t)
-    sayExportFn mode (varGetterExtName v) Nothing Nonpure [] deconstType mempty
+        getterName = varGetterExtName v
+        setterName = varSetterExtName v
+    sayExportFn mode getterName getterName Nothing Nonpure [] deconstType mempty
     unless isConst $
-      sayExportFn mode (varSetterExtName v) Nothing Nonpure [deconstType] voidT mempty
+      sayExportFn mode setterName setterName Nothing Nonpure [deconstType] voidT mempty
 
 sayExportEnum :: SayExportMode -> CppEnum -> Generator ()
 sayExportEnum mode enum =
@@ -343,29 +345,34 @@ sayExportBitspace mode bitspace =
 
 sayExportFn :: SayExportMode
             -> ExtName
+            -> ExtName
             -> Maybe (Constness, Class)
             -> Purity
             -> [Type]
             -> Type
             -> ExceptionHandlers
             -> Generator ()
-sayExportFn mode name methodInfo purity paramTypes retType exceptionHandlers = do
+sayExportFn mode extName foreignName methodInfo purity paramTypes retType exceptionHandlers = do
   effectiveHandlers <- getEffectiveExceptionHandlers exceptionHandlers
   let handlerList = exceptionHandlersList effectiveHandlers
       catches = not $ null handlerList
 
-  hsFnName <- toHsFnName name
-  let hsFnImportedName = hsFnName ++ "'"
+  -- We use the pure version of toHsFnName here; because foreignName isn't an
+  -- ExtName present in the interface's lookup table, toHsFnName would bail on
+  -- it.  Since functions don't reference each other (e.g. we don't put anything
+  -- in .hs-boot files for them in circular modules cases), this isn't a problem.
+  let hsFnName = toHsFnName' foreignName
+      hsFnImportedName = hsFnName ++ "'"
 
   case mode of
     SayExportForeignImports ->
-      withErrorContext ("generating imports for function " ++ show name) $ do
+      withErrorContext ("generating imports for function " ++ show extName) $ do
         -- Print a "foreign import" statement.
         hsCType <- fnToHsTypeAndUse HsCSide methodInfo purity paramTypes retType effectiveHandlers
-        saysLn ["foreign import ccall \"", externalNameToCpp name, "\" ", hsFnImportedName, " :: ",
-                prettyPrint hsCType]
+        saysLn ["foreign import ccall \"", externalNameToCpp extName, "\" ", hsFnImportedName,
+                " :: ", prettyPrint hsCType]
 
-    SayExportDecls -> withErrorContext ("generating function " ++ show name) $ do
+    SayExportDecls -> withErrorContext ("generating function " ++ show extName) $ do
       -- Print the type signature.
       ln
       addExport hsFnName
@@ -413,6 +420,8 @@ sayExportFn mode name methodInfo purity paramTypes retType exceptionHandlers = d
     SayExportBoot ->
       -- Functions (methods included) cannot be referenced from other exports,
       -- so we don't need to emit anything.
+      --
+      -- If this changes, revisit the comment on hsFnName above.
       return ()
 
 -- | Prints \"foreign import\" statements and an internal callback construction
@@ -773,8 +782,9 @@ sayExportClass mode cls = withErrorContext ("generating class " ++ show (classEx
       sayExportClassHsCtors mode cls
 
       forM_ (classMethods cls) $ \method ->
-        (sayExportFn mode <$> getClassyExtName cls <*> pure Nothing <*> methodPurity <*>
-         pure (getMethodEffectiveParams cls method) <*> methodReturn <*> methodExceptionHandlers)
+        (sayExportFn mode <$> classEntityExtName cls <*> classEntityForeignName cls <*>
+         pure Nothing <*> methodPurity <*> pure (getMethodEffectiveParams cls method) <*>
+         methodReturn <*> methodExceptionHandlers)
         method
 
     SayExportDecls -> do
@@ -877,16 +887,17 @@ sayExportClassHsClass doDecls cls cst = do
     let methods = filter ((cst ==) . methodConst) $ classMethods cls
     forM_ methods $ \method ->
       when (methodStatic method == Nonstatic) $
-      (sayExportFn SayExportDecls <$> getClassyExtName cls <*> pure Nothing <*>
-       methodPurity <*> pure (getMethodEffectiveParams cls method) <*>
+      (sayExportFn SayExportDecls <$> classEntityExtName cls <*> classEntityForeignName cls <*>
+       pure Nothing <*> methodPurity <*> pure (getMethodEffectiveParams cls method) <*>
        methodReturn <*> methodExceptionHandlers) method
 
 sayExportClassHsStaticMethods :: Class -> Generator ()
 sayExportClassHsStaticMethods cls =
   forM_ (classMethods cls) $ \method ->
     when (methodStatic method == Static) $
-    (sayExportFn SayExportDecls <$> getClassyExtName cls <*> pure Nothing <*> methodPurity <*>
-     methodParams <*> methodReturn <*> methodExceptionHandlers) method
+    (sayExportFn SayExportDecls <$> classEntityExtName cls <*> classEntityForeignName cls <*>
+     pure Nothing <*> methodPurity <*> methodParams <*> methodReturn <*>
+     methodExceptionHandlers) method
 
 sayExportClassHsType :: Bool -> Class -> Constness -> Generator ()
 sayExportClassHsType doDecls cls cst = do
@@ -1082,9 +1093,9 @@ sayExportClassHsType doDecls cls cst = do
 sayExportClassHsCtors :: SayExportMode -> Class -> Generator ()
 sayExportClassHsCtors mode cls =
   forM_ (classCtors cls) $ \ctor ->
-  (sayExportFn mode <$> getClassyExtName cls <*> pure Nothing <*>
-   pure Nonpure <*> ctorParams <*> pure (ptrT $ objT cls) <*> ctorExceptionHandlers)
-  ctor
+  (sayExportFn mode <$> classEntityExtName cls <*> classEntityForeignName cls <*>
+   pure Nothing <*> pure Nonpure <*> ctorParams <*> pure (ptrT $ objT cls) <*>
+   ctorExceptionHandlers) ctor
 
 sayExportClassHsSpecialFns :: SayExportMode -> Class -> Generator ()
 sayExportClassHsSpecialFns mode cls = do
@@ -1136,7 +1147,7 @@ sayExportClassHsSpecialFns mode cls = do
   when (mode == SayExportDecls) $ withAssignmentMethod $ \m -> do
     addImports $ mconcat [hsImport1 "Prelude" "(>>)", hsImportForPrelude]
     valueClassName <- toHsValueClassName cls
-    assignmentMethodName <- toHsFnName $ getClassyExtName cls m
+    assignmentMethodName <- toHsFnName $ classEntityForeignName cls m
     ln
     saysLn ["instance ", valueClassName, " a => HoppyFHR.Assignable ", typeName, " a where"]
     indent $

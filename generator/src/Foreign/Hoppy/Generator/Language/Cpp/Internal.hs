@@ -172,7 +172,7 @@ sayExport sayBody export = case export of
 
     -- Export each of the class's constructors.
     forM_ (classCtors cls) $ \ctor ->
-      sayExportFn (getClassyExtName cls ctor)
+      sayExportFn (classEntityExtName cls ctor)
                   (CallFn $ say "new" >> sayIdentifier (classIdentifier cls))
                   Nothing
                   (ctorParams ctor)
@@ -195,7 +195,7 @@ sayExport sayBody export = case export of
               RealMethod {} -> False
               FnMethod {} -> True
       let static = methodStatic method == Static
-      sayExportFn (getClassyExtName cls method)
+      sayExportFn (classEntityExtName cls method)
                   (case methodImpl method of
                      RealMethod name -> case name of
                        FnName cName -> CallFn $ do
