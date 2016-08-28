@@ -100,10 +100,12 @@ module Foreign.Hoppy.Generator.Spec (
   varIsConst, varGetterExtName, varSetterExtName,
   -- ** Enums
   CppEnum, makeEnum, enumIdentifier, enumExtName, enumValueNames, enumReqs,
+  enumValuePrefix, enumSetValuePrefix,
   -- ** Bitspaces
   Bitspace, makeBitspace, bitspaceExtName, bitspaceType, bitspaceValueNames, bitspaceEnum,
   bitspaceAddEnum, bitspaceCppTypeIdentifier, bitspaceFromCppValueFn, bitspaceToCppValueFn,
   bitspaceAddCppType, bitspaceReqs,
+  bitspaceValuePrefix, bitspaceSetValuePrefix,
   -- ** Functions
   Purity (..),
   Function, makeFn, fnCName, fnExtName, fnPurity, fnParams, fnReturn, fnReqs, fnExceptionHandlers,
@@ -1054,6 +1056,12 @@ data CppEnum = CppEnum
     -- ^ Requirements for a 'Type' to reference this enum.
   , enumAddendum :: Addendum
     -- ^ The enum's addendum.
+  , enumValuePrefix :: String
+    -- ^ The prefix applied to value names ('enumValueNames') when determining
+    -- the names of values in foreign languages.  This defaults to the external
+    -- name of the enum, plus an underscore.
+    --
+    -- See 'enumSetValuePrefix'.
   }
 
 instance Eq CppEnum where
@@ -1081,7 +1089,21 @@ makeEnum :: Identifier  -- ^ 'enumIdentifier'
          -> [(Int, [String])]  -- ^ 'enumValueNames'
          -> CppEnum
 makeEnum identifier maybeExtName valueNames =
-  CppEnum identifier (extNameOrIdentifier identifier maybeExtName) valueNames mempty mempty
+  let extName = extNameOrIdentifier identifier maybeExtName
+  in CppEnum
+     identifier
+     extName
+     valueNames
+     mempty
+     mempty
+     (fromExtName extName ++ "_")
+
+-- | Sets the prefix applied to the names of enum values' identifiers in foreign
+-- languages.
+--
+-- See 'enumValuePrefix'.
+enumSetValuePrefix :: String -> CppEnum -> CppEnum
+enumSetValuePrefix prefix enum = enum { enumValuePrefix = prefix }
 
 -- | A C++ numeric space with bitwise operations.  This is similar to a
 -- 'CppEnum', but in addition to the extra operations, this differs in that
@@ -1126,6 +1148,12 @@ data Bitspace = Bitspace
     -- to list these here.
   , bitspaceAddendum :: Addendum
     -- ^ The bitspace's addendum.
+  , bitspaceValuePrefix :: String
+    -- ^ The prefix applied to value names ('bitspaceValueNames') when
+    -- determining the names of values in foreign languages.  This defaults to
+    -- the external name of the bitspace, plus an underscore.
+    --
+    -- See 'bitspaceSetValuePrefix'.
   }
 
 instance Eq Bitspace where
@@ -1152,6 +1180,14 @@ makeBitspace :: ExtName  -- ^ 'bitspaceExtName'
              -> Bitspace
 makeBitspace extName t valueNames =
   Bitspace extName t valueNames Nothing Nothing Nothing Nothing mempty mempty
+  (fromExtName extName ++ "_")
+
+-- | Sets the prefix applied to the names of enum values' identifiers in foreign
+-- languages.
+--
+-- See 'enumValuePrefix'.
+bitspaceSetValuePrefix :: String -> Bitspace -> Bitspace
+bitspaceSetValuePrefix prefix bitspace = bitspace { bitspaceValuePrefix = prefix }
 
 -- | Associates an enum with the bitspace.  See 'bitspaceEnum'.
 bitspaceAddEnum :: CppEnum -> Bitspace -> Bitspace

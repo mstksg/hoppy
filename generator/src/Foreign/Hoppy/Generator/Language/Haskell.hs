@@ -522,7 +522,7 @@ toHsEnumCtorName enum words =
 -- | Pure version of 'toHsEnumCtorName' that doesn't create a qualified name.
 toHsEnumCtorName' :: CppEnum -> [String] -> String
 toHsEnumCtorName' enum words =
-  concat $ toHsEnumTypeName' enum : "_" : map capitalize words
+  concat $ enumValuePrefix enum : map capitalize words
 
 -- | Returns the Haskell name for a bitspace.  See 'toHsEnumTypeName'.
 toHsBitspaceTypeName :: Bitspace -> Generator String
@@ -545,7 +545,7 @@ toHsBitspaceValueName bitspace words =
 -- | Pure version of 'toHsBitspaceValueName' that doesn't create a qualified name.
 toHsBitspaceValueName' :: Bitspace -> [String] -> String
 toHsBitspaceValueName' bitspace words =
-  lowerFirst $ concat $ toHsBitspaceTypeName' bitspace : "_" : map capitalize words
+  lowerFirst $ concat $ bitspaceValuePrefix bitspace : map capitalize words
 
 -- | Returns the name of the function that will convert a bitspace value into a
 -- raw numeric value.
