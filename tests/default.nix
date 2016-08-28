@@ -18,7 +18,7 @@
 { compiler ? null }:
 let pkgs = import ../pkgs.nix { inherit compiler; }; in
 pkgs.stdenv.mkDerivation {
-  name = "hoppy-tests-0.2.0";
+  name = "hoppy-tests-0.3.0";
   builder = ./builder.sh;
   buildInputs = let h = pkgs.haskellPackages; in [
     pkgs.hoppy-tests-basic-cpp h.hoppy-tests-basic
