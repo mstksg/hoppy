@@ -34,6 +34,8 @@ library
     , FlexibleInstances
     , FunctionalDependencies
     , MultiParamTypeClasses
+  other-extensions:
+      GeneralizedNewtypeDeriving
   build-depends:
       base >=4.7 && <4.9
     , containers >=0.5 && <0.6

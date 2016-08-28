@@ -58,6 +58,8 @@ testModule =
   , ExportClass c_PtrCtr
   , ExportClass c_PtrCtrWithToHeapConversion
   , ExportClass c_PtrCtrWithToGcConversion
+  , ExportClass c_ClassWithAltPrefix
+  , ExportClass c_ClassWithNoPrefix
   , ExportFn f_piapprox
   , ExportFn f_piapproxNonpure
   , ExportFn f_timesTwo
@@ -226,6 +228,21 @@ c_PtrCtrWithToGcConversion =
   , mkStaticMethod "getConstructionCount" [] intT
   , mkStaticMethod "getDestructionCount" [] intT
   ]
+
+c_ClassWithAltPrefix :: Class
+c_ClassWithAltPrefix =
+  addReqIncludes [includeLocal "class-prefixes.hpp"] $
+  classSetEntityPrefix "AltPrefixClass_" $
+  makeClass (ident "ClassWithAltPrefix") Nothing [] []
+  [ mkStaticMethod "foo" [] intT ]
+
+c_ClassWithNoPrefix :: Class
+c_ClassWithNoPrefix =
+  addReqIncludes [includeLocal "class-prefixes.hpp"] $
+  classSetEntityPrefix "" $
+  makeClass (ident "ClassWithNoPrefix") Nothing []
+  [ mkCtor "ctorWithNoPrefix" [] ]
+  [ mkMethod "methodWithNoPrefix" [] intT ]
 
 f_piapprox :: Function
 f_piapprox =

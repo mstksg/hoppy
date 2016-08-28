@@ -15,7 +15,7 @@
 -- You should have received a copy of the GNU Affero General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-{-# LANGUAGE CPP #-}
+{-# LANGUAGE CPP, GeneralizedNewtypeDeriving #-}
 
 -- | The primary data types for specifying C++ interfaces.
 --
@@ -37,6 +37,7 @@ module Foreign.Hoppy.Generator.Spec (
   interfaceHaskellModuleBase,
   interfaceDefaultHaskellModuleBase,
   interfaceAddHaskellModuleBase,
+  interfaceHaskellModuleImportNames,
   interfaceExceptionHandlers,
   interfaceExceptionClassId,
   interfaceExceptionSupportModule,
@@ -72,6 +73,8 @@ module Foreign.Hoppy.Generator.Spec (
   ExtName,
   toExtName,
   fromExtName,
+  HasExtNames (..),
+  getAllExtNames,
   FnName (..),
   IsFnName (..),
   Operator (..),
@@ -80,7 +83,6 @@ module Foreign.Hoppy.Generator.Spec (
   operatorPreferredExtName',
   operatorType,
   Export (..),
-  exportExtName,
   exportAddendum,
   Identifier,
   identifierParts,
@@ -98,20 +100,23 @@ module Foreign.Hoppy.Generator.Spec (
   varIsConst, varGetterExtName, varSetterExtName,
   -- ** Enums
   CppEnum, makeEnum, enumIdentifier, enumExtName, enumValueNames, enumReqs,
+  enumValuePrefix, enumSetValuePrefix,
   -- ** Bitspaces
   Bitspace, makeBitspace, bitspaceExtName, bitspaceType, bitspaceValueNames, bitspaceEnum,
   bitspaceAddEnum, bitspaceCppTypeIdentifier, bitspaceFromCppValueFn, bitspaceToCppValueFn,
   bitspaceAddCppType, bitspaceReqs,
+  bitspaceValuePrefix, bitspaceSetValuePrefix,
   -- ** Functions
   Purity (..),
   Function, makeFn, fnCName, fnExtName, fnPurity, fnParams, fnReturn, fnReqs, fnExceptionHandlers,
   -- ** Classes
   Class, makeClass, classIdentifier, classExtName, classSuperclasses, classCtors, classDtorIsPublic,
-  classMethods, classConversion, classReqs, classAddCtors, classSetDtorPrivate, classAddMethods,
+  classMethods, classConversion, classReqs, classEntityPrefix, classSetEntityPrefix,
+  classAddCtors, classSetDtorPrivate, classAddMethods,
   classIsMonomorphicSuperclass, classSetMonomorphicSuperclass,
   classIsSubclassOfMonomorphic, classSetSubclassOfMonomorphic,
   classIsException, makeClassException,
-  HasClassyExtName (..),
+  ClassEntity (..), classEntityExtName, classEntityForeignName, classEntityForeignName',
   Ctor, makeCtor, mkCtor, ctorExtName, ctorParams, ctorExceptionHandlers,
   Method,
   MethodImpl (..),
@@ -196,6 +201,7 @@ import Data.Maybe (catMaybes, fromMaybe)
 import Data.Monoid (Monoid, mappend, mconcat, mempty)
 #endif
 import qualified Data.Set as S
+import Foreign.Hoppy.Generator.Common
 import {-# SOURCE #-} qualified Foreign.Hoppy.Generator.Language.Haskell as Haskell
 import Language.Haskell.Syntax (HsType)
 
@@ -218,6 +224,9 @@ data Interface = Interface
     -- the name.
   , interfaceHaskellModuleBase' :: Maybe [String]
     -- ^ See 'interfaceHaskellModuleBase'.
+  , interfaceHaskellModuleImportNames :: M.Map Module String
+    -- ^ Short qualified module import names that generated modules use to refer
+    -- to each other tersely.
   , interfaceExceptionHandlers :: ExceptionHandlers
     -- ^ Exceptions that all functions in the interface may throw.
   , interfaceExceptionNamesToIds :: M.Map ExtName ExceptionId
@@ -264,7 +273,9 @@ interface' ifName modules options = do
   let extNamesToModules :: M.Map ExtName [Module]
       extNamesToModules =
         M.unionsWith (++) $
-        map (\m -> const [m] <$> moduleExports m) modules
+        for modules $ \mod ->
+        let extNames = concatMap getAllExtNames $ moduleExports mod
+        in M.fromList $ zip extNames $ repeat [mod]
 
       extNamesInMultipleModules :: [(ExtName, [Module])]
       extNamesInMultipleModules =
@@ -280,6 +291,11 @@ interface' ifName modules options = do
     map (\(extName, modules) ->
           concat $ "- " : show extName : ": " : intersperse ", " (map show modules))
         extNamesInMultipleModules
+
+  let haskellModuleImportNames =
+        M.fromList $
+        (\a b f -> zipWith f a b) modules [1..] $
+        \mod index -> (mod, 'M' : show index)
 
   -- Generate a unique exception ID integer for each exception class.  IDs 0 and
   -- 1 are reserved.
@@ -300,6 +316,7 @@ interface' ifName modules options = do
     , interfaceModules = M.fromList $ map (moduleName &&& id) modules
     , interfaceNamesToModules = M.map (\[x] -> x) extNamesToModules
     , interfaceHaskellModuleBase' = Nothing
+    , interfaceHaskellModuleImportNames = haskellModuleImportNames
     , interfaceExceptionHandlers = interfaceOptionsExceptionHandlers options
     , interfaceExceptionNamesToIds = exceptionNamesToIds
     , interfaceExceptionSupportModule = exceptionSupportModule
@@ -348,7 +365,7 @@ interfaceAllExceptionClasses' :: [Module] -> [Class]
 interfaceAllExceptionClasses' modules =
   flip concatMap modules $ \mod ->
   catMaybes $
-  flip map (M.elems $ moduleExports mod) $ \export -> case export of
+  for (M.elems $ moduleExports mod) $ \export -> case export of
     ExportClass cls | classIsException cls -> Just cls
     _ -> Nothing
 
@@ -458,7 +475,7 @@ moduleAddExports :: (MonadError String m, MonadState Module m) => [Export] -> m 
 moduleAddExports exports = do
   m <- get
   let existingExports = moduleExports m
-      newExports = M.fromList $ map (exportExtName &&& id) exports
+      newExports = M.fromList $ map (getPrimaryExtName &&& id) exports
       duplicateNames = (S.intersection `on` M.keysSet) existingExports newExports
   if S.null duplicateNames
     then modify $ \m -> m { moduleExports = existingExports `mappend` newExports }
@@ -536,7 +553,7 @@ addReqIncludes includes =
 newtype ExtName = ExtName
   { fromExtName :: String
     -- ^ Returns the string an an 'ExtName' contains.
-  } deriving (Eq, Ord)
+  } deriving (Eq, Monoid, Ord)
 
 instance Show ExtName where
   show extName = concat ["$\"", fromExtName extName, "\"$"]
@@ -573,6 +590,22 @@ extNameOrFnIdentifier name =
       [] -> error "extNameOrFnIdentifier: Empty idenfitier."
       parts -> toExtName $ idPartBase $ last parts
     FnOp op -> operatorPreferredExtName op
+
+-- | Types that have an external name, and also optionally have nested entities
+-- with external names as well.  See 'getAllExtNames'.
+class HasExtNames a where
+  -- | Returns the external name by which a given entity is referenced.
+  getPrimaryExtName :: a -> ExtName
+
+  -- | Returns external names nested within the given entity.  Does not include
+  -- the primary external name.
+  getNestedExtNames :: a -> [ExtName]
+  getNestedExtNames _ = []
+
+-- | Returns a list of all of the external names an entity contains.  This
+-- combines both 'getPrimaryExtName' and 'getNestedExtNames'.
+getAllExtNames :: HasExtNames a => a -> [ExtName]
+getAllExtNames x = getPrimaryExtName x : getNestedExtNames x
 
 -- | The C++ name of a function or method.
 data FnName name =
@@ -746,15 +779,22 @@ data Export =
   | ExportCallback Callback  -- ^ Exports a callback.
   deriving (Show)
 
--- | Returns the external name of an export.
-exportExtName :: Export -> ExtName
-exportExtName export = case export of
-  ExportVariable v -> varExtName v
-  ExportEnum e -> enumExtName e
-  ExportBitspace b -> bitspaceExtName b
-  ExportFn f -> fnExtName f
-  ExportClass c -> classExtName c
-  ExportCallback cb -> callbackExtName cb
+instance HasExtNames Export where
+  getPrimaryExtName x = case x of
+    ExportVariable v -> getPrimaryExtName v
+    ExportEnum e -> getPrimaryExtName e
+    ExportBitspace b -> getPrimaryExtName b
+    ExportFn f -> getPrimaryExtName f
+    ExportClass cls -> getPrimaryExtName cls
+    ExportCallback cb -> getPrimaryExtName cb
+
+  getNestedExtNames x = case x of
+    ExportVariable v -> getNestedExtNames v
+    ExportEnum e -> getNestedExtNames e
+    ExportBitspace b -> getNestedExtNames b
+    ExportFn f -> getNestedExtNames f
+    ExportClass cls -> getNestedExtNames cls
+    ExportCallback cb -> getNestedExtNames cb
 
 -- | Returns the export's addendum.  'Export' doesn't have a 'HasAddendum'
 -- instance because you normally wouldn't want to modify the addendum of one.
@@ -969,6 +1009,10 @@ instance Eq Variable where
 instance Show Variable where
   show v = concat ["<Variable ", show (varExtName v), " ", show (varType v), ">"]
 
+instance HasExtNames Variable where
+  getPrimaryExtName = varExtName
+  getNestedExtNames v = [varGetterExtName v, varSetterExtName v]
+
 instance HasReqs Variable where
   getReqs = varReqs
   setReqs reqs v = v { varReqs = reqs }
@@ -1012,6 +1056,12 @@ data CppEnum = CppEnum
     -- ^ Requirements for a 'Type' to reference this enum.
   , enumAddendum :: Addendum
     -- ^ The enum's addendum.
+  , enumValuePrefix :: String
+    -- ^ The prefix applied to value names ('enumValueNames') when determining
+    -- the names of values in foreign languages.  This defaults to the external
+    -- name of the enum, plus an underscore.
+    --
+    -- See 'enumSetValuePrefix'.
   }
 
 instance Eq CppEnum where
@@ -1019,6 +1069,9 @@ instance Eq CppEnum where
 
 instance Show CppEnum where
   show e = concat ["<Enum ", show (enumExtName e), " ", show (enumIdentifier e), ">"]
+
+instance HasExtNames CppEnum where
+  getPrimaryExtName = enumExtName
 
 instance HasReqs CppEnum where
   getReqs = enumReqs
@@ -1036,7 +1089,21 @@ makeEnum :: Identifier  -- ^ 'enumIdentifier'
          -> [(Int, [String])]  -- ^ 'enumValueNames'
          -> CppEnum
 makeEnum identifier maybeExtName valueNames =
-  CppEnum identifier (extNameOrIdentifier identifier maybeExtName) valueNames mempty mempty
+  let extName = extNameOrIdentifier identifier maybeExtName
+  in CppEnum
+     identifier
+     extName
+     valueNames
+     mempty
+     mempty
+     (fromExtName extName ++ "_")
+
+-- | Sets the prefix applied to the names of enum values' identifiers in foreign
+-- languages.
+--
+-- See 'enumValuePrefix'.
+enumSetValuePrefix :: String -> CppEnum -> CppEnum
+enumSetValuePrefix prefix enum = enum { enumValuePrefix = prefix }
 
 -- | A C++ numeric space with bitwise operations.  This is similar to a
 -- 'CppEnum', but in addition to the extra operations, this differs in that
@@ -1081,6 +1148,12 @@ data Bitspace = Bitspace
     -- to list these here.
   , bitspaceAddendum :: Addendum
     -- ^ The bitspace's addendum.
+  , bitspaceValuePrefix :: String
+    -- ^ The prefix applied to value names ('bitspaceValueNames') when
+    -- determining the names of values in foreign languages.  This defaults to
+    -- the external name of the bitspace, plus an underscore.
+    --
+    -- See 'bitspaceSetValuePrefix'.
   }
 
 instance Eq Bitspace where
@@ -1088,6 +1161,9 @@ instance Eq Bitspace where
 
 instance Show Bitspace where
   show e = concat ["<Bitspace ", show (bitspaceExtName e), " ", show (bitspaceType e), ">"]
+
+instance HasExtNames Bitspace where
+  getPrimaryExtName = bitspaceExtName
 
 instance HasReqs Bitspace where
   getReqs = bitspaceReqs
@@ -1104,6 +1180,14 @@ makeBitspace :: ExtName  -- ^ 'bitspaceExtName'
              -> Bitspace
 makeBitspace extName t valueNames =
   Bitspace extName t valueNames Nothing Nothing Nothing Nothing mempty mempty
+  (fromExtName extName ++ "_")
+
+-- | Sets the prefix applied to the names of enum values' identifiers in foreign
+-- languages.
+--
+-- See 'enumValuePrefix'.
+bitspaceSetValuePrefix :: String -> Bitspace -> Bitspace
+bitspaceSetValuePrefix prefix bitspace = bitspace { bitspaceValuePrefix = prefix }
 
 -- | Associates an enum with the bitspace.  See 'bitspaceEnum'.
 bitspaceAddEnum :: CppEnum -> Bitspace -> Bitspace
@@ -1175,6 +1259,9 @@ instance Show Function where
     concat ["<Function ", show (fnExtName fn), " ", show (fnCName fn),
             show (fnParams fn), " ", show (fnReturn fn), ">"]
 
+instance HasExtNames Function where
+  getPrimaryExtName = fnExtName
+
 instance HasReqs Function where
   getReqs = fnReqs
   setReqs reqs fn = fn { fnReqs = reqs }
@@ -1203,9 +1290,9 @@ makeFn cName maybeExtName purity paramTypes retType =
               (extNameOrFnIdentifier fnName maybeExtName)
               purity paramTypes retType mempty mempty mempty
 
--- | A C++ class declaration.  A class's external name is automatically combined
--- with the external names of things inside the class, by way of
--- 'HasClassyExtName'.
+-- | A C++ class declaration.  See 'ClassEntity' for more information about the
+-- interaction between a class's names and the names of entities within the
+-- class.
 data Class = Class
   { classIdentifier :: Identifier
     -- ^ The identifier used to refer to the class.
@@ -1233,6 +1320,22 @@ data Class = Class
     -- 'classSetSubclassOfMonomorphic'.
   , classIsException :: Bool
     -- ^ Whether to support using the class as a C++ exception.
+  , classEntityPrefix :: String
+    -- ^ The prefix applied to the external names of entities (methods, etc.)
+    -- within this class when determining the names of foreign languages'
+    -- corresponding bindings.  This defaults to the external name of the class,
+    -- plus an underscore.  Changing this allows you to potentially have
+    -- entities with the same foreign name in separate modules.  This may be the
+    -- empty string, in which case the foreign name will simply be the external
+    -- name of the entity.
+    --
+    -- This does __not__ affect the things' external names themselves; external
+    -- names must still be unique in an interface.  For instance, a method with
+    -- external name @bar@ in a class with external name @Flab@ and prefix
+    -- @Flob_@ will use the effective external name @Flab_bar@, but the
+    -- generated name in say Haskell would be @Flob_bar@.
+    --
+    -- See 'ClassEntity' and 'classSetEntityPrefix'.
   }
 
 instance Eq Class where
@@ -1244,6 +1347,14 @@ instance Ord Class where
 instance Show Class where
   show cls =
     concat ["<Class ", show (classExtName cls), " ", show (classIdentifier cls), ">"]
+
+instance HasExtNames Class where
+  getPrimaryExtName = classExtName
+
+  getNestedExtNames cls =
+    concat [ map (classEntityExtName cls) $ classCtors cls
+           , map (classEntityExtName cls) $ classMethods cls
+           ]
 
 instance HasReqs Class where
   getReqs = classReqs
@@ -1262,20 +1373,30 @@ makeClass :: Identifier
           -> [Ctor]
           -> [Method]
           -> Class
-makeClass identifier maybeExtName supers ctors methods = Class
-  { classIdentifier = identifier
-  , classExtName = extNameOrIdentifier identifier maybeExtName
-  , classSuperclasses = supers
-  , classCtors = ctors
-  , classDtorIsPublic = True
-  , classMethods = methods
-  , classConversion = classConversionNone
-  , classReqs = mempty
-  , classAddendum = mempty
-  , classIsMonomorphicSuperclass = False
-  , classIsSubclassOfMonomorphic = False
-  , classIsException = False
-  }
+makeClass identifier maybeExtName supers ctors methods =
+  let extName = extNameOrIdentifier identifier maybeExtName
+  in Class
+     { classIdentifier = identifier
+     , classExtName = extName
+     , classSuperclasses = supers
+     , classCtors = ctors
+     , classDtorIsPublic = True
+     , classMethods = methods
+     , classConversion = classConversionNone
+     , classReqs = mempty
+     , classAddendum = mempty
+     , classIsMonomorphicSuperclass = False
+     , classIsSubclassOfMonomorphic = False
+     , classIsException = False
+     , classEntityPrefix = fromExtName extName ++ "_"
+     }
+
+-- | Sets the prefix applied to foreign languages' entities generated from
+-- methods, etc. within the class.
+--
+-- See 'ClassEntity' and 'classEntityPrefix'.
+classSetEntityPrefix :: String -> Class -> Class
+classSetEntityPrefix prefix cls = cls { classEntityPrefix = prefix }
 
 -- | Adds constructors to a class.
 classAddCtors :: [Ctor] -> Class -> Class
@@ -1429,17 +1550,33 @@ data ClassHaskellConversion = ClassHaskellConversion
 -- prepended to their own in generated code.  With an external name of @\"bar\"@
 -- and a class with external name @\"foo\"@, the resulting name will be
 -- @\"foo_bar\"@.
-class HasClassyExtName a where
+--
+-- See 'classEntityPrefix' and 'classSetEntityPrefix'.
+class ClassEntity a where
   -- | Extracts the external name of the object, without the class name added.
-  getClassyExtNameSuffix :: a -> ExtName
+  classEntityExtNameSuffix :: a -> ExtName
 
-  -- | Computes the external name to use in generated code, containing both the
-  -- class's and object's external names.
-  --
-  -- See also 'Foreign.Hoppy.Generator.Language.Haskell.General.toHsMethodName'.
-  getClassyExtName :: Class -> a -> ExtName
-  getClassyExtName cls x =
-    toExtName $ concat [fromExtName $ classExtName cls, "_", fromExtName $ getClassyExtNameSuffix x]
+-- | Computes the external name to use in generated code, containing both the
+-- class's and object's external names.  This is the concatenation of the
+-- class's and entity's external names, separated by an underscore.
+classEntityExtName :: ClassEntity a => Class -> a -> ExtName
+classEntityExtName cls x =
+  toExtName $ fromExtName (classExtName cls) ++ "_" ++ fromExtName (classEntityExtNameSuffix x)
+
+-- | Computes the name under which a class entity is to be exposed in foreign
+-- languages.  This is the concatenation of a class's entity prefix, and the
+-- external name of the entity.
+classEntityForeignName :: ClassEntity a => Class -> a -> ExtName
+classEntityForeignName cls x =
+  classEntityForeignName' cls $ classEntityExtNameSuffix x
+
+-- | Computes the name under which a class entity is to be exposed in foreign
+-- languages, given a class and an entity's external name.  The result is the
+-- concatenation of a class's entity prefix, and the external name of the
+-- entity.
+classEntityForeignName' :: Class -> ExtName -> ExtName
+classEntityForeignName' cls extName =
+  toExtName $ classEntityPrefix cls ++ fromExtName extName
 
 -- | A C++ class constructor declaration.
 data Ctor = Ctor
@@ -1458,8 +1595,8 @@ instance HandlesExceptions Ctor where
   getExceptionHandlers = ctorExceptionHandlers
   modifyExceptionHandlers f ctor = ctor { ctorExceptionHandlers = f $ ctorExceptionHandlers ctor }
 
-instance HasClassyExtName Ctor where
-  getClassyExtNameSuffix = ctorExtName
+instance ClassEntity Ctor where
+  classEntityExtNameSuffix = ctorExtName
 
 -- | Creates a 'Ctor' with full generality.
 makeCtor :: ExtName
@@ -1512,8 +1649,8 @@ instance HandlesExceptions Method where
   modifyExceptionHandlers f method =
     method { methodExceptionHandlers = f $ methodExceptionHandlers method }
 
-instance HasClassyExtName Method where
-  getClassyExtNameSuffix = methodExtName
+instance ClassEntity Method where
+  classEntityExtNameSuffix = methodExtName
 
 -- | The C++ code to which a 'Method' is bound.
 data MethodImpl =
@@ -1772,6 +1909,9 @@ instance Show Callback where
   show cb =
     concat ["<Callback ", show (callbackExtName cb), " ", show (callbackParams cb), " ",
             show (callbackReturn cb)]
+
+instance HasExtNames Callback where
+  getPrimaryExtName = callbackExtName
 
 instance HasReqs Callback where
   getReqs = callbackReqs

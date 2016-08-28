@@ -48,6 +48,7 @@ import Control.Monad (liftM)
 import Control.Monad.Writer (MonadWriter, Writer, WriterT, runWriter, runWriterT, tell)
 import Data.Foldable (forM_)
 import Data.List (intercalate, intersperse)
+import Foreign.Hoppy.Generator.Common
 import Foreign.Hoppy.Generator.Spec
 import Foreign.Hoppy.Generator.Types
 
@@ -172,7 +173,7 @@ execChunkWriterT = liftM snd . runChunkWriterT
 combineChunks :: [Chunk] -> String
 combineChunks chunks =
   let strs = map chunkContents chunks
-  in concat $ flip map (zip ("":strs) strs) $ \(prev, cur) ->
+  in concat $ for (zip ("":strs) strs) $ \(prev, cur) ->
        let needsSpace =
              not (null prev) && not (null cur) &&
              (let a = last prev
@@ -263,7 +264,7 @@ sayType' (normalizeType -> t) maybeParamNames outerPrec unwrappedOuter =
       outer
       say "("
       sequence_ $ intersperse (say ", ") $
-        flip map (zip paramTypes $ maybe (repeat Nothing) (map Just) maybeParamNames) $
+        for (zip paramTypes $ maybe (repeat Nothing) (map Just) maybeParamNames) $
         \(ptype, pname) ->
         sayType' ptype Nothing topPrecedence $ forM_ pname say
       say ")"
