@@ -72,6 +72,7 @@ module Foreign.Hoppy.Generator.Spec (
   -- * Names and exports
   ExtName,
   toExtName,
+  isValidExtName,
   fromExtName,
   HasExtNames (..),
   getAllExtNames,
@@ -562,12 +563,20 @@ instance Show ExtName where
 -- is an invalid 'ExtName'.
 toExtName :: String -> ExtName
 toExtName str = case str of
+  -- Keep this logic in sync with isValidExtName.
   [] -> error "An ExtName cannot be empty."
-  c:cs -> if isAlpha c && all ((||) <$> isAlphaNum <*> (== '_')) cs
-          then ExtName str
-          else error $
-               "An ExtName must start with a letter and only contain letters, numbers, and '_': " ++
-               show str
+  _ -> if isValidExtName str
+       then ExtName str
+       else error $
+            "An ExtName must start with a letter and only contain letters, numbers, and '_': " ++
+            show str
+
+-- | Returns true if the given string is represents a valid 'ExtName'.
+isValidExtName :: String -> Bool
+isValidExtName str = case str of
+  -- Keep this logic in sync with toExtName.
+  [] -> False
+  c:cs -> isAlpha c && all ((||) <$> isAlphaNum <*> (== '_')) cs
 
 -- | Generates an 'ExtName' from an 'Identifier', if the given name is absent.
 extNameOrIdentifier :: Identifier -> Maybe ExtName -> ExtName
