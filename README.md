@@ -41,16 +41,7 @@ Hoppy consists of four Cabal packages:
 - `docs/` contains documentation written using Haddock.  It depends on the
   previous packages for hyperlinks.
 
-It can be built and installed with:
-
-    # Build the generator library documentation.
-    (cd generator && cabal configure && cabal haddock && cabal install)
-    # Build the standard library interface documentation.
-    (cd std && cabal configure && cabal haddock && cabal install)
-    # Build the runtime documentation.
-    (cd runtime && cabal configure && cabal haddock && cabal install)
-    # Build the documentation.
-    (cd docs && cabal configure && cabal haddock)
+It can be built and installed with the `install.sh` script.
 
 There is a user's guide written using Haddock at
 `docs/src/Foreign/Hoppy/Documentation.hs`.  You can read it as is, or browse the
