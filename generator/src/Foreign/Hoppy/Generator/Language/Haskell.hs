@@ -44,6 +44,8 @@ module Foreign.Hoppy.Generator.Language.Haskell (
   addExports,
   -- * Imports
   addImports,
+  -- * Language extensions
+  addExtension,
   -- * Code generation
   sayLn,
   saysLn,
@@ -123,6 +125,7 @@ import Data.Maybe (fromMaybe, isJust)
 #if !MIN_VERSION_base(4,8,0)
 import Data.Monoid (Monoid, mappend, mconcat, mempty)
 #endif
+import qualified Data.Set as S
 import Data.Tuple (swap)
 import Foreign.Hoppy.Generator.Common
 import Foreign.Hoppy.Generator.Spec
@@ -326,18 +329,22 @@ data Output = Output
     -- ^ Lines of Haskell code (possibly empty).  These lines may not contain
     -- the newline character in them.  There is an implicit newline between each
     -- string, as given by @intercalate \"\\n\" . outputBody@.
+  , outputExtensions :: S.Set String
+    -- ^ Language extensions to enable via the @{-# LANGUAGE #-}@ pragma for the
+    -- whole module.
   }
 
 instance Monoid Output where
-  mempty = Output mempty mempty mempty
+  mempty = Output mempty mempty mempty mempty
 
-  (Output e i b) `mappend` (Output e' i' b') =
-    Output (e `mappend` e') (i `mappend` i') (b `mappend` b')
+  (Output e i b x) `mappend` (Output e' i' b' x') =
+    Output (e `mappend` e') (i `mappend` i') (b `mappend` b') (x `mappend` x')
 
   mconcat os =
     Output (mconcat $ map outputExports os)
            (mconcat $ map outputImports os)
            (mconcat $ map outputBody os)
+           (mconcat $ map outputExtensions os)
 
 -- | Runs a generator action for the given interface and module name string.
 -- Returns an error message if an error occurred, otherwise the action's output
@@ -371,6 +378,11 @@ renderPartial partial =
         [ [ "---------- GENERATED FILE, EDITS WILL BE LOST ----------"
           , ""
           ]
+        , case S.elems $ outputExtensions output of
+            [] -> []
+            extensions -> [ concat $ "{-# LANGUAGE " : intersperse ", " extensions ++ [" #-}"]
+                          , ""
+                          ]
         , case outputExports output of
             [] -> [concat ["module ", modName, " where"]]
             exports ->
@@ -414,6 +426,11 @@ addExports exports = tell $ mempty { outputExports = exports }
 -- | Adds imports to the current module.
 addImports :: HsImportSet -> Generator ()
 addImports imports = tell mempty { outputImports = imports }
+
+-- | Adds a Haskell language extension to the current module.
+addExtension :: String -> Generator ()
+addExtension extensionName =
+  tell $ mempty { outputExtensions = S.singleton extensionName }
 
 -- | Outputs a line of Haskell code.  A newline will be added on the end of the
 -- input.  Newline characters must not be given to this function.

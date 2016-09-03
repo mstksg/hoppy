@@ -17,6 +17,9 @@
 - Added addenda to modules, to provide a place to inject custom code at the
   module level (issue #11).
 
+- Added the ability to enable custom Haskell language extensions for generated
+  modules.
+
 ## 0.2.0 (2016-06-29)
 
 - Added foreign garbage collector support (issue #5).
