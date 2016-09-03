@@ -112,23 +112,32 @@ module Foreign.Hoppy.Generator.Spec (
   Purity (..),
   Function, makeFn, fnCName, fnExtName, fnPurity, fnParams, fnReturn, fnReqs, fnExceptionHandlers,
   -- ** Classes
-  Class, makeClass, classIdentifier, classExtName, classSuperclasses, classCtors, classDtorIsPublic,
-  classMethods, classConversion, classReqs, classEntityPrefix, classSetEntityPrefix,
-  classAddCtors, classSetDtorPrivate, classAddMethods,
+  Class, makeClass, classIdentifier, classExtName, classSuperclasses,
+  classEntities, classAddEntities, classCtors, classMethods,
+  classDtorIsPublic, classSetDtorPrivate,
+  classConversion, classReqs, classEntityPrefix, classSetEntityPrefix,
   classIsMonomorphicSuperclass, classSetMonomorphicSuperclass,
   classIsSubclassOfMonomorphic, classSetSubclassOfMonomorphic,
   classIsException, makeClassException,
-  ClassEntity (..), classEntityExtName, classEntityForeignName, classEntityForeignName',
-  Ctor, makeCtor, mkCtor, ctorExtName, ctorParams, ctorExceptionHandlers,
+  ClassEntity (..),
+  IsClassEntity (..), classEntityExtName, classEntityForeignName, classEntityForeignName',
+  Ctor, makeCtor, makeCtor_, mkCtor, mkCtor_, ctorExtName, ctorParams, ctorExceptionHandlers,
   Method,
   MethodImpl (..),
   MethodApplicability (..),
   Constness (..),
   constNegate,
   Staticness (..),
-  makeMethod, makeFnMethod, mkMethod, mkMethod', mkConstMethod, mkConstMethod',
-  mkStaticMethod, mkStaticMethod',
-  mkProps, mkProp, mkStaticProp, mkBoolIsProp, mkBoolHasProp,
+  makeMethod, makeMethod_,
+  makeFnMethod, makeFnMethod_,
+  mkMethod, mkMethod_, mkMethod', mkMethod'_,
+  mkConstMethod, mkConstMethod_, mkConstMethod', mkConstMethod'_,
+  mkStaticMethod, mkStaticMethod_, mkStaticMethod', mkStaticMethod'_,
+  Prop,  -- The data constructor is private.
+  mkProp, mkProp_,
+  mkStaticProp, mkStaticProp_,
+  mkBoolIsProp, mkBoolIsProp_,
+  mkBoolHasProp, mkBoolHasProp_,
   methodImpl, methodExtName, methodApplicability, methodPurity, methodParams,
   methodReturn, methodExceptionHandlers, methodConst, methodStatic,
   -- *** Conversion to and from foreign values
@@ -198,7 +207,7 @@ import Data.Char (isAlpha, isAlphaNum, toUpper)
 import Data.Function (on)
 import Data.List (intercalate, intersperse)
 import qualified Data.Map as M
-import Data.Maybe (catMaybes, fromMaybe)
+import Data.Maybe (catMaybes, fromMaybe, mapMaybe)
 #if !MIN_VERSION_base(4,8,0)
 import Data.Monoid (Monoid, mappend, mconcat, mempty)
 #endif
@@ -1307,7 +1316,7 @@ makeFn cName maybeExtName purity paramTypes retType =
               (extNameOrFnIdentifier fnName maybeExtName)
               purity paramTypes retType mempty mempty mempty
 
--- | A C++ class declaration.  See 'ClassEntity' for more information about the
+-- | A C++ class declaration.  See 'IsClassEntity' for more information about the
 -- interaction between a class's names and the names of entities within the
 -- class.
 data Class = Class
@@ -1317,11 +1326,9 @@ data Class = Class
     -- ^ The class's external name.
   , classSuperclasses :: [Class]
     -- ^ The class's public superclasses.
-  , classCtors :: [Ctor]
-    -- ^ The class's constructors.
+  , classEntities :: [ClassEntity]
+    -- ^ The class's entities.
   , classDtorIsPublic :: Bool
-    -- ^ Whether the class's destructor has public visibility.
-  , classMethods :: [Method]
     -- ^ The class's methods.
   , classConversion :: ClassConversion
     -- ^ Behaviour for converting objects to and from foriegn values.
@@ -1352,7 +1359,7 @@ data Class = Class
     -- @Flob_@ will use the effective external name @Flab_bar@, but the
     -- generated name in say Haskell would be @Flob_bar@.
     --
-    -- See 'ClassEntity' and 'classSetEntityPrefix'.
+    -- See 'IsClassEntity' and 'classSetEntityPrefix'.
   }
 
 instance Eq Class where
@@ -1368,10 +1375,7 @@ instance Show Class where
 instance HasExtNames Class where
   getPrimaryExtName = classExtName
 
-  getNestedExtNames cls =
-    concat [ map (classEntityExtName cls) $ classCtors cls
-           , map (classEntityExtName cls) $ classMethods cls
-           ]
+  getNestedExtNames cls = concatMap (classEntityExtNames cls) $ classEntities cls
 
 instance HasReqs Class where
   getReqs = classReqs
@@ -1387,18 +1391,16 @@ makeClass :: Identifier
           -- ^ An optional external name; will be automatically derived from the
           -- identifier if absent.
           -> [Class]  -- ^ Superclasses.
-          -> [Ctor]
-          -> [Method]
+          -> [ClassEntity]
           -> Class
-makeClass identifier maybeExtName supers ctors methods =
+makeClass identifier maybeExtName supers entities =
   let extName = extNameOrIdentifier identifier maybeExtName
   in Class
      { classIdentifier = identifier
      , classExtName = extName
      , classSuperclasses = supers
-     , classCtors = ctors
+     , classEntities = entities
      , classDtorIsPublic = True
-     , classMethods = methods
      , classConversion = classConversionNone
      , classReqs = mempty
      , classAddendum = mempty
@@ -1411,14 +1413,30 @@ makeClass identifier maybeExtName supers ctors methods =
 -- | Sets the prefix applied to foreign languages' entities generated from
 -- methods, etc. within the class.
 --
--- See 'ClassEntity' and 'classEntityPrefix'.
+-- See 'IsClassEntity' and 'classEntityPrefix'.
 classSetEntityPrefix :: String -> Class -> Class
 classSetEntityPrefix prefix cls = cls { classEntityPrefix = prefix }
 
 -- | Adds constructors to a class.
-classAddCtors :: [Ctor] -> Class -> Class
-classAddCtors ctors cls =
-  if null ctors then cls else cls { classCtors = classCtors cls ++ ctors }
+classAddEntities :: [ClassEntity] -> Class -> Class
+classAddEntities ents cls =
+  if null ents then cls else cls { classEntities = classEntities cls ++ ents }
+
+-- | Return all of the class's constructors.
+classCtors :: Class -> [Ctor]
+classCtors = mapMaybe pickCtor . classEntities
+  where pickCtor ent = case ent of
+          ClassCtor ctor -> Just ctor
+          ClassMethod _ -> Nothing
+          ClassProp _ -> Nothing
+
+-- | Returns all of the class's methods.
+classMethods :: Class -> [Method]
+classMethods = concatMap pickMethods . classEntities
+  where pickMethods ent = case ent of
+          ClassCtor _ -> []
+          ClassMethod m -> [m]
+          ClassProp (Prop ms) -> ms
 
 -- | Marks a class's destructor as private, so that a binding for it won't be
 -- generated.
@@ -1447,11 +1465,6 @@ makeClassException :: Class -> Class
 makeClassException cls = case classIsException cls of
   False -> cls { classIsException = True }
   True -> cls
-
--- | Adds methods to a class.
-classAddMethods :: [Method] -> Class -> Class
-classAddMethods methods cls =
-  if null methods then cls else cls { classMethods = classMethods cls ++ methods }
 
 -- | When a class object is returned from a function or taken as a parameter by
 -- value (i.e. with 'Foreign.Hoppy.Generator.Types.objT'), it will be converted
@@ -1569,21 +1582,21 @@ data ClassHaskellConversion = ClassHaskellConversion
 -- @\"foo_bar\"@.
 --
 -- See 'classEntityPrefix' and 'classSetEntityPrefix'.
-class ClassEntity a where
+class IsClassEntity a where
   -- | Extracts the external name of the object, without the class name added.
   classEntityExtNameSuffix :: a -> ExtName
 
 -- | Computes the external name to use in generated code, containing both the
 -- class's and object's external names.  This is the concatenation of the
 -- class's and entity's external names, separated by an underscore.
-classEntityExtName :: ClassEntity a => Class -> a -> ExtName
+classEntityExtName :: IsClassEntity a => Class -> a -> ExtName
 classEntityExtName cls x =
   toExtName $ fromExtName (classExtName cls) ++ "_" ++ fromExtName (classEntityExtNameSuffix x)
 
 -- | Computes the name under which a class entity is to be exposed in foreign
 -- languages.  This is the concatenation of a class's entity prefix, and the
 -- external name of the entity.
-classEntityForeignName :: ClassEntity a => Class -> a -> ExtName
+classEntityForeignName :: IsClassEntity a => Class -> a -> ExtName
 classEntityForeignName cls x =
   classEntityForeignName' cls $ classEntityExtNameSuffix x
 
@@ -1612,20 +1625,48 @@ instance HandlesExceptions Ctor where
   getExceptionHandlers = ctorExceptionHandlers
   modifyExceptionHandlers f ctor = ctor { ctorExceptionHandlers = f $ ctorExceptionHandlers ctor }
 
-instance ClassEntity Ctor where
+instance IsClassEntity Ctor where
   classEntityExtNameSuffix = ctorExtName
 
+-- | A C++ entity that belongs to a class.
+data ClassEntity =
+    ClassCtor Ctor
+  | ClassMethod Method
+  | ClassProp Prop
+
+-- | Returns all of the names in a 'ClassEntity' within the corresponding
+-- 'Class'.
+classEntityExtNames :: Class -> ClassEntity -> [ExtName]
+classEntityExtNames cls ent = case ent of
+  ClassCtor ctor -> [classEntityExtName cls ctor]
+  ClassMethod m -> [classEntityExtName cls m]
+  ClassProp (Prop methods) -> map (classEntityExtName cls) methods
+
 -- | Creates a 'Ctor' with full generality.
+--
+-- The result is wrapped in a 'ClassCtor'.  For an unwrapped value, use
+-- 'makeCtor_'.
 makeCtor :: ExtName
          -> [Type]  -- ^ Parameter types.
-         -> Ctor
-makeCtor extName paramTypes = Ctor extName paramTypes mempty
+         -> ClassEntity
+makeCtor = (ClassCtor .) . makeCtor_
+
+-- | The unwrapped version of 'makeCtor'.
+makeCtor_ :: ExtName -> [Type] -> Ctor
+makeCtor_ extName paramTypes = Ctor extName paramTypes mempty
 
 -- | @mkCtor name@ creates a 'Ctor' whose external name is @className_name@.
+--
+-- The result is wrapped in a 'ClassCtor'.  For an unwrapped value, use
+-- 'makeCtor_'.
 mkCtor :: String
        -> [Type]  -- ^ Parameter types.
-       -> Ctor
-mkCtor = makeCtor . toExtName
+       -> ClassEntity
+mkCtor = (ClassCtor .) . mkCtor_
+
+-- | The unwrapped version of 'mkCtor'.
+mkCtor_ :: String -> [Type] -> Ctor
+mkCtor_ = makeCtor_ . toExtName
 
 -- | A C++ class method declaration.
 --
@@ -1666,7 +1707,7 @@ instance HandlesExceptions Method where
   modifyExceptionHandlers f method =
     method { methodExceptionHandlers = f $ methodExceptionHandlers method }
 
-instance ClassEntity Method where
+instance IsClassEntity Method where
   classEntityExtNameSuffix = methodExtName
 
 -- | The C++ code to which a 'Method' is bound.
@@ -1711,6 +1752,9 @@ methodStatic method = case methodApplicability method of
   _ -> Nonstatic
 
 -- | Creates a 'Method' with full generality and manual name specification.
+--
+-- The result is wrapped in a 'ClassMethod'.  For an unwrapped value, use
+-- 'makeMethod_'.
 makeMethod :: IsFnName String name
            => name  -- ^ The C++ name of the method.
            -> ExtName  -- ^ The external name of the method.
@@ -1718,8 +1762,19 @@ makeMethod :: IsFnName String name
            -> Purity
            -> [Type]  -- ^ Parameter types.
            -> Type  -- ^ Return type.
-           -> Method
-makeMethod cName extName appl purity paramTypes retType =
+           -> ClassEntity
+makeMethod = (((((ClassMethod .) .) .) .) .) . makeMethod_
+
+-- | The unwrapped version of 'makeMethod'.
+makeMethod_ :: IsFnName String name
+            => name
+            -> ExtName
+            -> MethodApplicability
+            -> Purity
+            -> [Type]
+            -> Type
+            -> Method
+makeMethod_ cName extName appl purity paramTypes retType =
   Method (RealMethod $ toFnName cName) extName appl purity paramTypes retType mempty
 
 -- | Creates a 'Method' that is in fact backed by a C++ non-member function (a
@@ -1729,6 +1784,9 @@ makeMethod cName extName appl purity paramTypes retType =
 --
 -- A @this@ pointer parameter is __not__ automatically added to the parameter
 -- list for non-static methods created with @makeFnMethod@.
+--
+-- The result is wrapped in a 'ClassMethod'.  For an unwrapped value, use
+-- 'makeFnMethod_'.
 makeFnMethod :: IsFnName Identifier name
              => name
              -> String
@@ -1736,8 +1794,19 @@ makeFnMethod :: IsFnName Identifier name
              -> Purity
              -> [Type]
              -> Type
-             -> Method
-makeFnMethod cName foreignName appl purity paramTypes retType =
+             -> ClassEntity
+makeFnMethod = (((((ClassMethod .) .) .) .) .) . makeFnMethod_
+
+-- | The unwrapped version of 'makeFnMethod'.
+makeFnMethod_ :: IsFnName Identifier name
+              => name
+              -> String
+              -> MethodApplicability
+              -> Purity
+              -> [Type]
+              -> Type
+              -> Method
+makeFnMethod_ cName foreignName appl purity paramTypes retType =
   Method (FnMethod $ toFnName cName) (toExtName foreignName)
          appl purity paramTypes retType mempty
 
@@ -1794,116 +1863,181 @@ makeMethod''' name maybeForeignName appl purity paramTypes retType =
   let extName = flip fromMaybe (toExtName <$> maybeForeignName) $ case name of
         FnName s -> toExtName s
         FnOp op -> operatorPreferredExtName op
-  in makeMethod name extName appl purity paramTypes retType
+  in makeMethod_ name extName appl purity paramTypes retType
 
 -- | Creates a nonconst, nonstatic 'Method' for @class::methodName@ and whose
 -- external name is @class_methodName@.  If the name is an operator, then the
 -- 'operatorPreferredExtName' will be used in the external name.
 --
 -- For creating multiple bindings to a method, see 'mkMethod''.
+--
+-- The result is wrapped in a 'ClassMethod'.  For an unwrapped value, use
+-- 'mkMethod_'.
 mkMethod :: IsFnName String name
          => name  -- ^ The C++ name of the method.
          -> [Type]  -- ^ Parameter types.
          -> Type  -- ^ Return type.
-         -> Method
-mkMethod name = makeMethod' name MNormal Nonpure
+         -> ClassEntity
+mkMethod = ((ClassMethod .) .) . mkMethod_
+
+-- | The unwrapped version of 'mkMethod'.
+mkMethod_ :: IsFnName String name
+          => name
+          -> [Type]
+          -> Type
+          -> Method
+mkMethod_ name = makeMethod' name MNormal Nonpure
 
 -- | Creates a nonconst, nonstatic 'Method' for method @class::methodName@ and
 -- whose external name is @class_methodName@.  This enables multiple 'Method's
 -- with different foreign names (and hence different external names) to bind to
 -- the same method, e.g. to make use of optional arguments or overloading.  See
 -- 'mkMethod' for a simpler form.
+--
+-- The result is wrapped in a 'ClassMethod'.  For an unwrapped value, use
+-- 'mkMethod'_'.
 mkMethod' :: IsFnName String name
           => name  -- ^ The C++ name of the method.
           -> String  -- ^ A foreign name for the method.
           -> [Type]  -- ^ Parameter types.
           -> Type  -- ^ Return type.
-          -> Method
-mkMethod' cName foreignName = makeMethod'' cName foreignName MNormal Nonpure
+          -> ClassEntity
+mkMethod' = (((ClassMethod .) .) .) . mkMethod'_
+
+-- | The unwrapped version of 'mkMethod''.
+mkMethod'_ :: IsFnName String name
+           => name
+           -> String
+           -> [Type]
+           -> Type
+           -> Method
+mkMethod'_ cName foreignName = makeMethod'' cName foreignName MNormal Nonpure
 
 -- | Same as 'mkMethod', but returns an 'MConst' method.
-mkConstMethod :: IsFnName String name => name -> [Type] -> Type -> Method
-mkConstMethod name = makeMethod' name MConst Nonpure
+--
+-- The result is wrapped in a 'ClassMethod'.  For an unwrapped value, use
+-- 'mkConstMethod_'.
+mkConstMethod :: IsFnName String name => name -> [Type] -> Type -> ClassEntity
+mkConstMethod = ((ClassMethod .) .) . mkConstMethod_
+
+-- | The unwrapped version of 'mkConstMethod'.
+mkConstMethod_ :: IsFnName String name => name -> [Type] -> Type -> Method
+mkConstMethod_ name = makeMethod' name MConst Nonpure
 
 -- | Same as 'mkMethod'', but returns an 'MConst' method.
-mkConstMethod' :: IsFnName String name => name -> String -> [Type] -> Type -> Method
-mkConstMethod' cName foreignName = makeMethod'' cName foreignName MConst Nonpure
+--
+-- The result is wrapped in a 'ClassMethod'.  For an unwrapped value, use
+-- 'mkConstMethod'_'.
+mkConstMethod' :: IsFnName String name => name -> String -> [Type] -> Type -> ClassEntity
+mkConstMethod' = (((ClassMethod .) .) .) . mkConstMethod'_
+
+-- | The unwrapped version of 'mkConstMethod''.
+mkConstMethod'_ :: IsFnName String name => name -> String -> [Type] -> Type -> Method
+mkConstMethod'_ cName foreignName = makeMethod'' cName foreignName MConst Nonpure
 
 -- | Same as 'mkMethod', but returns an 'MStatic' method.
-mkStaticMethod :: IsFnName String name => name -> [Type] -> Type -> Method
-mkStaticMethod name = makeMethod' name MStatic Nonpure
+--
+-- The result is wrapped in a 'ClassMethod'.  For an unwrapped value, use
+-- 'mkStaticMethod_'.
+mkStaticMethod :: IsFnName String name => name -> [Type] -> Type -> ClassEntity
+mkStaticMethod = ((ClassMethod .) .) . mkStaticMethod_
+
+-- | The unwrapped version of 'mkStaticMethod'.
+mkStaticMethod_ :: IsFnName String name => name -> [Type] -> Type -> Method
+mkStaticMethod_ name = makeMethod' name MStatic Nonpure
 
 -- | Same as 'mkMethod'', but returns an 'MStatic' method.
-mkStaticMethod' :: IsFnName String name => name -> String -> [Type] -> Type -> Method
-mkStaticMethod' cName foreignName = makeMethod'' cName foreignName MStatic Nonpure
-
--- | Used in conjunction with 'mkProp' and friends, this creates a list of
--- 'Method's for binding to getter/setter method pairs.  This can be used as
--- follows:
 --
--- > myClass =
--- >   makeClass ... $
--- >   [ methods... ] ++
--- >   mkProps
--- >   [ mkBoolIsProp myClass "adjustable"
--- >   , mkProp myClass "maxWidth" intT
--- >   ]
-mkProps :: [[Method]] -> [Method]
-mkProps = concat
+-- The result is wrapped in a 'ClassMethod'.  For an unwrapped value, use
+-- 'mkStaticMethod'_'.
+mkStaticMethod' :: IsFnName String name => name -> String -> [Type] -> Type -> ClassEntity
+mkStaticMethod' = (((ClassMethod .) .) .) . mkStaticMethod'_
+
+-- | The unwrapped version of 'mkStaticMethod''.
+mkStaticMethod'_ :: IsFnName String name => name -> String -> [Type] -> Type -> Method
+mkStaticMethod'_ cName foreignName = makeMethod'' cName foreignName MStatic Nonpure
+
+-- | A \"property\" getter/setter pair.
+newtype Prop = Prop [Method]
 
 -- | Creates a getter/setter binding pair for methods:
 --
 -- > T getFoo() const
 -- > void setFoo(T)
-mkProp :: String -> Type -> [Method]
-mkProp name t =
+--
+-- The result is wrapped in a 'ClassProp'.  For an unwrapped value, use
+-- 'mkProp_'.
+mkProp :: String -> Type -> ClassEntity
+mkProp = (ClassProp .) . mkProp_
+
+-- | The unwrapped version of 'mkProp'.
+mkProp_ :: String -> Type -> Prop
+mkProp_ name t =
   let c:cs = name
       setName = 's' : 'e' : 't' : toUpper c : cs
-  in [ mkConstMethod name [] t
-     , mkMethod setName [t] Internal_TVoid
-     ]
+  in Prop [ mkConstMethod_ name [] t
+          , mkMethod_ setName [t] Internal_TVoid
+          ]
 
 -- | Creates a getter/setter binding pair for static methods:
 --
 -- > static T getFoo() const
 -- > static void setFoo(T)
-mkStaticProp :: String -> Type -> [Method]
-mkStaticProp name t =
+mkStaticProp :: String -> Type -> ClassEntity
+mkStaticProp = (ClassProp .) . mkStaticProp_
+
+-- | The unwrapped version of 'mkStaticProp'.
+mkStaticProp_ :: String -> Type -> Prop
+mkStaticProp_ name t =
   let c:cs = name
       setName = 's' : 'e' : 't' : toUpper c : cs
-  in [ mkStaticMethod name [] t
-     , mkStaticMethod setName [t] Internal_TVoid
-     ]
+  in Prop [ mkStaticMethod_ name [] t
+          , mkStaticMethod_ setName [t] Internal_TVoid
+          ]
 
 -- | Creates a getter/setter binding pair for boolean methods, where the getter
 -- is prefixed with @is@:
 --
 -- > bool isFoo() const
 -- > void setFoo(bool)
-mkBoolIsProp :: String -> [Method]
-mkBoolIsProp name =
+--
+-- The result is wrapped in a 'ClassProp'.  For an unwrapped value, use
+-- 'mkBoolIsProp_'.
+mkBoolIsProp :: String -> ClassEntity
+mkBoolIsProp = ClassProp . mkBoolIsProp_
+
+-- | The unwrapped version of 'mkBoolIsProp'.
+mkBoolIsProp_ :: String -> Prop
+mkBoolIsProp_ name =
   let c:cs = name
       name' = toUpper c : cs
       isName = 'i':'s':name'
       setName = 's':'e':'t':name'
-  in [ mkConstMethod isName [] Internal_TBool
-     , mkMethod setName [Internal_TBool] Internal_TVoid
-     ]
+  in Prop [ mkConstMethod_ isName [] Internal_TBool
+          , mkMethod_ setName [Internal_TBool] Internal_TVoid
+          ]
 
 -- | Creates a getter/setter binding pair for boolean methods, where the getter
 -- is prefixed with @has@:
 --
 -- > bool hasFoo() const
 -- > void setFoo(bool)
-mkBoolHasProp :: String -> [Method]
-mkBoolHasProp name =
+--
+-- The result is wrapped in a 'ClassProp'.  For an unwrapped value, use
+-- 'mkBoolHasProp_'.
+mkBoolHasProp :: String -> ClassEntity
+mkBoolHasProp = ClassProp . mkBoolHasProp_
+
+-- | The unwrapped version of 'mkBoolHasProp'.
+mkBoolHasProp_ :: String -> Prop
+mkBoolHasProp_ name =
   let c:cs = name
       name' = toUpper c : cs
       hasName = 'h':'a':'s':name'
       setName = 's':'e':'t':name'
-  in [ mkConstMethod hasName [] Internal_TBool
-     , mkMethod setName [Internal_TBool] Internal_TVoid
-     ]
+  in Prop [ mkConstMethod_ hasName [] Internal_TBool
+          , mkMethod_ setName [Internal_TBool] Internal_TVoid
+          ]
 
 -- | A non-C++ function that can be invoked via a C++ functor.
 data Callback = Callback

@@ -2,17 +2,24 @@
 
 ## Unreleased 0.3.0
 
-- Added support for catching C++ exceptions in Haskell (issue #10).
-
-- Added support for customizing the prefixes of class methods and constructors,
-  as well as enum and bitspace values, so that we can simplify the Qtah
-  generator and make using Qtah's enums and bitspaces less painful on the
+- [API change] Added support for customizing the prefixes of class methods and
+  constructors, as well as enum and bitspace values, so that we can simplify the
+  Qtah generator and make using Qtah's enums and bitspaces less painful on the
   fingers (https://gitlab.com/khumba/qtah/issues/10).
 
   Consequently, Haskell name generation functions are now monadic, since
   generated Haskell modules now import each other qualified (but this simplifies
   the Haskell generator some since cross-module dependencies are now imported
   implicitly).
+
+- [API change] Merged constructors, methods, and properties into a single list
+  when declaring classes, and simplifying down from the previous
+  "makeClass ... [ctors] $ [methods] ++ mkProps [props]" to
+  "makeClass ... [ctors..., methods..., props...]".
+
+- Added support for catching C++ exceptions in Haskell (issue #10).  C++
+  functions can be declared as throwing exceptions at the interface, module, or
+  function level, and these are rethrown as Haskell exceptions.
 
 - Added addenda to modules, to provide a place to inject custom code at the
   module level (issue #11).

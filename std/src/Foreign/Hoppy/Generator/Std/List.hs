@@ -94,11 +94,10 @@ instantiate' listName t tReqs opts =
            Just conversion -> addAddendumHaskell $ makeAddendum conversion) $
         addReqs reqs $
         classAddFeatures features $
-        makeClass (ident1T "std" "list" [t]) (Just $ toExtName listName) []
-        [ mkCtor "new" []
-        ] $
+        makeClass (ident1T "std" "list" [t]) (Just $ toExtName listName) [] $
         collect
-        [ just $ mkMethod' "back" "back" [] $ refT t
+        [ just $ mkCtor "new" []
+        , just $ mkMethod' "back" "back" [] $ refT t
         , just $ mkConstMethod' "back" "backConst" [] $ refT $ constT t
         , just $ mkMethod' "begin" "begin" [] $ toGcT $ objT iterator
         , just $ mkConstMethod' "begin" "beginConst" [] $ toGcT $ objT constIterator
@@ -140,7 +139,7 @@ instantiate' listName t tReqs opts =
         addReqs reqs $
         makeBidirectionalIterator Mutable (Just t) $
         makeClass (identT' [("std", Nothing), ("list", Just [t]), ("iterator", Nothing)])
-        (Just $ toExtName iteratorName) [] [] []
+        (Just $ toExtName iteratorName) [] []
 
       constIterator =
         addReqs reqs $
@@ -149,8 +148,7 @@ instantiate' listName t tReqs opts =
         (Just $ toExtName constIteratorName)
         []
         [ mkCtor "newFromConst" [objT iterator]
-        ]
-        [ makeFnMethod (ident2 "hoppy" "iterator" "deconst") "deconst" MConst Nonpure
+        , makeFnMethod (ident2 "hoppy" "iterator" "deconst") "deconst" MConst Nonpure
           [objT constIterator, refT $ objT list] $ toGcT $ objT iterator
         ]
 

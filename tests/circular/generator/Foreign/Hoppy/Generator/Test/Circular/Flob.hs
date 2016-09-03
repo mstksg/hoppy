@@ -39,8 +39,9 @@ flobModule =
 c_FlobClass :: Class
 c_FlobClass =
   makeClass (ident "FlobClass") Nothing []
-  [ mkCtor "new" [] ]
-  [ mkConstMethod "invokeCallback" [callbackT cb_FlubCallback] voidT ]
+  [ mkCtor "new" []
+  , mkConstMethod "invokeCallback" [callbackT cb_FlubCallback] voidT
+  ]
 
 f_takesFlubValues :: Function
 f_takesFlubValues =

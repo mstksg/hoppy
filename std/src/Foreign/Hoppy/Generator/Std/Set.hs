@@ -98,8 +98,7 @@ instantiate' setName t tReqs opts =
         classAddFeatures (Assignable : Comparable : Copyable : optSetClassFeatures opts) $
         makeClass (ident1T "std" "set" [t]) (Just $ toExtName setName) []
         [ mkCtor "new" []
-        ]
-        [ mkConstMethod "begin" [] $ toGcT $ objT iterator
+        , mkConstMethod "begin" [] $ toGcT $ objT iterator
         , mkMethod "clear" [] voidT
         , mkConstMethod "count" [t] sizeT
           -- TODO count
@@ -127,7 +126,7 @@ instantiate' setName t tReqs opts =
         addReqs reqs $
         makeBidirectionalIterator Constant (Just t) $
         makeClass (identT' [("std", Nothing), ("set", Just [t]), ("iterator", Nothing)])
-        (Just $ toExtName iteratorName) [] [] []
+        (Just $ toExtName iteratorName) [] []
 
       -- The addendum for the set class contains HasContents and FromContents
       -- instances.

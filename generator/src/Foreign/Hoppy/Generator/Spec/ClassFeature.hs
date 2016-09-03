@@ -45,41 +45,37 @@ data ClassFeature =
     -- Foo::operator==(const Foo&)@.
   deriving (Eq, Show)
 
-featureContents :: ClassFeature -> Class -> ([Ctor], [Method], Reqs)
+featureContents :: ClassFeature -> Class -> ([ClassEntity], Reqs)
 featureContents feature cls = case feature of
   Assignable -> assignableContents cls
   Comparable -> comparableContents cls
   Copyable -> copyableContents cls
   Equatable -> equatableContents cls
 
-assignableContents :: Class -> ([Ctor], [Method], Reqs)
+assignableContents :: Class -> ([ClassEntity], Reqs)
 assignableContents cls =
-  ([],
-   [ mkMethod OpAssign [refT $ constT $ objT cls] $ refT $ objT cls
+  ([ mkMethod OpAssign [refT $ constT $ objT cls] $ refT $ objT cls
    ],
    mempty)
 
-comparableContents :: Class -> ([Ctor], [Method], Reqs)
+comparableContents :: Class -> ([ClassEntity], Reqs)
 comparableContents cls =
-  ([],
-   [ mkConstMethod OpLt [refT $ constT $ objT cls] boolT
+  ([ mkConstMethod OpLt [refT $ constT $ objT cls] boolT
    , mkConstMethod OpLe [refT $ constT $ objT cls] boolT
    , mkConstMethod OpGt [refT $ constT $ objT cls] boolT
    , mkConstMethod OpGe [refT $ constT $ objT cls] boolT
    ],
    mempty)
 
-copyableContents :: Class -> ([Ctor], [Method], Reqs)
+copyableContents :: Class -> ([ClassEntity], Reqs)
 copyableContents cls =
   ([ mkCtor "newCopy" [objT cls]
    ],
-   [],
    mempty)
 
-equatableContents :: Class -> ([Ctor], [Method], Reqs)
+equatableContents :: Class -> ([ClassEntity], Reqs)
 equatableContents cls =
-  ([],
-   [ mkConstMethod OpEq [objT cls] boolT
+  ([ mkConstMethod OpEq [objT cls] boolT
    , mkConstMethod OpNe [objT cls] boolT
    ],
    mempty)
@@ -89,9 +85,8 @@ equatableContents cls =
 classAddFeatures :: [ClassFeature] -> Class -> Class
 classAddFeatures features cls =
   foldr (\feature cls' ->
-          let (ctors, methods, reqs) = featureContents feature cls'
+          let (entities, reqs) = featureContents feature cls'
           in addReqs reqs $
-             classAddCtors ctors $
-             classAddMethods methods cls')
+             classAddEntities entities cls')
         cls
         features

@@ -181,8 +181,7 @@ c_IntBox =
   makeClass (ident "IntBox") Nothing []
   [ mkCtor "new" []
   , mkCtor "newWithValue" [intT]
-  ]
-  [ mkConstMethod "get" [] intT
+  , mkConstMethod "get" [] intT
   , mkMethod "set" [intT] voidT
   ]
 
@@ -193,8 +192,8 @@ c_PtrCtr =
   -- objects.
   makeClassException $
   makeClass (ident "PtrCtr") Nothing []
-  [ mkCtor "new" [] ]
-  [ mkStaticMethod "newGcedObj" [] $ toGcT $ objT c_PtrCtr
+  [ mkCtor "new" []
+  , mkStaticMethod "newGcedObj" [] $ toGcT $ objT c_PtrCtr
   , mkStaticMethod "newGcedRefConst" [] $ toGcT $ refT $ constT $ objT c_PtrCtr
   , mkStaticMethod "newGcedRef" [] $ toGcT $ refT $ objT c_PtrCtr
   , mkStaticMethod "newGcedPtrConst" [] $ toGcT $ ptrT $ constT $ objT c_PtrCtr
@@ -210,8 +209,8 @@ c_PtrCtrWithToHeapConversion =
   addReqIncludes [includeLocal "ptrctr.hpp"] $
   classSetConversionToHeap $
   makeClass (ident "PtrCtr") (Just $ toExtName "PtrCtrWithToHeapConversion") []
-  [ mkCtor "new" [] ]
-  [ mkStaticMethod' "newGcedObj" "newHeapObj" [] $ objT c_PtrCtrWithToHeapConversion
+  [ mkCtor "new" []
+  , mkStaticMethod' "newGcedObj" "newHeapObj" [] $ objT c_PtrCtrWithToHeapConversion
   , mkStaticMethod "resetCounters" [] voidT
   , mkStaticMethod "getConstructionCount" [] intT
   , mkStaticMethod "getDestructionCount" [] intT
@@ -222,8 +221,8 @@ c_PtrCtrWithToGcConversion =
   addReqIncludes [includeLocal "ptrctr.hpp"] $
   classSetConversionToGc $
   makeClass (ident "PtrCtr") (Just $ toExtName "PtrCtrWithToGcConversion") []
-  [ mkCtor "new" [] ]
-  [ mkStaticMethod "newGcedObj" [] $ objT c_PtrCtrWithToGcConversion
+  [ mkCtor "new" []
+  , mkStaticMethod "newGcedObj" [] $ objT c_PtrCtrWithToGcConversion
   , mkStaticMethod "resetCounters" [] voidT
   , mkStaticMethod "getConstructionCount" [] intT
   , mkStaticMethod "getDestructionCount" [] intT
@@ -233,7 +232,7 @@ c_ClassWithAltPrefix :: Class
 c_ClassWithAltPrefix =
   addReqIncludes [includeLocal "class-prefixes.hpp"] $
   classSetEntityPrefix "AltPrefixClass_" $
-  makeClass (ident "ClassWithAltPrefix") Nothing [] []
+  makeClass (ident "ClassWithAltPrefix") Nothing []
   [ mkStaticMethod "foo" [] intT ]
 
 c_ClassWithNoPrefix :: Class
@@ -241,8 +240,9 @@ c_ClassWithNoPrefix =
   addReqIncludes [includeLocal "class-prefixes.hpp"] $
   classSetEntityPrefix "" $
   makeClass (ident "ClassWithNoPrefix") Nothing []
-  [ mkCtor "ctorWithNoPrefix" [] ]
-  [ mkMethod "methodWithNoPrefix" [] intT ]
+  [ mkCtor "ctorWithNoPrefix" []
+  , mkMethod "methodWithNoPrefix" [] intT
+  ]
 
 f_piapprox :: Function
 f_piapprox =
@@ -440,8 +440,7 @@ c_IntBoxWithFnMethods =
   addReqIncludes [includeLocal "functions.hpp", includeLocal "intbox.hpp"] $
   makeClass (ident "IntBox") (Just $ toExtName "IntBoxWithFnMethods") []
   [ mkCtor "new" [intT]
-  ]
-  [ -- A normal method.
+  , -- A normal method.
     makeFnMethod (ident "getBoxValueByRef") "getValue" MNormal Nonpure
     [refT $ objT c_IntBoxWithFnMethods] intT
     -- A const method.
@@ -601,7 +600,6 @@ c_Undeletable =
   addReqIncludes [includeLocal "undeletable.hpp"] $
   classSetDtorPrivate $
   makeClass (ident "Undeletable") Nothing []
-  []
   [ mkStaticMethod "getInstance" [] $ refT $ objT c_Undeletable
   ]
 
@@ -609,15 +607,15 @@ c_InheritanceA :: Class
 c_InheritanceA =
   addReqIncludes [includeLocal "inheritance.hpp"] $
   makeClass (ident "InheritanceA") Nothing []
-  [ mkCtor "new" [] ]
-  [ mkConstMethod "aFoo" [] intT
+  [ mkCtor "new" []
+  , mkConstMethod "aFoo" [] intT
   , mkConstMethod "aBar" [] intT
   ]
 
 c_InheritanceB :: Class
 c_InheritanceB =
   addReqIncludes [includeLocal "inheritance.hpp"] $
-  makeClass (ident "InheritanceB") Nothing [] []
+  makeClass (ident "InheritanceB") Nothing []
   [ mkConstMethod "bFoo" [] intT
   ]
 
@@ -625,8 +623,8 @@ c_InheritanceC :: Class
 c_InheritanceC =
   addReqIncludes [includeLocal "inheritance.hpp"] $
   makeClass (ident "InheritanceC") Nothing [c_InheritanceA, c_InheritanceB]
-  [ mkCtor "new" [] ]
-  []
+  [ mkCtor "new" []
+  ]
 
 (e_BetterBool, bs_BetterBools) =
   let enum = makeEnum (ident "BetterBool") Nothing values
@@ -678,25 +676,25 @@ c_BaseException :: Class
 c_BaseException =
   addReqIncludes [includeLocal "exceptions.hpp"] $
   makeClassException $
-  makeClass (ident "BaseException") Nothing [] [] []
+  makeClass (ident "BaseException") Nothing [] []
 
 c_FileException :: Class
 c_FileException =
   addReqIncludes [includeLocal "exceptions.hpp"] $
   makeClassException $
-  makeClass (ident "FileException") Nothing [c_BaseException] [] []
+  makeClass (ident "FileException") Nothing [c_BaseException] []
 
 c_ReadException :: Class
 c_ReadException =
   addReqIncludes [includeLocal "exceptions.hpp"] $
   makeClassException $
-  makeClass (ident "ReadException") Nothing [c_FileException] [] []
+  makeClass (ident "ReadException") Nothing [c_FileException] []
 
 c_WriteException :: Class
 c_WriteException =
   addReqIncludes [includeLocal "exceptions.hpp"] $
   makeClassException $
-  makeClass (ident "WriteException") Nothing [c_FileException] [] []
+  makeClass (ident "WriteException") Nothing [c_FileException] []
 
 f_throwsBaseException :: Function
 f_throwsBaseException =

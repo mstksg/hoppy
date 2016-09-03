@@ -95,11 +95,10 @@ instantiate' vectorName t tReqs opts =
            Just conversion -> addAddendumHaskell $ makeAddendum conversion) $
         addReqs reqs $
         classAddFeatures (Assignable : Copyable : optVectorClassFeatures opts) $
-        makeClass (ident1T "std" "vector" [t]) (Just $ toExtName vectorName) []
-        [ mkCtor "new" []
-        ] $
+        makeClass (ident1T "std" "vector" [t]) (Just $ toExtName vectorName) [] $
         collect
-        [ just $ mkMethod' "at" "at" [sizeT] $ refT t
+        [ just $ mkCtor "new" []
+        , just $ mkMethod' "at" "at" [sizeT] $ refT t
         , just $ mkConstMethod' "at" "atConst" [sizeT] $ refT $ constT t
         , just $ mkMethod' "back" "back" [] $ refT t
         , just $ mkConstMethod' "back" "backConst" [] $ refT $ constT t
@@ -130,7 +129,7 @@ instantiate' vectorName t tReqs opts =
         addReqs reqs $
         makeRandomIterator Mutable (Just t) ptrdiffT $
         makeClass (identT' [("std", Nothing), ("vector", Just [t]), ("iterator", Nothing)])
-        (Just $ toExtName iteratorName) [] [] []
+        (Just $ toExtName iteratorName) [] []
 
       constIterator =
         addReqs reqs $
@@ -138,8 +137,7 @@ instantiate' vectorName t tReqs opts =
         makeClass (identT' [("std", Nothing), ("vector", Just [t]), ("const_iterator", Nothing)])
         (Just $ toExtName constIteratorName) []
         [ mkCtor "newFromNonconst" [objT iterator]
-        ]
-        [ makeFnMethod (ident2 "hoppy" "iterator" "deconst") "deconst" MConst Nonpure
+        , makeFnMethod (ident2 "hoppy" "iterator" "deconst") "deconst" MConst Nonpure
           [objT constIterator, refT $ objT vector] $ toGcT $ objT iterator
         ]
 

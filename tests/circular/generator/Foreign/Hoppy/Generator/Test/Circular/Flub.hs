@@ -66,7 +66,6 @@ c_FlubClass :: Class
 c_FlubClass =
   makeClass (ident "FlubClass") Nothing []
   [ mkCtor "new" [] ]
-  []
 
 f_takesFlobValues :: Function
 f_takesFlobValues =

@@ -98,8 +98,7 @@ c_IntBox =
   makeClass (ident "IntBox") Nothing []
   [ mkCtor "new" []
   , mkCtor "newWithValue" [intT]
-  ]
-  [ mkConstMethod "get" [] intT
+  , mkConstMethod "get" [] intT
   , mkMethod "set" [intT] voidT
   ]
 
@@ -107,13 +106,13 @@ c_IntBoxComparable :: Class
 c_IntBoxComparable =
   addReqs intBoxReqs $
   classAddFeatures [Assignable, Comparable, Copyable] $
-  makeClass (ident "IntBoxComparable") Nothing [c_IntBox] [] []
+  makeClass (ident "IntBoxComparable") Nothing [c_IntBox] []
 
 c_IntBoxEquatable :: Class
 c_IntBoxEquatable =
   addReqs intBoxReqs $
   classAddFeatures [Assignable, Copyable, Equatable] $
-  makeClass (ident "IntBoxEquatable") Nothing [c_IntBox] [] []
+  makeClass (ident "IntBoxEquatable") Nothing [c_IntBox] []
 
 listInt :: List.Contents
 listInt =

@@ -72,12 +72,11 @@ instantiate' pairName a b userReqs opts =
       pair =
         addReqs reqs $
         classAddFeatures (Assignable : Copyable : optPairClassFeatures opts) $
-        makeClass (ident1T "std" "pair" [a, b]) (Just $ toExtName pairName) []
-        [ mkCtor "new" []
-        , mkCtor "newWith" [a, b]
-        ] $
+        makeClass (ident1T "std" "pair" [a, b]) (Just $ toExtName pairName) [] $
         collect
-        [ just $ makeFnMethod (ident2 "hoppy" "utility" "pairFirst") "first" MNormal Nonpure
+        [ just $ mkCtor "new" []
+        , just $ mkCtor "newWith" [a, b]
+        , just $ makeFnMethod (ident2 "hoppy" "utility" "pairFirst") "first" MNormal Nonpure
           [refT $ objT pair] $ refT a
         , just $ makeFnMethod (ident2 "hoppy" "utility" "pairFirst") "firstConst" MConst Nonpure
           [refT $ objT pair] $ refT $ constT a

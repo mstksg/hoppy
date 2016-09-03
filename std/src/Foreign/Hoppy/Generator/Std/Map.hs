@@ -111,8 +111,7 @@ instantiate' mapName k v userReqs opts =
         classAddFeatures (Assignable : Copyable : optMapClassFeatures opts) $
         makeClass (ident1T "std" "map" [k, v]) (Just extName) []
         [ mkCtor "new" []
-        ]
-        [ mkMethod' "at" "at" [k] $ refT v
+        , mkMethod' "at" "at" [k] $ refT v
         , mkConstMethod' "at" "atConst" [k] $ refT $ constT v
         , mkMethod' "begin" "begin" [] $ toGcT $ objT iterator
         , mkConstMethod' "begin" "beginConst" [] $ toGcT $ objT constIterator
@@ -142,7 +141,7 @@ instantiate' mapName k v userReqs opts =
         makeClass (identT' [("std", Nothing),
                             ("map", Just [k, v]),
                             ("iterator", Nothing)])
-        (Just $ toExtName iteratorName) [] []
+        (Just $ toExtName iteratorName) []
         [ makeFnMethod getIteratorKeyIdent "getKey" MConst Nonpure
           [objT iterator] $ refT $ constT k
         , makeFnMethod getIteratorValueIdent "getValue" MNormal Nonpure
@@ -160,8 +159,7 @@ instantiate' mapName k v userReqs opts =
         (Just $ toExtName constIteratorName)
         []
         [ mkCtor "newFromConst" [objT iterator]
-        ]
-        [ makeFnMethod (ident2 "hoppy" "iterator" "deconst") "deconst" MConst Nonpure
+        , makeFnMethod (ident2 "hoppy" "iterator" "deconst") "deconst" MConst Nonpure
           [objT constIterator, refT $ objT map] $ toGcT $ objT iterator
         , makeFnMethod getIteratorKeyIdent "getKey" MConst Nonpure
           [objT constIterator] $ refT $ constT k

@@ -49,12 +49,10 @@ c_string =
         addImports $ mconcat [hsImport1 "Control.Monad" "(<=<)", hsImportForForeignC]
         sayLn "HoppyFC.peekCString <=< stdString_c_str"
       } $
-  makeClass (ident1 "std" "string") (Just $ toExtName "StdString")
-  []
+  makeClass (ident1 "std" "string") (Just $ toExtName "StdString") []
   [ mkCtor "new" []
   , mkCtor "newFromCString" [ptrT $ constT charT]
-  ]
-  [ mkConstMethod' "at" "at" [intT] $ refT charT
+  , mkConstMethod' "at" "at" [intT] $ refT charT
   , mkConstMethod' "at" "get" [intT] charT
   , mkConstMethod "c_str" [] $ ptrT $ constT charT
   , mkConstMethod "size" [] sizeT
