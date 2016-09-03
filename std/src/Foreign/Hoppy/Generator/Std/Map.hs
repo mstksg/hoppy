@@ -40,7 +40,7 @@ import Foreign.Hoppy.Generator.Language.Haskell (
   sayLn,
   saysLn,
   toHsDataTypeName,
-  toHsMethodName',
+  toHsClassEntityName,
   )
 import Foreign.Hoppy.Generator.Spec
 import Foreign.Hoppy.Generator.Spec.ClassFeature (
@@ -202,22 +202,22 @@ instantiate' mapName k v userReqs opts =
           indent $ do
             sayLn "toContents this' = do"
             indent $ do
-              mapEmpty <- toHsMethodName' map "empty"
-              mapBegin <- toHsMethodName' map $ case cst of
+              mapEmpty <- toHsClassEntityName map "empty"
+              mapBegin <- toHsClassEntityName map $ case cst of
                 Const -> "beginConst"
                 Nonconst -> "begin"
-              mapEnd <- toHsMethodName' map $ case cst of
+              mapEnd <- toHsClassEntityName map $ case cst of
                 Const -> "endConst"
                 Nonconst -> "end"
               let iter = case cst of
                     Const -> constIterator
                     Nonconst -> iterator
-              iterEq <- toHsMethodName' iter OpEq
-              iterGetKey <- toHsMethodName' iter "getKey"
-              iterGetValue <- toHsMethodName' iter $ case cst of
+              iterEq <- toHsClassEntityName iter OpEq
+              iterGetKey <- toHsClassEntityName iter "getKey"
+              iterGetValue <- toHsClassEntityName iter $ case cst of
                 Const -> "getValueConst"
                 Nonconst -> "getValue"
-              iterPrev <- toHsMethodName' iter "prev"
+              iterPrev <- toHsClassEntityName iter "prev"
 
               saysLn ["empty' <- ", mapEmpty, " this'"]
               sayLn "if empty' then HoppyP.return [] else do"
@@ -253,8 +253,8 @@ instantiate' mapName k v userReqs opts =
             indent $ do
               sayLn "fromContents values' = do"
               indent $ do
-                mapNew <- toHsMethodName' map "new"
-                mapAt <- toHsMethodName' map "at"
+                mapNew <- toHsClassEntityName map "new"
+                mapAt <- toHsClassEntityName map "at"
                 saysLn ["map' <- ", mapNew]
                 saysLn ["HoppyP.mapM_ (\\(k, v) -> HoppyP.flip HoppyFHR.assign v =<< ",
                         mapAt, " map' k) values'"]

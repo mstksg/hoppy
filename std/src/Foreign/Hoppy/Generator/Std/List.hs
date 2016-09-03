@@ -40,7 +40,7 @@ import Foreign.Hoppy.Generator.Language.Haskell (
   sayLn,
   saysLn,
   toHsDataTypeName,
-  toHsMethodName',
+  toHsClassEntityName,
   )
 import Foreign.Hoppy.Generator.Spec
 import Foreign.Hoppy.Generator.Spec.ClassFeature (
@@ -181,21 +181,21 @@ instantiate' listName t tReqs opts =
           indent $ do
             sayLn "toContents this' = do"
             indent $ do
-              listEmpty <- toHsMethodName' list "empty"
-              listBegin <- toHsMethodName' list $ case cst of
+              listEmpty <- toHsClassEntityName list "empty"
+              listBegin <- toHsClassEntityName list $ case cst of
                 Const -> "beginConst"
                 Nonconst -> "begin"
-              listEnd <- toHsMethodName' list $ case cst of
+              listEnd <- toHsClassEntityName list $ case cst of
                 Const -> "endConst"
                 Nonconst -> "end"
               let iter = case cst of
                     Const -> constIterator
                     Nonconst -> iterator
-              iterEq <- toHsMethodName' iter OpEq
-              iterGet <- toHsMethodName' iter $ case cst of
+              iterEq <- toHsClassEntityName iter OpEq
+              iterGet <- toHsClassEntityName iter $ case cst of
                 Const -> "getConst"
                 Nonconst -> "get"
-              iterPrev <- toHsMethodName' iter "prev"
+              iterPrev <- toHsClassEntityName iter "prev"
 
               saysLn ["empty' <- ", listEmpty, " this'"]
               sayLn "if empty' then HoppyP.return [] else do"
@@ -226,8 +226,8 @@ instantiate' listName t tReqs opts =
             indent $ do
               sayLn "fromContents values' = do"
               indent $ do
-                listNew <- toHsMethodName' list "new"
-                listPushBack <- toHsMethodName' list "pushBack"
+                listNew <- toHsClassEntityName list "new"
+                listPushBack <- toHsClassEntityName list "pushBack"
                 saysLn ["list' <- ", listNew]
                 saysLn ["HoppyP.mapM_ (", listPushBack, " list') values'"]
                 sayLn "HoppyP.return list'"

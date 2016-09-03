@@ -41,7 +41,7 @@ import Foreign.Hoppy.Generator.Language.Haskell (
   saysLn,
   toHsCastMethodName,
   toHsDataTypeName,
-  toHsMethodName',
+  toHsClassEntityName,
   )
 import Foreign.Hoppy.Generator.Spec
 import Foreign.Hoppy.Generator.Spec.ClassFeature (
@@ -150,12 +150,12 @@ instantiate' setName t tReqs opts =
               Nonconst -> t
 
         setConstCast <- toHsCastMethodName Const set
-        setEmpty <- toHsMethodName' set "empty"
-        setBegin <- toHsMethodName' set "begin"
-        setEnd <- toHsMethodName' set "end"
-        iterEq <- toHsMethodName' iterator OpEq
-        iterGetConst <- toHsMethodName' iterator "getConst"
-        iterPrev <- toHsMethodName' iterator "prev"
+        setEmpty <- toHsClassEntityName set "empty"
+        setBegin <- toHsClassEntityName set "begin"
+        setEnd <- toHsClassEntityName set "end"
+        iterEq <- toHsClassEntityName iterator OpEq
+        iterGetConst <- toHsClassEntityName iterator "getConst"
+        iterPrev <- toHsClassEntityName iterator "prev"
 
         -- Generate const and nonconst HasContents instances.
         ln
@@ -197,8 +197,8 @@ instantiate' setName t tReqs opts =
         indent $ do
           sayLn "fromContents values' = do"
           indent $ do
-            setNew <- toHsMethodName' set "new"
-            setInsert <- toHsMethodName' set "insert"
+            setNew <- toHsClassEntityName set "new"
+            setInsert <- toHsClassEntityName set "insert"
             saysLn ["set' <- ", setNew]
             saysLn ["HoppyP.mapM_ (", setInsert, " set') values'"]
             sayLn "HoppyP.return set'"

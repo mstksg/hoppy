@@ -54,6 +54,7 @@ module Foreign.Hoppy.Generator.Spec (
   moduleExports,
   moduleReqs,
   moduleExceptionHandlers,
+  moduleAddendum,
   moduleHaskellName,
   makeModule,
   moduleModify,
@@ -151,7 +152,7 @@ module Foreign.Hoppy.Generator.Spec (
   handleExceptions,
   -- * Addenda
   Addendum (..),
-  HasAddendum,
+  HasAddendum (..),
   addAddendumHaskell,
   -- * Haskell imports
   HsModuleName, HsImportSet, HsImportKey (..), HsImportSpecs (..), HsImportName, HsImportVal (..),
@@ -414,6 +415,8 @@ data Module = Module
     -- is used.  May be modified with 'moduleAddHaskellName'.
   , moduleExceptionHandlers :: ExceptionHandlers
     -- ^ Exceptions that all functions in the module may throw.
+  , moduleAddendum :: Addendum
+    -- ^ The module's addendum.
   }
 
 instance Eq Module where
@@ -428,6 +431,10 @@ instance Show Module where
 instance HasReqs Module where
   getReqs = moduleReqs
   setReqs reqs m = m { moduleReqs = reqs }
+
+instance HasAddendum Module where
+  getAddendum = moduleAddendum
+  setAddendum addendum m = m { moduleAddendum = addendum }
 
 instance HandlesExceptions Module where
   getExceptionHandlers = moduleExceptionHandlers
@@ -446,6 +453,7 @@ makeModule name hppPath cppPath = Module
   , moduleReqs = mempty
   , moduleHaskellName = Nothing
   , moduleExceptionHandlers = mempty
+  , moduleAddendum = mempty
   }
 
 -- | Extends a module.  To be used with the module state-monad actions in this

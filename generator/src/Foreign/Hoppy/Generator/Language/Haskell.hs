@@ -34,6 +34,7 @@ module Foreign.Hoppy.Generator.Language.Haskell (
   askInterface,
   askModule,
   askModuleName,
+  getModuleForExtName,
   withErrorContext,
   inFunction,
   -- * Exports
@@ -51,27 +52,47 @@ module Foreign.Hoppy.Generator.Language.Haskell (
   indentSpaces,
   sayLet,
   toHsEnumTypeName,
+  toHsEnumTypeName',
   toHsEnumCtorName,
+  toHsEnumCtorName',
   toHsBitspaceTypeName,
+  toHsBitspaceTypeName',
   toHsBitspaceValueName,
+  toHsBitspaceValueName',
   toHsBitspaceToNumName,
+  toHsBitspaceToNumName',
   toHsBitspaceClassName,
+  toHsBitspaceClassName',
   toHsBitspaceFromValueName,
+  toHsBitspaceFromValueName',
   toHsValueClassName,
+  toHsValueClassName',
   toHsWithValuePtrName,
+  toHsWithValuePtrName',
   toHsPtrClassName,
+  toHsPtrClassName',
   toHsCastMethodName,
+  toHsCastMethodName',
   toHsDownCastClassName,
+  toHsDownCastClassName',
   toHsDownCastMethodName,
+  toHsDownCastMethodName',
   toHsCastPrimitiveName,
+  toHsCastPrimitiveName',
   toHsConstCastFnName,
+  toHsConstCastFnName',
   toHsDataTypeName,
+  toHsDataTypeName',
   toHsDataCtorName,
+  toHsDataCtorName',
   toHsClassDeleteFnName',
   toHsClassDeleteFnPtrName',
   toHsMethodName,
   toHsMethodName',
+  toHsClassEntityName,
+  toHsClassEntityName',
   toHsCallbackCtorName,
+  toHsCallbackCtorName',
   toHsFnName,
   toHsFnName',
   toArgName,
@@ -268,6 +289,15 @@ askModule = envModule <$> ask
 -- | Returns the currently generating module's Haskell module name.
 askModuleName :: Generator String
 askModuleName = envModuleName <$> ask
+
+-- | Looks up the 'Module' containing a given external name, throwing an error
+-- if it can't be found.
+getModuleForExtName :: ExtName -> Generator Module
+getModuleForExtName extName = inFunction "getModuleForExtName" $ do
+  iface <- askInterface
+  case M.lookup extName $ interfaceNamesToModules iface of
+    Just mod -> return mod
+    Nothing -> throwError $ "Can't find module for " ++ show extName
 
 -- | A partially-rendered 'Module'.  Contains all of the module's bindings, but
 -- may be subject to further processing.
@@ -729,20 +759,27 @@ toHsClassDeleteFnPtrName' cls =
   'd':'e':'l':'e':'t':'e':'P':'t':'r':'\'':toHsDataTypeName' Nonconst cls
 
 -- | Returns the name of the Haskell function that invokes the given method.
---
--- See also 'getClassyExtName'.
 toHsMethodName :: Class -> Method -> Generator String
 toHsMethodName cls method =
   inFunction "toHsMethodName" $
-  toHsMethodName' cls $ fromExtName $ methodExtName method
+  toHsClassEntityName cls $ fromExtName $ methodExtName method
 
--- | Returns the name of the Haskell function that invokes a method with a
--- specific name in a class.
-toHsMethodName' :: IsFnName String name => Class -> name -> Generator String
-toHsMethodName' cls methodName =
-  addExtNameModule (classExtName cls) $ lowerFirst $ fromExtName $
+-- | Pure version of 'toHsMethodName' that doesn't create a qualified name.
+toHsMethodName' :: Class -> Method -> String
+toHsMethodName' cls method =
+  toHsClassEntityName' cls $ fromExtName $ methodExtName method
+
+-- | Returns the name of the Haskell function for an entity in a class.
+toHsClassEntityName :: IsFnName String name => Class -> name -> Generator String
+toHsClassEntityName cls name =
+  addExtNameModule (classExtName cls) $ toHsClassEntityName' cls name
+
+-- | Pure version of 'toHsClassEntityName' that doesn't create a qualified name.
+toHsClassEntityName' :: IsFnName String name => Class -> name -> String
+toHsClassEntityName' cls name =
+  lowerFirst $ fromExtName $
   classEntityForeignName' cls $
-  case toFnName methodName of
+  case toFnName name of
     FnName name -> toExtName name
     FnOp op -> operatorPreferredExtName op
 

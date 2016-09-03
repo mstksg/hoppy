@@ -40,7 +40,7 @@ import Foreign.Hoppy.Generator.Language.Haskell (
   sayLn,
   saysLn,
   toHsDataTypeName,
-  toHsMethodName',
+  toHsClassEntityName,
   )
 import Foreign.Hoppy.Generator.Spec
 import Foreign.Hoppy.Generator.Spec.ClassFeature (
@@ -170,10 +170,10 @@ instantiate' vectorName t tReqs opts =
           indent $ do
             sayLn "toContents this' = do"
             indent $ do
-              vectorAt <- toHsMethodName' vector $ case cst of
+              vectorAt <- toHsClassEntityName vector $ case cst of
                 Const -> "atConst"
                 Nonconst -> "at"
-              vectorSize <- toHsMethodName' vector "size"
+              vectorSize <- toHsClassEntityName vector "size"
 
               saysLn ["size' <- ", vectorSize, " this'"]
               saysLn ["HoppyP.mapM (",
@@ -190,9 +190,9 @@ instantiate' vectorName t tReqs opts =
             indent $ do
               sayLn "fromContents values' = do"
               indent $ do
-                vectorNew <- toHsMethodName' vector "new"
-                vectorPushBack <- toHsMethodName' vector "pushBack"
-                vectorReserve <- toHsMethodName' vector "reserve"
+                vectorNew <- toHsClassEntityName vector "new"
+                vectorPushBack <- toHsClassEntityName vector "pushBack"
+                vectorReserve <- toHsClassEntityName vector "reserve"
                 saysLn ["vector' <- ", vectorNew]
                 saysLn [vectorReserve, " vector' $ HoppyFHR.coerceIntegral $ HoppyP.length values'"]
                 saysLn ["HoppyP.mapM_ (", vectorPushBack, " vector') values'"]

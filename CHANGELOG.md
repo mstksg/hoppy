@@ -14,6 +14,9 @@
   the Haskell generator some since cross-module dependencies are now imported
   implicitly).
 
+- Added addenda to modules, to provide a place to inject custom code at the
+  module level (issue #11).
+
 ## 0.2.0 (2016-06-29)
 
 - Added foreign garbage collector support (issue #5).

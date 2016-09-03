@@ -171,6 +171,8 @@ generateSource m = do
   when (interfaceExceptionSupportModule iface == Just m) $
     sayExceptionSupport True
 
+  addendumHaskell $ getAddendum m
+
 generateBootSource :: Module -> Generator ()
 generateBootSource m = do
   forM_ (moduleExports m) $ sayExport SayExportBoot
@@ -1041,7 +1043,8 @@ sayExportClassHsType doDecls cls cst = do
             saysLn ["instance ", ancestorPtrClassName, " ", hsTypeName,
                     if doDecls then " where" else ""]
             when doDecls $ indent $ do
-              castMethodName <- toHsCastMethodName ancestorCst ancestorCls
+              -- Unqualified, for Haskell instance methods.
+              let castMethodName = toHsCastMethodName' ancestorCst ancestorCls
               if null path && cst == ancestorCst
                 then do addImports hsImportForPrelude
                         saysLn [castMethodName, " = HoppyP.id"]
