@@ -817,7 +817,7 @@ sayExportClass mode cls = withErrorContext ("generating class " ++ show (classEx
   sayExportClassHsSpecialFns mode cls
 
 sayExportClassHsClass :: Bool -> Class -> Constness -> Generator ()
-sayExportClassHsClass doDecls cls cst = do
+sayExportClassHsClass doDecls cls cst = withErrorContext "generating Haskell typeclass" $ do
   hsTypeName <- toHsDataTypeName cst cls
   hsValueClassName <- toHsValueClassName cls
   hsWithValuePtrName <- toHsWithValuePtrName cls
@@ -902,7 +902,7 @@ sayExportClassHsStaticMethods cls =
      methodExceptionHandlers) method
 
 sayExportClassHsType :: Bool -> Class -> Constness -> Generator ()
-sayExportClassHsType doDecls cls cst = do
+sayExportClassHsType doDecls cls cst = withErrorContext "generating Haskell data types" $ do
   hsTypeName <- toHsDataTypeName cst cls
   hsCtor <- toHsDataCtorName Unmanaged cst cls
   hsCtorGc <- toHsDataCtorName Managed cst cls
@@ -1095,13 +1095,14 @@ sayExportClassHsType doDecls cls cst = do
 
 sayExportClassHsCtors :: SayExportMode -> Class -> Generator ()
 sayExportClassHsCtors mode cls =
+  withErrorContext "generating constructors" $
   forM_ (classCtors cls) $ \ctor ->
   (sayExportFn mode <$> classEntityExtName cls <*> classEntityForeignName cls <*>
    pure Nothing <*> pure Nonpure <*> ctorParams <*> pure (ptrT $ objT cls) <*>
    ctorExceptionHandlers) ctor
 
 sayExportClassHsSpecialFns :: SayExportMode -> Class -> Generator ()
-sayExportClassHsSpecialFns mode cls = do
+sayExportClassHsSpecialFns mode cls = withErrorContext "generating special functions" $ do
   typeName <- toHsDataTypeName Nonconst cls
   typeNameConst <- toHsDataTypeName Const cls
 
@@ -1150,7 +1151,7 @@ sayExportClassHsSpecialFns mode cls = do
   when (mode == SayExportDecls) $ withAssignmentMethod $ \m -> do
     addImports $ mconcat [hsImport1 "Prelude" "(>>)", hsImportForPrelude]
     valueClassName <- toHsValueClassName cls
-    assignmentMethodName <- toHsFnName $ classEntityForeignName cls m
+    assignmentMethodName <- toHsMethodName cls m
     ln
     saysLn ["instance ", valueClassName, " a => HoppyFHR.Assignable ", typeName, " a where"]
     indent $
@@ -1227,7 +1228,9 @@ sayExportClassHsSpecialFns mode cls = do
 -- | Generates a non-const @CppException@ instance if the class is an exception
 -- class.
 sayExportClassExceptionSupport :: Bool -> Class -> Generator ()
-sayExportClassExceptionSupport doDecls cls = when (classIsException cls) $ do
+sayExportClassExceptionSupport doDecls cls =
+  when (classIsException cls) $
+  withErrorContext "generating exception support" $ do
   typeName <- toHsDataTypeName Nonconst cls
   typeNameConst <- toHsDataTypeName Const cls
 
@@ -1314,7 +1317,7 @@ sayExportClassExceptionSupport doDecls cls = when (classIsException cls) $ do
             " .) . HoppyFHR.cppExceptionBuildGc"]
 
 sayExportClassCastPrimitives :: SayExportMode -> Class -> Generator ()
-sayExportClassCastPrimitives mode cls = do
+sayExportClassCastPrimitives mode cls = withErrorContext "generating cast primitives" $ do
   clsType <- toHsDataTypeName Const cls
   case mode of
     SayExportForeignImports ->
