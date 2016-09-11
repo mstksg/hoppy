@@ -200,16 +200,62 @@ sayExport mode export = do
     addendumHaskell $ exportAddendum export
 
 sayExportVar :: SayExportMode -> Variable -> Generator ()
-sayExportVar mode v = do
-  withErrorContext ("generating variable " ++ show (varExtName v)) $ do
-    let (isConst, deconstType) = case varType v of
-          Internal_TConst t -> (True, t)
-          t -> (False, t)
-        getterName = varGetterExtName v
-        setterName = varSetterExtName v
-    sayExportFn mode getterName getterName Nothing Nonpure [] deconstType mempty
-    unless isConst $
-      sayExportFn mode setterName setterName Nothing Nonpure [deconstType] voidT mempty
+sayExportVar mode v = withErrorContext ("generating variable " ++ show (varExtName v)) $ do
+  let getterName = varGetterExtName v
+      setterName = varSetterExtName v
+  sayExportVar' mode (varType v) Nothing getterName getterName setterName setterName
+
+sayExportClassVar :: SayExportMode -> Class -> ClassVariable -> Generator ()
+sayExportClassVar mode cls v =
+  withErrorContext ("generating variable " ++ show (classVarExtName v)) $
+  sayExportVar' mode
+                (classVarType v)
+                (case classVarStatic v of
+                   Nonstatic -> Just cls
+                   Static -> Nothing)
+                (classVarGetterExtName cls v)
+                (classVarGetterForeignName cls v)
+                (classVarSetterExtName cls v)
+                (classVarSetterForeignName cls v)
+
+sayExportVar' :: SayExportMode
+              -> Type
+              -> Maybe Class
+              -> ExtName
+              -> ExtName
+              -> ExtName
+              -> ExtName
+              -> Generator ()
+sayExportVar' mode
+              t
+              classIfNonstatic
+              getterExtName
+              getterForeignName
+              setterExtName
+              setterForeignName = do
+  let (isConst, deconstType) = case t of
+        Internal_TConst t -> (True, t)
+        t -> (False, t)
+
+  sayExportFn mode
+              getterExtName
+              getterForeignName
+              Nothing
+              Nonpure
+              (maybe [] (\cls -> [ptrT $ objT cls]) classIfNonstatic)
+              deconstType
+              mempty
+
+  unless isConst $
+    sayExportFn mode
+                setterExtName
+                setterForeignName
+                Nothing
+                Nonpure
+                (maybe [deconstType] (\cls -> [ptrT $ constT $ objT cls, deconstType])
+                       classIfNonstatic)
+                voidT
+                mempty
 
 sayExportEnum :: SayExportMode -> CppEnum -> Generator ()
 sayExportEnum mode enum =
@@ -781,6 +827,7 @@ sayExportClass :: SayExportMode -> Class -> Generator ()
 sayExportClass mode cls = withErrorContext ("generating class " ++ show (classExtName cls)) $ do
   case mode of
     SayExportForeignImports -> do
+      sayExportClassHsVars mode cls
       sayExportClassHsCtors mode cls
 
       forM_ (classMethods cls) $ \method ->
@@ -802,6 +849,7 @@ sayExportClass mode cls = withErrorContext ("generating class " ++ show (classEx
 
       sayExportClassExceptionSupport True cls
 
+      sayExportClassHsVars mode cls
       sayExportClassHsCtors mode cls
 
     SayExportBoot -> do
@@ -812,6 +860,8 @@ sayExportClass mode cls = withErrorContext ("generating class " ++ show (classEx
       sayExportClassHsType False cls Nonconst
 
       sayExportClassExceptionSupport False cls
+
+      sayExportClassHsVars mode cls
 
   sayExportClassCastPrimitives mode cls
   sayExportClassHsSpecialFns mode cls
@@ -1092,6 +1142,10 @@ sayExportClassHsType doDecls cls cst = withErrorContext "generating Haskell data
           forM_ (classSuperclasses ancestorCls) $
             genInstances hsTypeName $
             ancestorCls : path
+
+sayExportClassHsVars :: SayExportMode -> Class -> Generator ()
+sayExportClassHsVars mode cls =
+  forM_ (classVariables cls) $ sayExportClassVar mode cls
 
 sayExportClassHsCtors :: SayExportMode -> Class -> Generator ()
 sayExportClassHsCtors mode cls =

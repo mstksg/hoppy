@@ -187,6 +187,9 @@ sayExport sayBody export = case export of
                   (fnT [ptrT $ constT $ objT cls] voidT) $
         Just $ say "delete self;\n"
 
+    -- Export each of the class's variables.
+    forM_ (classVariables cls) $ sayExportClassVariable cls
+
     -- Export each of the class's methods.
     forM_ (classMethods cls) $ \method -> do
       let nonMemberCall =
@@ -246,15 +249,36 @@ sayExport sayBody export = case export of
           forM_ (classSuperclasses ancestorCls) $ genDowncastFns cls
 
 sayExportVariable :: Variable -> Generator ()
-sayExportVariable v = do
-  let (isConst, deconstType) = case varType v of
+sayExportVariable v =
+  sayExportVariable' (varType v)
+                     Nothing
+                     (varGetterExtName v)
+                     (varSetterExtName v)
+                     (sayIdentifier $ varIdentifier v)
+
+sayExportClassVariable :: Class -> ClassVariable -> Generator ()
+sayExportClassVariable cls v =
+  sayExportVariable' (classVarType v)
+                     (case classVarStatic v of
+                        Nonstatic -> Just $ ptrT $ objT cls
+                        Static -> Nothing)
+                     (classVarGetterExtName cls v)
+                     (classVarSetterExtName cls v)
+                     (case classVarStatic v of
+                        Nonstatic -> say $ classVarCName v
+                        Static -> do sayIdentifier $ classIdentifier cls
+                                     says ["::", classVarCName v])
+
+sayExportVariable' :: Type -> Maybe Type -> ExtName -> ExtName -> Generator () -> Generator ()
+sayExportVariable' t maybeThisType getterName setterName sayVarName = do
+  let (isConst, deconstType) = case t of
         Internal_TConst t -> (True, t)
         t -> (False, t)
 
   -- Say a getter function.
-  sayExportFn (varGetterExtName v)
-              (VarRead $ varIdentifier v)
-              Nothing
+  sayExportFn getterName
+              (VarRead sayVarName)
+              maybeThisType
               []
               deconstType
               mempty
@@ -262,9 +286,9 @@ sayExportVariable v = do
 
   -- Say a setter function.
   unless isConst $
-    sayExportFn (varSetterExtName v)
-                (VarWrite $ varIdentifier v)
-                Nothing
+    sayExportFn setterName
+                (VarWrite sayVarName)
+                maybeThisType
                 [deconstType]
                 voidT
                 mempty
@@ -273,8 +297,8 @@ sayExportVariable v = do
 data CallType =
     CallOp Operator
   | CallFn (Generator ())
-  | VarRead Identifier
-  | VarWrite Identifier
+  | VarRead (Generator ())
+  | VarWrite (Generator ())
 
 sayExportFn :: ExtName
             -> CallType
@@ -344,8 +368,13 @@ sayExportFn extName callType maybeThisType paramTypes retType exceptionHandlers 
               say "("
               sayArgNames paramCount
               say ")"
-            VarRead identifier -> sayIdentifier identifier
-            VarWrite identifier -> sayIdentifier identifier >> says [" = ", toArgName 1]
+            VarRead sayVarName -> do
+              when (isJust maybeThisType) $ say "self->"
+              sayVarName
+            VarWrite sayVarName -> do
+              when (isJust maybeThisType) $ say "self->"
+              sayVarName
+              says [" = ", toArgName 1]
 
           -- Writes the call, transforming the return value if necessary.
           -- These translations should be kept in sync with typeToCType.

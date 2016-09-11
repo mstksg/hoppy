@@ -27,7 +27,12 @@ enum FlubEnum {
     OPTION_C = 0x4,
 };
 
-class FlubClass {};
+class FlubClass {
+public:
+    int flubClassVar;
+    static int flubStaticClassVar;
+    static const int flubStaticConstClassVar;
+};
 
 // Break circularity C++-style.
 class FlobClass;

@@ -21,4 +21,8 @@ char flubVar;
 
 const char flubVarConst = 'Z';
 
+int FlubClass::flubStaticClassVar = 0;
+
+const int FlubClass::flubStaticConstClassVar = 33;
+
 void takesFlobValues(FlobClass*) {}

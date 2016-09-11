@@ -65,7 +65,11 @@ enumValues =
 c_FlubClass :: Class
 c_FlubClass =
   makeClass (ident "FlubClass") Nothing []
-  [ mkCtor "new" [] ]
+  [ mkCtor "new" []
+  , mkClassVariable "flubClassVar" intT
+  , mkStaticClassVariable "flubStaticClassVar" intT
+  , mkStaticClassVariable "flubStaticConstClassVar" $ constT intT
+  ]
 
 f_takesFlobValues :: Function
 f_takesFlobValues =

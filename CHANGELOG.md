@@ -17,6 +17,8 @@
   "makeClass ... [ctors] $ [methods] ++ mkProps [props]" to
   "makeClass ... [ctors..., methods..., props...]".
 
+- Added support for class member variables.
+
 - Added support for catching C++ exceptions in Haskell (issue #10).  C++
   functions can be declared as throwing exceptions at the interface, module, or
   function level, and these are rethrown as Haskell exceptions.
