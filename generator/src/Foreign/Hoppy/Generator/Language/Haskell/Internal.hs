@@ -40,7 +40,7 @@ import Data.Foldable (forM_)
 import Data.Graph (SCC (AcyclicSCC, CyclicSCC), stronglyConnComp)
 import Data.List (intersperse)
 import qualified Data.Map as M
-import Data.Maybe (isJust, mapMaybe)
+import Data.Maybe (mapMaybe)
 #if !MIN_VERSION_base(4,8,0)
 import Data.Monoid (mconcat)
 #endif
@@ -191,7 +191,7 @@ sayExport mode export = do
     ExportEnum enum -> sayExportEnum mode enum
     ExportBitspace bitspace -> sayExportBitspace mode bitspace
     ExportFn fn ->
-      (sayExportFn mode <$> fnExtName <*> fnExtName <*> pure Nothing <*> fnPurity <*>
+      (sayExportFn mode <$> fnExtName <*> fnExtName <*> fnPurity <*>
        fnParams <*> fnReturn <*> fnExceptionHandlers) fn
     ExportClass cls -> sayExportClass mode cls
     ExportCallback cb -> sayExportCallback mode cb
@@ -240,7 +240,6 @@ sayExportVar' mode
   sayExportFn mode
               getterExtName
               getterForeignName
-              Nothing
               Nonpure
               (maybe [] (\cls -> [ptrT $ objT cls]) classIfNonstatic)
               deconstType
@@ -250,7 +249,6 @@ sayExportVar' mode
     sayExportFn mode
                 setterExtName
                 setterForeignName
-                Nothing
                 Nonpure
                 (maybe [deconstType] (\cls -> [ptrT $ constT $ objT cls, deconstType])
                        classIfNonstatic)
@@ -394,13 +392,12 @@ sayExportBitspace mode bitspace =
 sayExportFn :: SayExportMode
             -> ExtName
             -> ExtName
-            -> Maybe (Constness, Class)
             -> Purity
             -> [Type]
             -> Type
             -> ExceptionHandlers
             -> Generator ()
-sayExportFn mode extName foreignName methodInfo purity paramTypes retType exceptionHandlers = do
+sayExportFn mode extName foreignName purity paramTypes retType exceptionHandlers = do
   effectiveHandlers <- getEffectiveExceptionHandlers exceptionHandlers
   let handlerList = exceptionHandlersList effectiveHandlers
       catches = not $ null handlerList
@@ -416,7 +413,7 @@ sayExportFn mode extName foreignName methodInfo purity paramTypes retType except
     SayExportForeignImports ->
       withErrorContext ("generating imports for function " ++ show extName) $ do
         -- Print a "foreign import" statement.
-        hsCType <- fnToHsTypeAndUse HsCSide methodInfo purity paramTypes retType effectiveHandlers
+        hsCType <- fnToHsTypeAndUse HsCSide purity paramTypes retType effectiveHandlers
         saysLn ["foreign import ccall \"", externalNameToCpp extName, "\" ", hsFnImportedName,
                 " :: ", prettyPrint hsCType]
 
@@ -424,7 +421,7 @@ sayExportFn mode extName foreignName methodInfo purity paramTypes retType except
       -- Print the type signature.
       ln
       addExport hsFnName
-      hsHsType <- fnToHsTypeAndUse HsHsSide methodInfo purity paramTypes retType effectiveHandlers
+      hsHsType <- fnToHsTypeAndUse HsHsSide purity paramTypes retType effectiveHandlers
       saysLn [hsFnName, " :: ", prettyPrint hsHsType]
 
       case purity of
@@ -433,7 +430,6 @@ sayExportFn mode extName foreignName methodInfo purity paramTypes retType except
 
       -- Print the function body.
       let argNames = map toArgName [1..length paramTypes]
-          argNamesWithThis = (if isJust methodInfo then ("this":) else id) argNames
           convertedArgNames = map (++ "'") argNames
       -- Operators on this line must bind more weakly than operators used below,
       -- namely ($) and (>>=).  (So finish the line with ($).)
@@ -441,7 +437,7 @@ sayExportFn mode extName foreignName methodInfo purity paramTypes retType except
         Nonpure -> return [" ="]
         Pure -> do addImports $ mconcat [hsImport1 "Prelude" "($)", hsImportForUnsafeIO]
                    return [" = HoppySIU.unsafePerformIO $"]
-      saysLn $ hsFnName : map (' ':) argNamesWithThis ++ lineEnd
+      saysLn $ hsFnName : map (' ':) argNames ++ lineEnd
       indent $ do
         forM_ (zip3 paramTypes argNames convertedArgNames) $ \(t, argName, argName') ->
           sayArgProcessing ToCpp t argName argName'
@@ -457,12 +453,7 @@ sayExportFn mode extName foreignName methodInfo purity paramTypes retType except
           addImports $ mconcat [hsImport1 "Prelude" "($)", hsImportForRuntime]
           sayLn "HoppyFHR.internalHandleExceptions exceptionDb' $"
 
-        callWords <- case methodInfo of
-          Nothing -> return $ hsFnImportedName : map (' ':) convertedArgNames
-          Just (cst, cls) -> do
-            castMethodName <- toHsCastMethodName cst cls
-            return $
-              hsFnImportedName : " (" : castMethodName : " this)" : map (' ':) convertedArgNames
+        let callWords = hsFnImportedName : map (' ':) convertedArgNames
         sayCallAndProcessReturn ToCpp retType callWords
 
     SayExportBoot ->
@@ -832,7 +823,7 @@ sayExportClass mode cls = withErrorContext ("generating class " ++ show (classEx
 
       forM_ (classMethods cls) $ \method ->
         (sayExportFn mode <$> classEntityExtName cls <*> classEntityForeignName cls <*>
-         pure Nothing <*> methodPurity <*> pure (getMethodEffectiveParams cls method) <*>
+         methodPurity <*> pure (getMethodEffectiveParams cls method) <*>
          methodReturn <*> methodExceptionHandlers)
         method
 
@@ -940,7 +931,7 @@ sayExportClassHsClass doDecls cls cst = withErrorContext "generating Haskell typ
     forM_ methods $ \method ->
       when (methodStatic method == Nonstatic) $
       (sayExportFn SayExportDecls <$> classEntityExtName cls <*> classEntityForeignName cls <*>
-       pure Nothing <*> methodPurity <*> pure (getMethodEffectiveParams cls method) <*>
+       methodPurity <*> pure (getMethodEffectiveParams cls method) <*>
        methodReturn <*> methodExceptionHandlers) method
 
 sayExportClassHsStaticMethods :: Class -> Generator ()
@@ -948,8 +939,7 @@ sayExportClassHsStaticMethods cls =
   forM_ (classMethods cls) $ \method ->
     when (methodStatic method == Static) $
     (sayExportFn SayExportDecls <$> classEntityExtName cls <*> classEntityForeignName cls <*>
-     pure Nothing <*> methodPurity <*> methodParams <*> methodReturn <*>
-     methodExceptionHandlers) method
+     methodPurity <*> methodParams <*> methodReturn <*> methodExceptionHandlers) method
 
 sayExportClassHsType :: Bool -> Class -> Constness -> Generator ()
 sayExportClassHsType doDecls cls cst = withErrorContext "generating Haskell data types" $ do
@@ -1152,7 +1142,7 @@ sayExportClassHsCtors mode cls =
   withErrorContext "generating constructors" $
   forM_ (classCtors cls) $ \ctor ->
   (sayExportFn mode <$> classEntityExtName cls <*> classEntityForeignName cls <*>
-   pure Nothing <*> pure Nonpure <*> ctorParams <*> pure (ptrT $ objT cls) <*>
+   pure Nonpure <*> ctorParams <*> pure (ptrT $ objT cls) <*>
    ctorExceptionHandlers) ctor
 
 sayExportClassHsSpecialFns :: SayExportMode -> Class -> Generator ()
@@ -1497,24 +1487,18 @@ sayExceptionSupport doDecls = do
 -- the Haskell __qualified__ type for a function, including typeclass
 -- constraints.
 fnToHsTypeAndUse :: HsTypeSide
-                 -> Maybe (Constness, Class)
                  -> Purity
                  -> [Type]
                  -> Type
                  -> ExceptionHandlers
                  -> Generator HsQualType
-fnToHsTypeAndUse side methodInfo purity paramTypes returnType exceptionHandlers = do
+fnToHsTypeAndUse side purity paramTypes returnType exceptionHandlers = do
   let catches = not $ null $ exceptionHandlersList exceptionHandlers
 
   params <- mapM contextForParam $
             (if catches && side == HsCSide
              then (++ [("excId", ptrT intT), ("excPtr", ptrT $ ptrT voidT)])
              else id) $
-            (case methodInfo of
-                Just (cst, cls) -> [("this", case cst of
-                                        Nonconst -> ptrT $ objT cls
-                                        Const -> ptrT $ constT $ objT cls)]
-                Nothing -> []) ++
             zip (map toArgName [1..]) paramTypes
   let context = mapMaybe fst params :: HsContext
       hsParams = map snd params
