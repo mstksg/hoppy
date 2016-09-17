@@ -269,7 +269,12 @@ sayExportClassVariable cls v =
                         Static -> do sayIdentifier $ classIdentifier cls
                                      says ["::", classVarCName v])
 
-sayExportVariable' :: Type -> Maybe (Type, Type) -> ExtName -> ExtName -> Generator () -> Generator ()
+sayExportVariable' :: Type
+                   -> Maybe (Type, Type)
+                   -> ExtName
+                   -> ExtName
+                   -> Generator ()
+                   -> Generator ()
 sayExportVariable' t maybeThisTypes getterName setterName sayVarName = do
   let (isConst, deconstType) = case t of
         Internal_TConst t -> (True, t)

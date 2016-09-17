@@ -55,7 +55,7 @@ tests =
     takesFlubValues flubObj FlubEnum_OptionA flubBitspace_OptionB
     flubClass_flubClassVar_set flubObj 11
     flubClass_flubStaticClassVar_set 22
-    flubClass_flubClassVar_get flubObj >>= (@?= 11)
+    flubClass_flubClassVar_get (toFlubClassConst flubObj) >>= (@?= 11)
     flubClass_flubStaticClassVar_get >>= (@?= 22)
     flubClass_flubStaticConstClassVar_get >>= (@?= 33)
 
