@@ -241,7 +241,7 @@ sayExportVar' mode
               getterExtName
               getterForeignName
               Nonpure
-              (maybe [] (\cls -> [ptrT $ objT cls]) classIfNonstatic)
+              (maybe [] (\cls -> [ptrT $ constT $ objT cls]) classIfNonstatic)
               deconstType
               mempty
 
@@ -250,7 +250,7 @@ sayExportVar' mode
                 setterExtName
                 setterForeignName
                 Nonpure
-                (maybe [deconstType] (\cls -> [ptrT $ constT $ objT cls, deconstType])
+                (maybe [deconstType] (\cls -> [ptrT $ objT cls, deconstType])
                        classIfNonstatic)
                 voidT
                 mempty
