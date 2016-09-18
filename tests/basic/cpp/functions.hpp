@@ -29,6 +29,14 @@ int piapprox();
 // Returns is argument multiplied by two.
 long timesTwo(long);
 
+// Passes its second argument to its first, and returns the negation of the
+// first argument's result.
+long takesLongFn(long(*)(long), long);
+
+// Passes an IntBox containing its second argument to its first, and returns the
+// value in the IntBox that the function returns, deleting the latter box.
+int takesIntBoxFn(IntBox*(*)(IntBox*), int);
+
 // Tests for objToHeapT.
 PtrCtr givePtrCtrByValue();
 void givePtrCtrByValueToCallback(GetPtrCtrByValueCallback);

@@ -95,6 +95,8 @@ module Foreign.Hoppy.Generator.Language.Haskell (
   toHsClassEntityName',
   toHsCallbackCtorName,
   toHsCallbackCtorName',
+  toHsCallbackNewFunPtrFnName,
+  toHsCallbackNewFunPtrFnName',
   toHsFnName,
   toHsFnName',
   toArgName,
@@ -811,7 +813,22 @@ toHsCallbackCtorName callback =
 -- | Pure version of 'toHsCallbackCtorName' that doesn't create a qualified
 -- name.
 toHsCallbackCtorName' :: Callback -> String
-toHsCallbackCtorName' = toHsFnName' . callbackExtName
+toHsCallbackCtorName' callback =
+  toHsFnName' $ toExtName $ fromExtName (callbackExtName callback) ++ "_new"
+
+-- | The name of the function that takes a Haskell function with Haskell-side
+-- types and wraps it in a 'Foreign.Ptr.FunPtr' that does appropriate
+-- conversions to and from C-side types.
+toHsCallbackNewFunPtrFnName :: Callback -> Generator String
+toHsCallbackNewFunPtrFnName callback =
+  inFunction "toHsCallbackNewFunPtrFnName" $
+  addExtNameModule (callbackExtName callback) $ toHsCallbackNewFunPtrFnName' callback
+
+-- | Pure version of 'toHsCallbackNewFunPtrFnName' that doesn't create a qualified
+-- name.
+toHsCallbackNewFunPtrFnName' :: Callback -> String
+toHsCallbackNewFunPtrFnName' callback =
+  toHsFnName' $ toExtName $ fromExtName (callbackExtName callback) ++ "_newFunPtr"
 
 -- | Converts an external name into a name suitable for a Haskell function or
 -- variable.
@@ -906,16 +923,9 @@ cppTypeToHsTypeAndUse side t =
           addImports hsImportForForeign
           return $ HsTyApp (HsTyCon $ UnQual $ HsIdent "HoppyF.Ptr") dataType
         HsHsSide -> return dataType
-    Internal_TPtr (Internal_TFn paramTypes retType) -> do
-      paramHsTypes <- mapM (cppTypeToHsTypeAndUse side) paramTypes
-      retHsType <- cppTypeToHsTypeAndUse side retType
-      sideFn <- case side of
-        HsCSide -> do addImports hsImportForForeign
-                      return $ HsTyApp $ HsTyCon $ UnQual $ HsIdent "HoppyF.FunPtr"
-        HsHsSide -> return id
-      addImports hsImportForPrelude
-      return $ sideFn $
-        foldr HsTyFun (HsTyApp (HsTyCon $ UnQual $ HsIdent "HoppyP.IO") retHsType) paramHsTypes
+    Internal_TPtr fn@(Internal_TFn {}) -> do
+      addImports hsImportForForeign
+      HsTyApp (HsTyCon $ UnQual $ HsIdent "HoppyF.FunPtr") <$> cppTypeToHsTypeAndUse HsCSide fn
     Internal_TPtr t' -> do
       addImports hsImportForForeign
       -- Pointers to types not covered above point to raw C++ values, so we need

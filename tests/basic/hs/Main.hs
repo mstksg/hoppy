@@ -23,7 +23,7 @@ module Main (main) where
 import Control.Applicative ((<$>), (<*>))
 #endif
 import Control.Exception (evaluate)
-import Control.Monad (forM_, unless, when)
+import Control.Monad ((<=<), forM_, unless, when)
 import Data.Bits ((.&.), (.|.), xor)
 import Data.IORef (newIORef, readIORef, writeIORef)
 import Foreign.C (
@@ -53,6 +53,7 @@ import Foreign.Hoppy.Runtime (
   toPtr,
   touchCppPtr,
   withCppObj,
+  withScopedFunPtr,
   withScopedPtr,
   )
 import Foreign.Hoppy.Test.Basic
@@ -107,10 +108,23 @@ functionTests :: Test
 functionTests =
   "functions" ~: TestList
   [ "calling a pure function" ~: piapprox @?= 4
+
   , "calling a non-pure function" ~: piapproxNonpure >>= (@?= 4)
+
   , "passing an argument" ~: do
     timesTwo 5 @?= 10
     timesTwo (-12) @?= -24
+
+  , "passing function pointers" ~: TestList
+    [ "with primitive types" ~:
+      withScopedFunPtr (longCallback_newFunPtr $ return . timesTwo) $ \timesTwoPtr ->
+      takesLongFn timesTwoPtr 3 @?= -6
+
+    , "uses C types" ~:
+      withScopedFunPtr (intBoxCallback_newFunPtr $
+                        intBox_newWithValue . (* 3) <=< intBox_get) $ \funPtr ->
+      takesIntBoxFn funPtr 2 >>= (@?= 30)
+    ]
   ]
 
 objectTests :: Test

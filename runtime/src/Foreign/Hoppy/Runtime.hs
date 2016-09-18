@@ -32,6 +32,7 @@ module Foreign.Hoppy.Runtime (
   decodeAndDelete,
   withCppObj,
   withScopedPtr,
+  withScopedFunPtr,
   -- * Exceptions
   CppException (..),
   catchCpp,
@@ -289,9 +290,16 @@ withCppObj :: (Deletable cppPtrType, Encodable cppPtrType hsType)
 withCppObj x = bracket (encode x) delete
 
 -- | @withScopedPtr m f@ runs @m@ to get a pointer, which is given to @f@ to
--- execute.  When @f@ finishes, the pointer is deleted.
+-- execute.  When @f@ finishes, the pointer is deleted (via 'bracket').
 withScopedPtr :: Deletable cppPtrType => IO cppPtrType -> (cppPtrType -> IO a) -> IO a
 withScopedPtr p = bracket p delete
+
+-- | @withScopedFunPtr m f@ runs @m@ to get a 'FunPtr', which is given to @f@ to
+-- execute.  When @f@ finishes, the 'FunPtr' is deleted (via 'bracket').  This
+-- is useful in conjunction with function pointers created via generated
+-- callback functions.
+withScopedFunPtr :: IO (FunPtr a) -> (FunPtr a -> IO b) -> IO b
+withScopedFunPtr p = bracket p freeHaskellFunPtr
 
 -- | A unique identifier for a C++ class.  The representation is internal to
 -- Hoppy.

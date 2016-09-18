@@ -2138,7 +2138,8 @@ mkBoolHasProp_ name =
           , mkMethod_ setName [Internal_TBool] Internal_TVoid
           ]
 
--- | A non-C++ function that can be invoked via a C++ functor.
+-- | A non-C++ function that can be invoked via a C++ functor or function
+-- pointer.
 data Callback = Callback
   { callbackExtName :: ExtName
     -- ^ The callback's external name.

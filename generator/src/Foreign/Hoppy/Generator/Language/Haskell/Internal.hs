@@ -497,14 +497,21 @@ sayExportCallback mode cb =
         paramTypes = callbackParams cb
         retType = callbackReturn cb
         fnType = callbackToTFn cb
-    hsFnName <- toHsCallbackCtorName cb
-    let hsFnName'newCallback = hsFnName ++ "'newCallback"
-        hsFnName'newFunPtr = hsFnName ++ "'newFunPtr"
+    hsNewFunPtrFnName <- toHsCallbackNewFunPtrFnName cb
+    hsCtorName <- toHsCallbackCtorName cb
+    let hsCtorName'newCallback = hsCtorName ++ "'newCallback"
+        hsCtorName'newFunPtr = hsCtorName ++ "'newFunPtr"
 
     hsFnCType <- cppTypeToHsTypeAndUse HsCSide fnType
     hsFnHsType <- cppTypeToHsTypeAndUse HsHsSide fnType
 
-    let getWholeFnType = do
+    let getWholeNewFunPtrFnType = do
+          addImports $ mconcat [hsImportForForeign, hsImportForPrelude]
+          return $
+            HsTyFun hsFnHsType $
+            HsTyApp (HsTyCon $ UnQual $ HsIdent "HoppyP.IO") $
+            HsTyApp (HsTyCon $ UnQual $ HsIdent "HoppyF.FunPtr") hsFnCType
+        getWholeCtorType = do
           addImports $ mconcat [hsImportForPrelude, hsImportForRuntime]
           return $
             HsTyFun hsFnHsType $
@@ -530,37 +537,46 @@ sayExportCallback mode cb =
               HsTyApp (HsTyCon $ UnQual $ HsIdent "HoppyP.IO") $
               HsTyApp (HsTyCon $ UnQual $ HsIdent "HoppyFHR.CCallback") hsFnCType
 
-        saysLn ["foreign import ccall \"wrapper\" ", hsFnName'newFunPtr, " :: ",
+        saysLn ["foreign import ccall \"wrapper\" ", hsCtorName'newFunPtr, " :: ",
                 prettyPrint hsFunPtrImportType]
         saysLn ["foreign import ccall \"", externalNameToCpp name, "\" ",
-                hsFnName'newCallback, " :: ", prettyPrint hsCallbackCtorImportType]
+                hsCtorName'newCallback, " :: ", prettyPrint hsCallbackCtorImportType]
 
       SayExportDecls -> do
-        addExport hsFnName
-        wholeFnType <- getWholeFnType
+        addExports [hsNewFunPtrFnName, hsCtorName]
+
+        wholeNewFunPtrFnType <- getWholeNewFunPtrFnType
         let paramCount = length paramTypes
             argNames = map toArgName [1..paramCount]
             argNames' = map (++ "'") argNames
+        addImports $ hsImport1 "Prelude" "($)"
         ln
-        saysLn [hsFnName, " :: ", prettyPrint wholeFnType]
-        saysLn [hsFnName, " f'hs = do"]
+        saysLn [hsNewFunPtrFnName, " :: ", prettyPrint wholeNewFunPtrFnType]
+        saysLn $ hsNewFunPtrFnName : " f'hs = " : hsCtorName'newFunPtr : " $" : case argNames of
+          [] -> []
+          _ -> [" \\", unwords argNames, " ->"]
         indent $ do
-          sayLet
-            [do saysLn ["f'c ", unwords argNames, " ="]
-                indent $ do
-                  forM_ (zip3 paramTypes argNames argNames') $ \(t, argName, argName') ->
-                    sayArgProcessing FromCpp t argName argName'
-                  sayCallAndProcessReturn FromCpp retType $
-                    "f'hs" : map (' ':) argNames']
-            Nothing
-          saysLn ["f'p <- ", hsFnName'newFunPtr, " f'c"]
-          saysLn [hsFnName'newCallback, " f'p HoppyFHR.freeHaskellFunPtrFunPtr HoppyP.False"]
+          forM_ (zip3 paramTypes argNames argNames') $ \(t, argName, argName') ->
+            sayArgProcessing FromCpp t argName argName'
+          sayCallAndProcessReturn FromCpp retType $
+            "f'hs" : map (' ':) argNames'
+
+        wholeCtorType <- getWholeCtorType
+        ln
+        saysLn [hsCtorName, " :: ", prettyPrint wholeCtorType]
+        saysLn [hsCtorName, " f'hs = do"]
+        indent $ do
+          saysLn ["f'p <- ", hsNewFunPtrFnName, " f'hs"]
+          saysLn [hsCtorName'newCallback, " f'p HoppyFHR.freeHaskellFunPtrFunPtr HoppyP.False"]
 
       SayExportBoot -> do
-        addExport hsFnName
-        wholeFnType <- getWholeFnType
+        addExports [hsNewFunPtrFnName, hsCtorName]
+        wholeNewFunPtrFnType <- getWholeNewFunPtrFnType
+        wholeCtorType <- getWholeCtorType
         ln
-        saysLn [hsFnName, " :: ", prettyPrint wholeFnType]
+        saysLn [hsNewFunPtrFnName, " :: ", prettyPrint wholeNewFunPtrFnType]
+        ln
+        saysLn [hsCtorName, " :: ", prettyPrint wholeCtorType]
 
 data CallDirection =
   ToCpp  -- ^ Haskell code is calling out to C++.

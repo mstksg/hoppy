@@ -63,6 +63,10 @@ testModule =
   , ExportFn f_piapprox
   , ExportFn f_piapproxNonpure
   , ExportFn f_timesTwo
+  , ExportFn f_takesLongFn
+  , ExportCallback cb_LongCallback
+  , ExportFn f_takesIntBoxFn
+  , ExportCallback cb_IntBoxCallback
     -- For testing objToHeapT.
   , ExportFn f_givePtrCtrByValue
   , ExportFn f_givePtrCtrByValueToCallback
@@ -258,6 +262,26 @@ f_timesTwo :: Function
 f_timesTwo =
   addReqIncludes [includeLocal "functions.hpp"] $
   makeFn (ident "timesTwo") Nothing Pure [longT] longT
+
+f_takesLongFn :: Function
+f_takesLongFn =
+  addReqIncludes [includeLocal "functions.hpp"] $
+  makeFn (ident "takesLongFn") Nothing Pure [ptrT $ fnT [longT] longT, longT] longT
+
+cb_LongCallback :: Callback
+cb_LongCallback =
+  makeCallback (toExtName "LongCallback") [longT] longT
+
+f_takesIntBoxFn :: Function
+f_takesIntBoxFn =
+  addReqIncludes [includeLocal "functions.hpp"] $
+  makeFn (ident "takesIntBoxFn") Nothing Nonpure
+  [ptrT $ fnT [ptrT $ objT c_IntBox] $ ptrT $ objT c_IntBox, intT] intT
+
+cb_IntBoxCallback :: Callback
+cb_IntBoxCallback =
+  addReqIncludes [includeLocal "intbox.hpp"] $
+  makeCallback (toExtName "IntBoxCallback") [ptrT $ objT c_IntBox] $ ptrT $ objT c_IntBox
 
 f_givePtrCtrByValue :: Function
 f_givePtrCtrByValue =

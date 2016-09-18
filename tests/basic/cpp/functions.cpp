@@ -30,6 +30,18 @@ long timesTwo(long n) {
     return n * 2;
 }
 
+long takesLongFn(long (*fn)(long), long value) {
+    return -fn(value);
+}
+
+int takesIntBoxFn(IntBox* (*fn)(IntBox*), int value) {
+    IntBox box(value);
+    IntBox *box2 = fn(&box);
+    int value2 = box2->get() * 5;
+    delete box2;
+    return value2;
+}
+
 PtrCtr givePtrCtrByValue() {
     return PtrCtr();
 }
