@@ -963,4 +963,7 @@ getClassHaskellConversion cls = case classHaskellConversion $ classConversion cl
 -- used for printing types; stripping newlines from definitions for example
 -- could go badly.
 prettyPrint :: P.Pretty a => a -> String
-prettyPrint = filter (/= '\n') . P.prettyPrint
+prettyPrint = collapseSpaces . filter (/= '\n') . P.prettyPrint
+  where collapseSpaces (' ':xs) = ' ' : collapseSpaces (dropWhile (== ' ') xs)
+        collapseSpaces (x:xs) = x : collapseSpaces xs
+        collapseSpaces [] = []
