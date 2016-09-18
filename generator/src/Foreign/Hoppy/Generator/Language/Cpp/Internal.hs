@@ -34,7 +34,7 @@ import Control.Monad.Trans (lift)
 import Data.Foldable (forM_)
 import Data.List (intersperse)
 import qualified Data.Map as M
-import Data.Maybe (fromMaybe, isJust)
+import Data.Maybe (catMaybes, fromMaybe, isJust)
 #if !MIN_VERSION_base(4,8,0)
 import Data.Monoid (mappend, mconcat, mempty)
 #endif
@@ -481,6 +481,22 @@ sayArgRead dir (n, stripConst . normalizeType -> cppType, maybeCType) = case cpp
                    show cb, "."]
     says [callbackClassName cb, " ", toArgName n, "(", toArgNameAlt n, ");\n"]
 
+  t@(Internal_TPtr (Internal_TFn paramTypes retType)) -> do
+    -- Assert that all types referred to in a function pointer type are all
+    -- representable as C types.
+    let check label t' = (label ++ " " ++ show t') <$ typeToCType t'
+        mismatches = catMaybes $
+                     check "return type" retType :
+                     map (\paramType -> check "parameter" paramType)
+                         paramTypes
+    unless (null mismatches) $
+      abort $ concat $
+      "sayArgRead: Some types within a function pointer type use non-C types, " :
+      "but only C types may be used.  The unsupported types are: " :
+      intersperse "; " mismatches ++ [".  The whole function type is ", show t, "."]
+
+    convertDefault
+
   Internal_TRef t -> convertObj t
 
   Internal_TObj _ -> convertObj $ constT cppType
@@ -503,17 +519,19 @@ sayArgRead dir (n, stripConst . normalizeType -> cppType, maybeCType) = case cpp
             _ -> t'
       sayArgRead dir (n, cppType, typeToCType newCppType)
 
-  -- Primitive types don't need to be encoded/decoded.  But if maybeCType is a
-  -- Just, then we're expected to do some encoding/decoding, so something is
-  -- wrong.
-  --
-  -- TODO Do we need to handle TConst?
-  _ -> forM_ maybeCType $ \cType ->
-    abort $ concat
-    ["sayArgRead: Don't know how to ", show dir, " between C-type ", show cType,
-     " and C++-type ", show cppType, "."]
+  _ -> convertDefault
 
-  where convertObj cppType' = case dir of
+  where -- Primitive types don't need to be encoded/decoded.  But if maybeCType is a
+        -- Just, then we're expected to do some encoding/decoding, so something is
+        -- wrong.
+        --
+        -- TODO Do we need to handle TConst?
+        convertDefault = forM_ maybeCType $ \cType ->
+          abort $ concat
+          ["sayArgRead: Don't know how to ", show dir, " between C-type ", show cType,
+           " and C++-type ", show cppType, "."]
+
+        convertObj cppType' = case dir of
           DoDecode -> do
             sayVar (toArgName n) Nothing $ refT cppType'
             says [" = *", toArgNameAlt n, ";\n"]
