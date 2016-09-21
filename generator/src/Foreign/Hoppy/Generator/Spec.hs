@@ -125,7 +125,7 @@ module Foreign.Hoppy.Generator.Spec (
   makeClassVariable, makeClassVariable_,
   mkClassVariable, mkClassVariable_,
   mkStaticClassVariable, mkStaticClassVariable_,
-  classVarCName, classVarExtName, classVarType, classVarStatic,
+  classVarCName, classVarExtName, classVarType, classVarStatic, classVarGettable, classVarSettable,
   classVarGetterExtName, classVarGetterForeignName,
   classVarSetterExtName, classVarSetterForeignName,
   Ctor, makeCtor, makeCtor_, mkCtor, mkCtor_, ctorExtName, ctorParams, ctorExceptionHandlers,
@@ -1653,6 +1653,8 @@ data ClassVariable = ClassVariable
   , classVarStatic :: Staticness
     -- ^ Whether the variable is static (i.e. whether it exists once in the
     -- class itself and not in each instance).
+  , classVarGettable :: Bool
+  , classVarSettable :: Bool
   }
 
 instance Show ClassVariable where
@@ -1670,11 +1672,12 @@ instance IsClassEntity ClassVariable where
 --
 -- The result is wrapped in a 'CEVar'.  For an unwrapped value, use
 -- 'makeClassVariable_'.
-makeClassVariable :: String -> Maybe ExtName -> Type -> Staticness -> ClassEntity
-makeClassVariable = (((CEVar .) .) .) . makeClassVariable_
+makeClassVariable :: String -> Maybe ExtName -> Type -> Staticness -> Bool -> Bool -> ClassEntity
+makeClassVariable cName maybeExtName tp static gettable settable =
+  CEVar $ makeClassVariable_ cName maybeExtName tp static gettable settable
 
 -- | The unwrapped version of 'makeClassVariable'.
-makeClassVariable_ :: String -> Maybe ExtName -> Type -> Staticness -> ClassVariable
+makeClassVariable_ :: String -> Maybe ExtName -> Type -> Staticness -> Bool -> Bool -> ClassVariable
 makeClassVariable_ cName maybeExtName =
   ClassVariable cName $ extNameOrString cName maybeExtName
 
@@ -1688,7 +1691,7 @@ mkClassVariable = (CEVar .) . mkClassVariable_
 
 -- | The unwrapped version of 'mkClassVariable'.
 mkClassVariable_ :: String -> Type -> ClassVariable
-mkClassVariable_ cName t = makeClassVariable_ cName Nothing t Nonstatic
+mkClassVariable_ cName t = makeClassVariable_ cName Nothing t Nonstatic True True
 
 -- | Same as 'mkClassVariable', but returns a static variable instead.
 --
@@ -1699,7 +1702,7 @@ mkStaticClassVariable = (CEVar .) . mkStaticClassVariable_
 
 -- | The unwrapped version of 'mkStaticClassVariable'.
 mkStaticClassVariable_ :: String -> Type -> ClassVariable
-mkStaticClassVariable_ cName t = makeClassVariable_ cName Nothing t Static
+mkStaticClassVariable_ cName t = makeClassVariable_ cName Nothing t Static True True
 
 -- | Returns the external name of the getter function for the class variable.
 classVarGetterExtName :: Class -> ClassVariable -> ExtName
