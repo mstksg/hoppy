@@ -85,7 +85,7 @@ import Foreign.Hoppy.Generator.Spec
 import Foreign.Hoppy.Generator.Types
 import Foreign.Hoppy.Generator.Version
 import Foreign.Hoppy.Runtime
-import Foreign.Ptr (Ptr)
+import Foreign.Ptr (FunPtr, Ptr)
 import Language.Haskell.Syntax (HsType)
 import System.IO.Unsafe (unsafePerformIO)
 
@@ -190,6 +190,11 @@ passing values back and forth between C++ and Haskell, generally, primitive
 types are converted to equivalent types on both ends, and pointer types in C++
 are represented by corresponding pointer types in Haskell.
 
+For numbers, Haskell declares a number of numeric types in "Foreign.C" for
+interfacing with C directly.  Hoppy maps C++ numbers to these types, with the
+exception of `bool`, `int`, `float`, and `double`, which map to their native
+Haskell equivalents instead ('Bool', 'Int', 'Float', 'Double').
+
 Raw object types (not pointers or references, just the by-value object types,
 i.e. 'objT') are treated differently.  When an object is taken or returned by
 value, this typically indicates a lightweight object that is easy to copy, so
@@ -197,6 +202,11 @@ Hoppy will attempt to convert the C++ object to a native Haskell object, if a
 Haskell type is defined for the class.  Other options are available, such as
 having objects be handed off to a foreign garbage collector.  See
 'ClassConversion' for more on object conversions.
+
+Internally, only C types are exchanged over the gateway, since these are what is
+common to both languages.  Conversions are performed on both sides of the
+gateway.  In most cases, the C++, C, and Haskell types all have equivalent
+representation no conversion is necessary.
 
 -}
 {- $generators
@@ -300,16 +310,27 @@ should not be assigned to the collector a second time).
 >
 > callbackT :: Callback -> Type
 
-We want to call some foreign code from C++.  What C++ type do we associate with
-such an entry point?  (Both the C++ and foreign sides of the callback will need
-to perform en-\/decoding of arguments\/return values.)
+We want to call some foreign code from C++.  There are two choices for doing so,
+described below.  Declaring a callback provides support for both types of
+invocation.
 
-__Function pointer:__ Create a function pointer to a foreign wrapper which does
-en-/decoding on the foreign side.  But then we need to wrap this in a C++
-function (pointer) which does the C++-side conversions.  Function pointers can't
-close over variables, so this doesn't work.
+__Function pointer:__ Function pointers are expressed with a @'ptrT' ('fnT'
+...)@ type.  Foreign runtimes' FFIs can provide a means for creating raw
+function pointers directly (Haskell's does with 'FunPtr').  Hoppy provides an
+optional layer that performs the necessary type conversions, but only the
+foreign half of the conversions, so only C types can be used within function
+pointer types (this is a limitation of speaking over a C FFI; an error is
+signaled when trying to use a type that requires C\<-\>C++ conversion).  The
+other downside of using function pointers is that C++ provides no lifetime
+tracking, and because in general foreign code can't know how long some C++ code
+is going to hold a function pointer, it's necessary to manage the lifetime of
+the pointer manually.
 
-__C++ functor:__ Create a class G that takes a foreign function pointer and
+__C++ functor:__ This is the preferred method for calling into foreign code.
+This type is expressed with 'callbackT'.  It wraps the function pointer support
+above in C++ functors that add automatic lifetime tracking.
+
+Internally, we create a class G that takes a foreign function pointer and
 implements @operator()@, performing the necessary conversions around invoking
 the pointer.  In the event that the function pointer is dynamically allocated
 (as in Haskell), then this class also ties the lifetime of the function pointer
@@ -457,9 +478,39 @@ See the section on Haskell object passing for more details.
 -}
 {- $generators-hs-module-structure-callbacks
 
-Despite needing to be exported as with other 'Export' choices, 'Callback's do
-not expose anything to the user.  Instead, they provide machinery for functions
-to be able to use 'callbackT'.
+Declared callbacks provide support for callback types ('callbackT') as well as
+function pointers (@'ptrT' ('fnT' ...)@) in Haskell.
+
+Callback types manifest directly as Haskell function types in @IO@.  Function
+pointers manifest as 'FunPtr's around Haskell function types in @IO@.
+
+No runtime support is exposed to the user for working with callback types
+(internal machinery is generated however).  For function pointer types, a
+function `callbackName_newFunPtr` is exposed from the callback's module that
+makes it easy to wrap anonymous functions in 'FunPtr's that perform the Haskell
+side of conversions, with code like the following:
+
+> -- Generator bindings
+>
+> cb_intCallback = makeCallback "IntCallback" [intT] intT
+>
+> f_funPtrTest = makeFn "funPtrTest" Nothing Nonpure [ptrT $ fnT [intT] intT] intT
+>
+> f_callbackTest = makeFn "callbackTest" Nothing Nonpure [callbackT cb_intCallback] intT
+
+> -- Test program
+>
+> import Foreign.C (CInt)
+> import Foreign.Hoppy.Runtime (withScopedFunPtr)
+>
+> -- Generated things:
+> intCallback_newFunPtr :: (Int -> IO Int) -> IO (FunPtr (CInt -> IO CInt))
+> funPtrTest :: FunPtr (CInt -> IO CInt) -> Int
+> callbackTest :: (Int -> IO Int) -> Int
+>
+> -- Driver code:
+> callFunPtrTest = withScopedFunPtr (intCallback_newFunPtr $ return . (* 2)) funPtrTest
+> callCallbackTest = callbackTest $ return . (* 2)
 
 -}
 {- $generators-hs-module-structure-classes
