@@ -2061,7 +2061,7 @@ newtype Prop = Prop [Method]
 
 -- | Creates a getter/setter binding pair for methods:
 --
--- > T getFoo() const
+-- > T foo() const
 -- > void setFoo(T)
 --
 -- The result is wrapped in a 'CEProp'.  For an unwrapped value, use
@@ -2080,7 +2080,7 @@ mkProp_ name t =
 
 -- | Creates a getter/setter binding pair for static methods:
 --
--- > static T getFoo() const
+-- > static T foo() const
 -- > static void setFoo(T)
 mkStaticProp :: String -> Type -> ClassEntity
 mkStaticProp = (CEProp .) . mkStaticProp_
