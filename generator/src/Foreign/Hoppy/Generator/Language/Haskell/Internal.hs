@@ -203,7 +203,7 @@ sayExportVar :: SayExportMode -> Variable -> Generator ()
 sayExportVar mode v = withErrorContext ("generating variable " ++ show (varExtName v)) $ do
   let getterName = varGetterExtName v
       setterName = varSetterExtName v
-  sayExportVar' mode (varType v) Nothing True True getterName getterName setterName setterName
+  sayExportVar' mode (varType v) Nothing True getterName getterName setterName setterName
 
 sayExportClassVar :: SayExportMode -> Class -> ClassVariable -> Generator ()
 sayExportClassVar mode cls v =
@@ -214,7 +214,6 @@ sayExportClassVar mode cls v =
                    Nonstatic -> Just cls
                    Static -> Nothing)
                 (classVarGettable v)
-                (classVarSettable v)
                 (classVarGetterExtName cls v)
                 (classVarGetterForeignName cls v)
                 (classVarSetterExtName cls v)
@@ -223,7 +222,6 @@ sayExportClassVar mode cls v =
 sayExportVar' :: SayExportMode
               -> Type
               -> Maybe Class
-              -> Bool
               -> Bool
               -> ExtName
               -> ExtName
@@ -234,7 +232,6 @@ sayExportVar' mode
               t
               classIfNonstatic
               gettable
-              settable
               getterExtName
               getterForeignName
               setterExtName
@@ -252,7 +249,7 @@ sayExportVar' mode
                 deconstType
                 mempty
 
-  when (settable && not isConst) $
+  unless isConst $
     sayExportFn mode
                 setterExtName
                 setterForeignName

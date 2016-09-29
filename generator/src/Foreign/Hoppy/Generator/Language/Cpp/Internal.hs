@@ -253,7 +253,6 @@ sayExportVariable v =
   sayExportVariable' (varType v)
                      Nothing
                      True
-                     True
                      (varGetterExtName v)
                      (varSetterExtName v)
                      (sayIdentifier $ varIdentifier v)
@@ -265,7 +264,6 @@ sayExportClassVariable cls v =
                         Nonstatic -> Just (ptrT $ constT $ objT cls, ptrT $ objT cls)
                         Static -> Nothing)
                      (classVarGettable v)
-                     (classVarSettable v)
                      (classVarGetterExtName cls v)
                      (classVarSetterExtName cls v)
                      (case classVarStatic v of
@@ -276,12 +274,11 @@ sayExportClassVariable cls v =
 sayExportVariable' :: Type
                    -> Maybe (Type, Type)
                    -> Bool
-                   -> Bool
                    -> ExtName
                    -> ExtName
                    -> Generator ()
                    -> Generator ()
-sayExportVariable' t maybeThisTypes gettable settable getterName setterName sayVarName = do
+sayExportVariable' t maybeThisTypes gettable getterName setterName sayVarName = do
   let (isConst, deconstType) = case t of
         Internal_TConst t -> (True, t)
         t -> (False, t)
@@ -297,7 +294,7 @@ sayExportVariable' t maybeThisTypes gettable settable getterName setterName sayV
                 True
 
   -- Say a setter function.
-  when (settable && not isConst) $
+  unless isConst $
     sayExportFn setterName
                 (VarWrite sayVarName)
                 (fmap snd maybeThisTypes)
