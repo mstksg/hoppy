@@ -479,17 +479,17 @@ sayExportFn mode extName foreignName purity paramTypes retType exceptionHandlers
 -- >   -> Bool
 -- >   -> IO (CCallback (CInt -> Ptr CChar -> IO CInt))
 -- >
--- > name :: (CInt -> String -> IO CInt) -> IO (CCallback (CInt -> Ptr CChar -> IO CInt))
--- > name f = do
--- >   let cf arg1' arg2' = do
--- >         arg1 <- return arg1'
--- >         arg2 <- ...decode the string...
--- >         f arg1 arg2 >>= return
--- >   cfp <- name'newFunPtr cf
--- >   name'newCallback cfp freeHaskellFunPtrFunPtr False
---
--- Only the implementation of bindings that take a callback of this type will
--- make use of this @name@ binding; @name@ is not useful to users of bindings.
+-- > name_newFunPtr :: (Int -> String -> IO Int) -> IO (FunPtr (CInt -> Ptr CChar -> IO CInt))
+-- > name_newFunPtr f'hs = name'newFunPtr $ \arg1 arg2 ->
+-- >   coerceIntegral arg1 >>= \arg1' ->
+-- >   (...decode the C string) >>= \arg2' ->
+-- >   fmap coerceIntegral
+-- >   (f'hs arg1' arg2')
+-- >
+-- > name_new :: (Int -> String -> IO Int) -> IO (CCallback (CInt -> Ptr CChar -> IO CInt))
+-- > name_new f = do
+-- >   f'p <- name_newFunPtr f
+-- >   name'newCallback f'p freeHaskellFunPtrFunPtr False
 sayExportCallback :: SayExportMode -> Callback -> Generator ()
 sayExportCallback mode cb =
   withErrorContext ("generating callback " ++ show (callbackExtName cb)) $ do
