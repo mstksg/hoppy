@@ -19,7 +19,7 @@ library
   exposed-modules:
       Foreign.Hoppy.Documentation.UsersGuide
   build-depends:
-      base >=4.7 && <4.9
+      base >=4.7 && <5
     , haskell-src >=1.0 && <1.1
     , hoppy-generator >=0.3 && <0.4
     , hoppy-runtime >=0.3 && <0.4

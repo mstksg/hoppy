@@ -31,6 +31,10 @@
 - Added the ability to enable custom Haskell language extensions for generated
   modules.
 
+## 0.2.1 (2016-10-01)
+
+- Bumped the upper version of the base dependency to 5; base releases often.
+
 ## 0.2.0 (2016-06-29)
 
 - Added foreign garbage collector support (issue #5).
