@@ -20,7 +20,7 @@
 }:
 mkDerivation {
   pname = "hoppy-tests-basic";
-  version = "0.2.0";
+  version = "0.2.1";
   src = ./.;
   libraryHaskellDepends = [ base hoppy-runtime ];
   librarySystemDepends = [ hoppy-tests-basic-cpp ];

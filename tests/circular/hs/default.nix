@@ -20,7 +20,7 @@
 }:
 mkDerivation {
   pname = "hoppy-tests-circular";
-  version = "0.2.0";
+  version = "0.2.1";
   src = ./.;
   libraryHaskellDepends = [ base hoppy-runtime ];
   librarySystemDepends = [ hoppy-tests-circular-cpp ];

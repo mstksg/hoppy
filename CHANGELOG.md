@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.2.1 (2016-10-01)
+### Added
+
+- Bumped the upper version of the base dependency to 5; base releases often.
+
 ## 0.2.0 (2016-06-29)
 ### Added
 

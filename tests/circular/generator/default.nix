@@ -18,7 +18,7 @@
 { mkDerivation, base, haskell-src, hoppy-generator, stdenv }:
 mkDerivation {
   pname = "hoppy-tests-circular-generator";
-  version = "0.2.0";
+  version = "0.2.1";
   src = ./.;
   isLibrary = false;
   isExecutable = true;
