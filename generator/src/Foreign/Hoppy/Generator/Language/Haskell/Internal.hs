@@ -203,7 +203,7 @@ sayExportVar :: SayExportMode -> Variable -> Generator ()
 sayExportVar mode v = withErrorContext ("generating variable " ++ show (varExtName v)) $ do
   let getterName = varGetterExtName v
       setterName = varSetterExtName v
-  sayExportVar' mode (varType v) Nothing getterName getterName setterName setterName
+  sayExportVar' mode (varType v) Nothing True getterName getterName setterName setterName
 
 sayExportClassVar :: SayExportMode -> Class -> ClassVariable -> Generator ()
 sayExportClassVar mode cls v =
@@ -213,6 +213,7 @@ sayExportClassVar mode cls v =
                 (case classVarStatic v of
                    Nonstatic -> Just cls
                    Static -> Nothing)
+                (classVarGettable v)
                 (classVarGetterExtName cls v)
                 (classVarGetterForeignName cls v)
                 (classVarSetterExtName cls v)
@@ -221,6 +222,7 @@ sayExportClassVar mode cls v =
 sayExportVar' :: SayExportMode
               -> Type
               -> Maybe Class
+              -> Bool
               -> ExtName
               -> ExtName
               -> ExtName
@@ -229,6 +231,7 @@ sayExportVar' :: SayExportMode
 sayExportVar' mode
               t
               classIfNonstatic
+              gettable
               getterExtName
               getterForeignName
               setterExtName
@@ -237,13 +240,14 @@ sayExportVar' mode
         Internal_TConst t -> (True, t)
         t -> (False, t)
 
-  sayExportFn mode
-              getterExtName
-              getterForeignName
-              Nonpure
-              (maybe [] (\cls -> [ptrT $ constT $ objT cls]) classIfNonstatic)
-              deconstType
-              mempty
+  when gettable $
+    sayExportFn mode
+                getterExtName
+                getterForeignName
+                Nonpure
+                (maybe [] (\cls -> [ptrT $ constT $ objT cls]) classIfNonstatic)
+                deconstType
+                mempty
 
   unless isConst $
     sayExportFn mode
