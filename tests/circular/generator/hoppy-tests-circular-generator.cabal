@@ -13,7 +13,7 @@ executable generator
       Foreign.Hoppy.Generator.Test.Circular.Flob
     , Foreign.Hoppy.Generator.Test.Circular.Flub
   build-depends:
-      base >=4.7 && <4.9
+      base >=4.7 && <5
     , haskell-src >=1.0 && <1.1
     , hoppy-generator
   default-language: Haskell2010
