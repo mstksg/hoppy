@@ -21,9 +21,9 @@
 
 - Added support for function pointers (issue #14).
 
-- Added support for catching C++ exceptions in Haskell (issue #10).  C++
-  functions can be declared as throwing exceptions at the interface, module, or
-  function level, and these are rethrown as Haskell exceptions.
+- Added support for using C++ exceptions in Haskell (issue #10).  Exceptions are
+  automatically passed between C++ and Haskell in gateway code that is specified
+  to support them.  The main Haskell interface is via catchCpp and throwCpp.
 
 - Added addenda to modules, to provide a place to inject custom code at the
   module level (issue #11).
