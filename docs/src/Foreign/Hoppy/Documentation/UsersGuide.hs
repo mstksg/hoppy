@@ -75,6 +75,9 @@ module Foreign.Hoppy.Documentation.UsersGuide (
 
   -- *** Object passing
   -- $generators-hs-object-passing
+
+  -- *** Exceptions
+  -- $generators-hs-exceptions
   ) where
 
 import Data.Bits (Bits)
@@ -82,6 +85,7 @@ import Foreign.C (CInt)
 import Foreign.Hoppy.Generator.Language.Haskell
 import Foreign.Hoppy.Generator.Main
 import Foreign.Hoppy.Generator.Spec
+import Foreign.Hoppy.Generator.Spec.ClassFeature
 import Foreign.Hoppy.Generator.Types
 import Foreign.Hoppy.Generator.Version
 import Foreign.Hoppy.Runtime
@@ -235,7 +239,9 @@ Currently this consists only of generated callback classes.
 
 Cycles between generated C++ modules are not supported.  This can currently only
 happen because of @#include@ cycles involving callbacks, since callbacks are the
-only 'Export's that can be referenced by other generated C++ code.
+only 'Export's that can be referenced by other generated C++ code.  Also, C++
+callbacks that handle exceptions depend on the interface's exception support
+module (see 'interfaceExceptionSupportModule').
 
 -}
 {- $generators-cpp-object-passing
@@ -685,5 +691,47 @@ concerned about object lifetimes, and also having separate data types for
 managed pointers would balloon the size of bindings.  Unmanaged objects can be
 converted to managed objects with 'toGc'; after calling this function, the value
 it returns should always be used in place of any existing pointers.
+
+-}
+{- $generators-hs-exceptions
+
+C++ exceptions can caught and thrown in Haskell.  C++ entities that deal with
+exceptions need to be marked as such, for Hoppy to generate the support code for
+them.  To work with exceptions at all, you need to pick one of your Hoppy
+modules to contain some runtime support code, using
+'interfaceSetExceptionSupportModule'.  C++ functions that throw need to be
+marked with the specific exceptions that they throw, using 'handleExceptions'.
+Callbacks that want to be able to throw need to be marked with
+'callbackSetThrows', after which they are allowed to throw any exception classes
+defined in the interface.  Exception handling in both directions can also be set
+up at the module and interface levels using 'handleExceptions',
+'interfaceSetCallbacksThrow', and 'moduleSetCallbacksThrow'.
+
+Classes can be marked as being exception classes with 'classMakeException'.
+Exception classes need to be copyable, so make sure to define a copy constructor
+(use 'Copyable').
+
+C++ exceptions in Haskell are handled with 'throwCpp' and 'catchCpp'.  While
+they use Haskell exceptions under the hood, do not use 'throw' and 'catch' to
+work with them; this may leak C++ objects.
+
+Catching a wildcard (i.e. @catch (...)@) is supported, but no information is
+available about the caught value.
+
+Implementation-wise, an in-flight C++ exception in Haskell always owns the
+object (which is on the heap).  An exception coming from C++ into Haskell (it's
+a heap temporary) will be given to the garbage collector.  Hence, for ease of
+use, caught exceptions should always be garbage-collected.  Also, when throwing
+from Haskell, throwing will always take ownership of the object.  If 'throwCpp'
+gets a non-GCed object, then it will be given to the garbage collector; and then
+the exception will be thrown as a Haskell exception.  If the exception
+propagates out to a callback and back into C++, then a temporary non-GCed copy
+will be passed over the gateway, and rethrown as a value object on the C++ side.
+
+In the above strategy, when throwing an exception from Haskell that propagates
+to C++, it is wasteful to make the thrown object GCed, just to have to create a
+non-GCed copy.  So when we throw from Haskell, we don't actually assign to the
+garbage collector immediately (if it's not already); instead, we delay the
+'toGc' call until 'catchCpp'.
 
 -}

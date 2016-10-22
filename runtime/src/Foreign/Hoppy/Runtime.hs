@@ -35,7 +35,9 @@ module Foreign.Hoppy.Runtime (
   withScopedFunPtr,
   -- * Exceptions
   CppException (..),
+  CppThrowable (..),
   catchCpp,
+  throwCpp,
   UnknownCppException,
   -- * Containers
   HasContents (..),
@@ -46,6 +48,7 @@ module Foreign.Hoppy.Runtime (
   ExceptionId (..),
   SomeCppException (..),
   internalHandleExceptions,
+  internalHandleCallbackExceptions,
   ExceptionDb (..),
   ExceptionClassInfo (..),
   ) where
@@ -63,8 +66,10 @@ import Foreign (
   Storable,
   alloca,
   freeHaskellFunPtr,
+  nullPtr,
   peek,
   poke,
+  touchForeignPtr,
   )
 import Foreign.C (
   CChar,
@@ -306,24 +311,34 @@ withScopedFunPtr p = bracket p freeHaskellFunPtr
 newtype ExceptionId = ExceptionId CInt
                     deriving (Eq, Ord, Show)
 
--- | A typeclass for C++ classes that are used as exceptions.  C++ classes that
+-- | A typeclass for C++ values that are catchable as exceptions.  C++ classes that
 -- have been declared to be used as exceptions have instances of this class.
+-- Unlike 'CppThrowable', 'UnknownCppException' is also an instance of this
+-- typeclass.
 class CppException e where
   -- | Internal.  Returns metadata about the exception.
   cppExceptionInfo :: e -> ExceptionClassInfo
 
-  -- | Internal.  Constructs an GC-unmanaged object handle from a raw pointer.
-  cppExceptionBuild :: Ptr () -> e
+  -- | Internal.  Constructs an object handle from a GC-managed object's raw
+  -- pointers.
+  cppExceptionBuild :: ForeignPtr () -> Ptr () -> e
 
-  -- | Internal.  Constructs a GC-managed object handle from raw pointers.
-  cppExceptionBuildGc :: ForeignPtr () -> Ptr () -> e
+  -- | Internal.  Constructs a GC-managed object handle from an unmanaged raw
+  -- pointer.
+  cppExceptionBuildToGc :: Ptr () -> IO e
+
+-- | A typeclass for C++ values that are throwable as exceptions.  C++ classes that
+-- have been declared to be used as exceptions have instances of this class.
+class CppException e => CppThrowable e where
+  -- | Internal.  Creates a 'throw'able exception from a C++ handle.
+  toSomeCppException :: e -> SomeCppException
 
 -- | Catches a C++ exception, similar to 'catch'.  Catching an exception class
 -- will also catch subtypes of the class, per normal C++ exception semantics.
 -- Catching 'UnknownCppException' will catch all C++ exceptions, but will
--- provide no information about the caught exception.  Objects thrown from C++
--- become GC-managed heap objects; you do not need to manually delete caught
--- exceptions.
+-- provide no information about the caught exception.  Exceptions caught with
+-- this function are GC-managed heap objects; you do not need to manually delete
+-- them.
 catchCpp :: forall a e. CppException e => IO a -> (e -> IO a) -> IO a
 catchCpp action handler = do
   let expectedId = exceptionClassId $ cppExceptionInfo (undefined :: e)
@@ -351,10 +366,11 @@ catchCpp action handler = do
                 Just upcast -> Just $ upcast caughtPtr
                 Nothing -> Nothing
 
+        -- Call the handler, ensuring that the handle we pass is GCed.
         case maybeUpcastedPtr of
-          Just upcastedPtr -> handler $ case caughtFPtr of
-            Just fptr -> cppExceptionBuildGc fptr upcastedPtr
-            Nothing -> cppExceptionBuild upcastedPtr
+          Just upcastedPtr -> handler =<< case caughtFPtr of
+            Just fptr -> return $ cppExceptionBuild fptr upcastedPtr
+            Nothing -> cppExceptionBuildToGc upcastedPtr
           Nothing -> throwIO caughtEx
 
     SomeUnknownCppException ->
@@ -362,18 +378,11 @@ catchCpp action handler = do
       then handler $ unsafeCoerce UnknownCppException  -- Same as above, this is safe.
       else throwIO caughtEx
 
--- | Internal.  Holds an arbitrary 'CppException'.
-data SomeCppException =
-    SomeCppException ExceptionClassInfo (Maybe (ForeignPtr ())) (Ptr ())
-  | SomeUnknownCppException
-
-instance Exception SomeCppException
-
-instance Show SomeCppException where
-  show (SomeCppException info _ _) =
-    "<SomeCppException " ++ exceptionClassName info ++ ">"
-  show SomeUnknownCppException =
-    exceptionClassName $ cppExceptionInfo (undefined :: UnknownCppException)
+-- | Takes ownership of a C++ object, and throws it as a Haskell exception.
+-- This can be caught in Haskell with 'catchCpp', or propagated to C++ when
+-- within a callback that is marked as handling exceptions.
+throwCpp :: CppThrowable e => e -> IO a
+throwCpp = throwIO . toSomeCppException
 
 -- | A top type for C++ exceptions.  Catching this type with 'catchCpp' will
 -- catch all C++ exceptions.  (You still have to declare what exceptions can be
@@ -387,14 +396,31 @@ instance CppException UnknownCppException where
     , exceptionClassName = "<Unhandled C++ exception>"
     , exceptionClassUpcasts = M.empty
     , exceptionClassDelete = error "UnknownCppException.exceptionClassDelete: Should not get here."
+    , exceptionClassCopy = error "UnknownCppException.exceptionClassCopy: Should not get here."
     , exceptionClassToGc = error "UnknownCppException.exceptionClassToGc: Should not get here."
     }
 
-  cppExceptionBuild _ =
+  cppExceptionBuild _ _ =
     error "Internal error: cppExceptionBuild called for UnknownCppException"
 
-  cppExceptionBuildGc _ _ =
-    error "Internal error: cppExceptionBuildGc called for UnknownCppException"
+  cppExceptionBuildToGc _ =
+    error "Internal error: cppExceptionBuildToGc called for UnknownCppException"
+
+-- | Internal.  Holds an arbitrary 'CppException'.
+--
+-- Do not catch this with 'catch'; this can leak exception objects.  Always use
+-- 'catchCpp' to catch C++ exceptions.
+data SomeCppException =
+    SomeCppException ExceptionClassInfo (Maybe (ForeignPtr ())) (Ptr ())
+  | SomeUnknownCppException
+
+instance Exception SomeCppException
+
+instance Show SomeCppException where
+  show (SomeCppException info _ _) =
+    "<SomeCppException " ++ exceptionClassName info ++ ">"
+  show SomeUnknownCppException =
+    exceptionClassName $ cppExceptionInfo (undefined :: UnknownCppException)
 
 -- | Internal.  Wraps a call to a C++ gateway function, and provides propagation
 -- of C++ exceptions to Haskell.
@@ -417,6 +443,28 @@ internalHandleExceptions (ExceptionDb db) f =
                 "internalHandleExceptions: Received C++ exception with unknown exception ID " ++
                 show excId ++ "."
 
+-- | Internal.  Wraps a call to a Haskell function while invoking a callback,
+-- and provides propagation of C++ exceptions back into C++.
+internalHandleCallbackExceptions :: CppDefault a => Ptr CInt -> Ptr (Ptr ()) -> IO a -> IO a
+internalHandleCallbackExceptions excIdPtr excPtrPtr doCall = do
+  -- Indicate no exception unless we catch something.
+  poke excIdPtr 0
+
+  catch doCall $ \caughtEx -> case caughtEx of
+    SomeCppException classInfo caughtFPtr caughtPtr -> do
+      let ExceptionId excId = exceptionClassId classInfo
+      poke excIdPtr excId
+      poke excPtrPtr =<< case caughtFPtr of
+        Just fptr -> do
+          copiedPtr <- exceptionClassCopy classInfo caughtPtr
+          touchForeignPtr fptr
+          return copiedPtr
+        Nothing -> return caughtPtr
+      return cppDefault
+
+    SomeUnknownCppException ->
+      fail "Can't propagate unknown C++ exception from Haskell to C++."
+
 -- | Internal.  A database of information about exceptions an interface uses.
 newtype ExceptionDb = ExceptionDb (Map ExceptionId ExceptionClassInfo)
 
@@ -428,7 +476,11 @@ data ExceptionClassInfo = ExceptionClassInfo
     -- ^ This maps ancestor classes' exception IDs to functions that cast
     -- pointers from the current type to the ancestor type.
   , exceptionClassDelete :: Ptr () -> IO ()
+    -- ^ Deletes the object.
+  , exceptionClassCopy :: Ptr () -> IO (Ptr ())
+    -- ^ Invokes the object's copy constructor.
   , exceptionClassToGc :: Ptr () -> IO (ForeignPtr ())
+    -- ^ Assigns the object to the Haskell garbage collector, a la 'toGc'.
   }
 
 -- | Containers whose contents can be convered to a list.
@@ -477,3 +529,35 @@ freeHaskellFunPtrFunPtr :: FunPtr (FunPtr (IO ()) -> IO ())
 {-# NOINLINE freeHaskellFunPtrFunPtr #-}
 freeHaskellFunPtrFunPtr =
   unsafePerformIO $ newFreeHaskellFunPtrFunPtr freeHaskellFunPtr
+
+-- | Internal.  Provides default values.
+class CppDefault a where
+  cppDefault :: a
+
+instance CppDefault () where cppDefault = ()
+instance CppDefault CBool where cppDefault = 0
+instance CppDefault CChar where cppDefault = 0
+instance CppDefault CUChar where cppDefault = 0
+instance CppDefault CShort where cppDefault = 0
+instance CppDefault CUShort where cppDefault = 0
+instance CppDefault CInt where cppDefault = 0
+instance CppDefault CUInt where cppDefault = 0
+instance CppDefault CLong where cppDefault = 0
+instance CppDefault CULong where cppDefault = 0
+instance CppDefault CLLong where cppDefault = 0
+instance CppDefault CULLong where cppDefault = 0
+instance CppDefault CFloat where cppDefault = 0
+instance CppDefault CDouble where cppDefault = 0
+instance CppDefault Int8 where cppDefault = 0
+instance CppDefault Int16 where cppDefault = 0
+instance CppDefault Int32 where cppDefault = 0
+instance CppDefault Int64 where cppDefault = 0
+instance CppDefault Word8 where cppDefault = 0
+instance CppDefault Word16 where cppDefault = 0
+instance CppDefault Word32 where cppDefault = 0
+instance CppDefault Word64 where cppDefault = 0
+instance CppDefault CPtrdiff where cppDefault = 0
+instance CppDefault CSize where cppDefault = 0
+instance CppDefault CSsize where cppDefault = 0
+
+instance CppDefault (Ptr a) where cppDefault = nullPtr

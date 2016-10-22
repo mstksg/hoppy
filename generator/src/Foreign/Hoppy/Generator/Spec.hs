@@ -39,8 +39,11 @@ module Foreign.Hoppy.Generator.Spec (
   interfaceAddHaskellModuleBase,
   interfaceHaskellModuleImportNames,
   interfaceExceptionHandlers,
+  interfaceCallbacksThrow,
+  interfaceSetCallbacksThrow,
   interfaceExceptionClassId,
   interfaceExceptionSupportModule,
+  interfaceSetExceptionSupportModule,
   -- * C++ includes
   Include,
   includeStd,
@@ -54,6 +57,8 @@ module Foreign.Hoppy.Generator.Spec (
   moduleExports,
   moduleReqs,
   moduleExceptionHandlers,
+  moduleCallbacksThrow,
+  moduleSetCallbacksThrow,
   moduleAddendum,
   moduleHaskellName,
   makeModule,
@@ -118,7 +123,7 @@ module Foreign.Hoppy.Generator.Spec (
   classConversion, classReqs, classEntityPrefix, classSetEntityPrefix,
   classIsMonomorphicSuperclass, classSetMonomorphicSuperclass,
   classIsSubclassOfMonomorphic, classSetSubclassOfMonomorphic,
-  classIsException, makeClassException,
+  classIsException, classMakeException,
   ClassEntity (..),
   IsClassEntity (..), classEntityExtName, classEntityForeignName, classEntityForeignName',
   ClassVariable,
@@ -158,7 +163,9 @@ module Foreign.Hoppy.Generator.Spec (
   classSetHaskellConversion,
   ClassHaskellConversion (..),
   -- ** Callbacks
-  Callback, makeCallback, callbackExtName, callbackParams, callbackReturn, callbackReqs,
+  Callback, makeCallback,
+  callbackExtName, callbackParams, callbackReturn, callbackThrows, callbackReqs,
+  callbackSetThrows,
   -- * Exceptions
   ExceptionId (..),
   exceptionCatchAllId,
@@ -175,8 +182,8 @@ module Foreign.Hoppy.Generator.Spec (
   hsWholeModuleImport, hsQualifiedImport, hsImport1, hsImport1', hsImports, hsImports',
   hsImportSetMakeSource,
   -- * Internal to Hoppy
-  callbackToTFn,
   interfaceAllExceptionClasses,
+  classFindCopyCtor,
   -- ** Haskell imports
   makeHsImportSet,
   getHsImportSet,
@@ -246,13 +253,16 @@ data Interface = Interface
     -- to each other tersely.
   , interfaceExceptionHandlers :: ExceptionHandlers
     -- ^ Exceptions that all functions in the interface may throw.
+  , interfaceCallbacksThrow :: Bool
+    -- ^ Whether callbacks within the interface support throwing C++ exceptions
+    -- from Haskell into C++ during their execution.  This may be overridden by
+    -- 'moduleCallbacksThrow' and 'callbackThrows'.
   , interfaceExceptionNamesToIds :: M.Map ExtName ExceptionId
     -- ^ Maps from external names of exception classes to their exception IDs.
   , interfaceExceptionSupportModule :: Maybe Module
-    -- ^ When an interface uses C++ exceptions, then one module is selected
-    -- automatically to contain some interface-specific runtime support.  This
-    -- is the module that gets selected.  This is present when exceptions are
-    -- used.
+    -- ^ When an interface uses C++ exceptions, then one module needs to
+    -- manually be selected to contain some interface-specific runtime support.
+    -- This is the selected module.
   }
 
 instance Show Interface where
@@ -321,13 +331,6 @@ interface' ifName modules options = do
         zip (map classExtName $ interfaceAllExceptionClasses' modules)
             (map ExceptionId [exceptionFirstFreeId..])
 
-      -- To select a module to contain exception runtime support, we arbitrarily
-      -- pick the lexicographically last module in the interface.
-      exceptionSupportModule =
-        if M.null exceptionNamesToIds
-        then Nothing
-        else Just $ maximum modules
-
   return Interface
     { interfaceName = ifName
     , interfaceModules = M.fromList $ map (moduleName &&& id) modules
@@ -335,8 +338,9 @@ interface' ifName modules options = do
     , interfaceHaskellModuleBase' = Nothing
     , interfaceHaskellModuleImportNames = haskellModuleImportNames
     , interfaceExceptionHandlers = interfaceOptionsExceptionHandlers options
+    , interfaceCallbacksThrow = False
     , interfaceExceptionNamesToIds = exceptionNamesToIds
-    , interfaceExceptionSupportModule = exceptionSupportModule
+    , interfaceExceptionSupportModule = Nothing
     }
 
 -- | The name of the parent Haskell module under which a Haskell module will be
@@ -369,7 +373,7 @@ interfaceAddHaskellModuleBase modulePath iface = case interfaceHaskellModuleBase
     ]
 
 -- | Returns the the exception ID for a class in an interface, if it has one
--- (i.e. if it's been marked as an exception class with 'makeClassException').
+-- (i.e. if it's been marked as an exception class with 'classMakeException').
 interfaceExceptionClassId :: Interface -> Class -> Maybe ExceptionId
 interfaceExceptionClassId iface cls =
   M.lookup (classExtName cls) $ interfaceExceptionNamesToIds iface
@@ -385,6 +389,23 @@ interfaceAllExceptionClasses' modules =
   for (M.elems $ moduleExports mod) $ \export -> case export of
     ExportClass cls | classIsException cls -> Just cls
     _ -> Nothing
+
+-- | Changes 'callbackThrows' for all callbacks in an interface that don't have it
+-- set explicitly at the module or callback level.
+interfaceSetCallbacksThrow :: Bool -> Interface -> Interface
+interfaceSetCallbacksThrow b iface = iface { interfaceCallbacksThrow = b }
+
+-- | Sets an interface's exception support module, for interfaces that use
+-- exceptions.
+interfaceSetExceptionSupportModule :: Module -> Interface -> Interface
+interfaceSetExceptionSupportModule mod iface = case interfaceExceptionSupportModule iface of
+  Nothing -> iface { interfaceExceptionSupportModule = Just mod }
+  Just existingMod ->
+    if mod == existingMod
+    then iface
+    else error $ "interfaceSetExceptionSupportModule: " ++ show iface ++
+         " already has exception support module " ++ show existingMod ++
+         ", trying to set " ++ show mod ++ "."
 
 -- | An @#include@ directive in a C++ file.
 data Include = Include
@@ -430,6 +451,10 @@ data Module = Module
     -- is used.  May be modified with 'moduleAddHaskellName'.
   , moduleExceptionHandlers :: ExceptionHandlers
     -- ^ Exceptions that all functions in the module may throw.
+  , moduleCallbacksThrow :: Maybe Bool
+    -- ^ Whether callbacks exported from the module support exceptions being
+    -- thrown during their execution.  When present, this overrides
+    -- 'interfaceCallbacksThrow'.  This maybe overridden by 'callbackThrows'.
   , moduleAddendum :: Addendum
     -- ^ The module's addendum.
   }
@@ -468,6 +493,7 @@ makeModule name hppPath cppPath = Module
   , moduleReqs = mempty
   , moduleHaskellName = Nothing
   , moduleExceptionHandlers = mempty
+  , moduleCallbacksThrow = Nothing
   , moduleAddendum = mempty
   }
 
@@ -518,6 +544,11 @@ moduleAddHaskellName name = do
       throwError $ concat
       ["moduleAddHaskellName: ", show m, " already has Haskell name ",
        show name', "; trying to add name ", show name, "."]
+
+-- | Changes 'callbackThrows' for all callbacks in a module that don't have it
+-- set explicitly.
+moduleSetCallbacksThrow :: MonadState Module m => Maybe Bool -> m ()
+moduleSetCallbacksThrow b = modify $ \m -> m { moduleCallbacksThrow = b }
 
 -- | A set of requirements of needed to use an identifier in C++ (function,
 -- type, etc.), via a set of 'Include's.  The monoid instance has 'mempty' as an
@@ -1477,8 +1508,8 @@ classSetSubclassOfMonomorphic cls = cls { classIsSubclassOfMonomorphic = True }
 
 -- | Marks a class as being used as an exception.  This makes the class
 -- throwable and catchable.
-makeClassException :: Class -> Class
-makeClassException cls = case classIsException cls of
+classMakeException :: Class -> Class
+classMakeException cls = case classIsException cls of
   False -> cls { classIsException = True }
   True -> cls
 
@@ -1771,6 +1802,20 @@ mkCtor = (CECtor .) . mkCtor_
 -- | The unwrapped version of 'mkCtor'.
 mkCtor_ :: String -> [Type] -> Ctor
 mkCtor_ = makeCtor_ . toExtName
+
+-- | Searches a class for a copy constructor, returning it if found.
+classFindCopyCtor :: Class -> Maybe Ctor
+classFindCopyCtor cls = case mapMaybe check $ classEntities cls of
+  [ctor] -> Just ctor
+  _ -> Nothing
+  where check entity = case entity of
+          CECtor ctor ->
+            let params = map (stripConst . normalizeType) (ctorParams ctor)
+            in if params == [Internal_TObj cls] ||
+                  params == [Internal_TRef $ Internal_TConst $ Internal_TObj cls]
+            then Just ctor
+            else Nothing
+          _ -> Nothing
 
 -- | A C++ class method declaration.
 --
@@ -2152,6 +2197,10 @@ data Callback = Callback
     -- ^ The callback's parameter types.
   , callbackReturn :: Type
     -- ^ The callback's return type.
+  , callbackThrows :: Maybe Bool
+    -- ^ Whether the callback supports throwing C++ exceptions from Haskell into
+    -- C++ during its execution.  When absent, the value is inherited from
+    -- 'moduleCallbacksThrow' and 'interfaceCallbacksThrow'.
   , callbackReqs :: Reqs
     -- ^ Requirements for the callback.
   , callbackAddendum :: Addendum
@@ -2182,12 +2231,13 @@ makeCallback :: ExtName
              -> [Type]  -- ^ Parameter types.
              -> Type  -- ^ Return type.
              -> Callback
-makeCallback extName paramTypes retType = Callback extName paramTypes retType mempty mempty
+makeCallback extName paramTypes retType =
+  Callback extName paramTypes retType Nothing mempty mempty
 
--- | Creates a 'Foreign.Hoppy.Generator.Types.fnT' from a callback's parameter
--- and return types.
-callbackToTFn :: Callback -> Type
-callbackToTFn = Internal_TFn <$> callbackParams <*> callbackReturn
+-- | Sets whether a callback supports handling thrown C++ exceptions and passing
+-- them into C++.
+callbackSetThrows :: Bool -> Callback -> Callback
+callbackSetThrows value cb = cb { callbackThrows = Just value }
 
 -- | Each exception class has a unique exception ID.
 newtype ExceptionId = ExceptionId

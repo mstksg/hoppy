@@ -33,6 +33,7 @@ library
       FlexibleContexts
     , FlexibleInstances
     , FunctionalDependencies
+    , LambdaCase
     , MultiParamTypeClasses
   other-extensions:
       GeneralizedNewtypeDeriving

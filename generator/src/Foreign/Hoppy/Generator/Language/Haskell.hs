@@ -89,6 +89,8 @@ module Foreign.Hoppy.Generator.Language.Haskell (
   toHsDataCtorName',
   toHsClassDeleteFnName',
   toHsClassDeleteFnPtrName',
+  toHsCtorName,
+  toHsCtorName',
   toHsMethodName,
   toHsMethodName',
   toHsClassEntityName,
@@ -103,6 +105,7 @@ module Foreign.Hoppy.Generator.Language.Haskell (
   HsTypeSide (..),
   cppTypeToHsTypeAndUse,
   getClassHaskellConversion,
+  callbackToTFn,
   prettyPrint,
   ) where
 
@@ -777,6 +780,18 @@ toHsClassDeleteFnPtrName' :: Class -> String
 toHsClassDeleteFnPtrName' cls =
   'd':'e':'l':'e':'t':'e':'P':'t':'r':'\'':toHsDataTypeName' Nonconst cls
 
+-- | Returns the name of the Haskell function that invokes the given
+-- constructor.
+toHsCtorName :: Class -> Ctor -> Generator String
+toHsCtorName cls ctor =
+  inFunction "toHsCtorName" $
+  toHsClassEntityName cls $ fromExtName $ ctorExtName ctor
+
+-- | Pure version of 'toHsCtorName' that doesn't create a qualified name.
+toHsCtorName' :: Class -> Ctor -> String
+toHsCtorName' cls ctor =
+  toHsClassEntityName' cls $ fromExtName $ ctorExtName ctor
+
 -- | Returns the name of the Haskell function that invokes the given method.
 toHsMethodName :: Class -> Method -> Generator String
 toHsMethodName cls method =
@@ -939,7 +954,7 @@ cppTypeToHsTypeAndUse side t =
       return $
         foldr HsTyFun (HsTyApp (HsTyCon $ UnQual $ HsIdent "HoppyP.IO") retHsType) paramHsTypes
     Internal_TCallback cb -> do
-      hsType <- cppTypeToHsTypeAndUse side $ callbackToTFn cb
+      hsType <- cppTypeToHsTypeAndUse side =<< callbackToTFn side cb
       case side of
         HsHsSide -> return hsType
         HsCSide -> do
@@ -967,6 +982,26 @@ getClassHaskellConversion cls = case classHaskellConversion $ classConversion cl
   ClassConversionManual c -> Just c
   ClassConversionToHeap -> Nothing
   ClassConversionToGc -> Nothing
+
+-- | Constructs the function type for a callback.  For Haskell, the type depends
+-- on the side; the C++ side has additional parameters.
+--
+-- Keep this in sync with the C++ generator's version.
+callbackToTFn :: HsTypeSide -> Callback -> Generator Type
+callbackToTFn side cb = do
+  needsExcParams <- case side of
+    HsCSide -> mayThrow
+    HsHsSide -> return False
+  return $ Internal_TFn ((if needsExcParams then addExcParams else id) $ callbackParams cb)
+                        (callbackReturn cb)
+
+  where mayThrow = case callbackThrows cb of
+          Just t -> return t
+          Nothing -> moduleCallbacksThrow <$> askModule >>= \mt -> case mt of
+            Just t -> return t
+            Nothing -> interfaceCallbacksThrow <$> askInterface
+
+        addExcParams = (++ [ptrT intT, ptrT $ ptrT voidT])
 
 -- | Prints a value like 'P.prettyPrint', but removes newlines so that they
 -- don't cause problems with this module's textual generation.  Should be mainly

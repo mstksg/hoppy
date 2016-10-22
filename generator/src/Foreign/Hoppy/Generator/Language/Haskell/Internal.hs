@@ -484,7 +484,8 @@ sayExportFn mode extName foreignName purity paramTypes retType exceptionHandlers
 -- >   -> IO (CCallback (CInt -> Ptr CChar -> IO CInt))
 -- >
 -- > name_newFunPtr :: (Int -> String -> IO Int) -> IO (FunPtr (CInt -> Ptr CChar -> IO CInt))
--- > name_newFunPtr f'hs = name'newFunPtr $ \arg1 arg2 ->
+-- > name_newFunPtr f'hs = name'newFunPtr $ \excIdPtr excPtrPtr arg1 arg2 ->
+-- >   internalHandleCallbackExceptions excIdPtr excPtrPtr $
 -- >   coerceIntegral arg1 >>= \arg1' ->
 -- >   (...decode the C string) >>= \arg2' ->
 -- >   fmap coerceIntegral
@@ -500,14 +501,13 @@ sayExportCallback mode cb =
     let name = callbackExtName cb
         paramTypes = callbackParams cb
         retType = callbackReturn cb
-        fnType = callbackToTFn cb
     hsNewFunPtrFnName <- toHsCallbackNewFunPtrFnName cb
     hsCtorName <- toHsCallbackCtorName cb
     let hsCtorName'newCallback = hsCtorName ++ "'newCallback"
         hsCtorName'newFunPtr = hsCtorName ++ "'newFunPtr"
 
-    hsFnCType <- cppTypeToHsTypeAndUse HsCSide fnType
-    hsFnHsType <- cppTypeToHsTypeAndUse HsHsSide fnType
+    hsFnCType <- cppTypeToHsTypeAndUse HsCSide =<< callbackToTFn HsCSide cb
+    hsFnHsType <- cppTypeToHsTypeAndUse HsHsSide =<< callbackToTFn HsHsSide cb
 
     let getWholeNewFunPtrFnType = do
           addImports $ mconcat [hsImportForForeign, hsImportForPrelude]
@@ -553,13 +553,17 @@ sayExportCallback mode cb =
         let paramCount = length paramTypes
             argNames = map toArgName [1..paramCount]
             argNames' = map (++ "'") argNames
-        addImports $ hsImport1 "Prelude" "($)"
+        throws <- getEffectiveCallbackThrows cb
+        addImports $ mconcat [hsImport1 "Prelude" "($)",
+                              hsImportForRuntime]
         ln
         saysLn [hsNewFunPtrFnName, " :: ", prettyPrint wholeNewFunPtrFnType]
-        saysLn $ hsNewFunPtrFnName : " f'hs = " : hsCtorName'newFunPtr : " $" : case argNames of
-          [] -> []
-          _ -> [" \\", unwords argNames, " ->"]
+        saysLn $ hsNewFunPtrFnName : " f'hs = " : hsCtorName'newFunPtr : " $" :
+          case (if throws then (["excIdPtr", "excPtrPtr"] ++) else id) argNames of
+            [] -> []
+            argNames' -> [" \\", unwords argNames', " ->"]
         indent $ do
+          when throws $ sayLn "HoppyFHR.internalHandleCallbackExceptions excIdPtr excPtrPtr $"
           forM_ (zip3 paramTypes argNames argNames') $ \(t, argName, argName') ->
             sayArgProcessing FromCpp t argName argName'
           sayCallAndProcessReturn FromCpp retType $
@@ -1301,12 +1305,13 @@ sayExportClassExceptionSupport doDecls cls =
   -- Generate a non-const CppException instance.
   exceptionId <- getClassExceptionId cls
   addImports hsImportForRuntime
+  ln
   saysLn ["instance HoppyFHR.CppException ", typeName,
           if doDecls then " where" else ""]
   when doDecls $ indent $ do
     ctorName <- toHsDataCtorName Unmanaged Nonconst cls
     ctorGcName <- toHsDataCtorName Managed Nonconst cls
-    addImports $ mconcat [hsImport1 "Prelude" "($)",
+    addImports $ mconcat [hsImports "Prelude" ["($)", "(.)", "(=<<)"],
                           hsImportForForeign,
                           hsImportForMap,
                           hsImportForPrelude]
@@ -1314,7 +1319,7 @@ sayExportClassExceptionSupport doDecls cls =
     indent $ do
       saysLn ["HoppyFHR.ExceptionClassInfo (HoppyFHR.ExceptionId ",
               show $ getExceptionId exceptionId, ") ", show typeName,
-              " upcasts' delete' toGc'"]
+              " upcasts' delete' copy' toGc'"]
 
       -- Note, similar "delete" and "toGc" functions are generated for the class's
       -- Deletable instance.
@@ -1322,6 +1327,16 @@ sayExportClassExceptionSupport doDecls cls =
               " (HoppyF.castPtr ptr' :: HoppyF.Ptr ", typeNameConst, ")"]
 
       indentSpaces 6 $ do
+        copyCtor <- fromMaybeM (throwError $ "Couldn't find a copy constructor in " ++
+                                show cls ++ ".") $
+                    classFindCopyCtor cls
+        copyCtorName <- toHsCtorName cls copyCtor
+        ctorName <- toHsDataCtorName Unmanaged Nonconst cls
+        ln
+        saysLn ["copy' = HoppyP.fmap (HoppyF.castPtr . HoppyFHR.toPtr) . ",
+                copyCtorName, " . ", ctorName, " . HoppyF.castPtr"]
+
+        ln
         saysLn ["toGc' ptr' = HoppyF.newForeignPtr ",
                 -- The foreign delete function takes a const pointer; we cast it to
                 -- take a Ptr () to match up with the ForeignPtr () we're creating,
@@ -1359,14 +1374,15 @@ sayExportClassExceptionSupport doDecls cls =
             sayLn "]"
 
     ln
-    saysLn ["cppExceptionBuild ptr' = ", ctorName,
-            " (HoppyF.castPtr ptr' :: HoppyF.Ptr ", typeName, ")"]
-    ln
-    saysLn ["cppExceptionBuildGc fptr' ptr' = ", ctorGcName,
+    saysLn ["cppExceptionBuild fptr' ptr' = ", ctorGcName,
             " fptr' (HoppyF.castPtr ptr' :: HoppyF.Ptr ", typeName, ")"]
+    ln
+    saysLn ["cppExceptionBuildToGc ptr' = HoppyFHR.toGc $ ", ctorName,
+            " (HoppyF.castPtr ptr' :: HoppyF.Ptr ", typeName, ")"]
 
   -- Generate a const CppException instance that piggybacks off of the
   -- non-const implementation.
+  ln
   saysLn ["instance HoppyFHR.CppException ", typeNameConst,
           if doDecls then " where" else ""]
   when doDecls $ indent $ do
@@ -1375,10 +1391,24 @@ sayExportClassExceptionSupport doDecls cls =
     constCastFnName <- toHsConstCastFnName Const cls
     saysLn ["cppExceptionInfo _ = HoppyFHR.cppExceptionInfo (HoppyP.undefined :: ",
             typeName, ")"]
-    saysLn ["cppExceptionBuild = ", constCastFnName,
-            " . HoppyFHR.cppExceptionBuild"]
-    saysLn ["cppExceptionBuildGc = (", constCastFnName,
-            " .) . HoppyFHR.cppExceptionBuildGc"]
+    saysLn ["cppExceptionBuild = (", constCastFnName,
+            " .) . HoppyFHR.cppExceptionBuild"]
+    saysLn ["cppExceptionBuildToGc = HoppyP.fmap ", constCastFnName,
+            " . HoppyFHR.cppExceptionBuildToGc"]
+
+  -- Generate a non-const CppThrowable instance.
+  ln
+  saysLn ["instance HoppyFHR.CppThrowable ", typeName,
+          if doDecls then " where" else ""]
+  when doDecls $ indent $ do
+    ctorName <- toHsDataCtorName Unmanaged Nonconst cls
+    ctorGcName <- toHsDataCtorName Managed Nonconst cls
+    addImports $ mconcat [hsImportForForeign,
+                          hsImportForPrelude]
+    saysLn ["toSomeCppException this'@(", ctorName, " ptr') = HoppyFHR.SomeCppException ",
+            "(HoppyFHR.cppExceptionInfo this') HoppyP.Nothing (HoppyF.castPtr ptr')"]
+    saysLn ["toSomeCppException this'@(", ctorGcName, " fptr' ptr') = HoppyFHR.SomeCppException ",
+            "(HoppyFHR.cppExceptionInfo this') (HoppyP.Just fptr') (HoppyF.castPtr ptr')"]
 
 sayExportClassCastPrimitives :: SayExportMode -> Class -> Generator ()
 sayExportClassCastPrimitives mode cls = withErrorContext "generating cast primitives" $ do
@@ -1612,6 +1642,13 @@ getEffectiveExceptionHandlers handlers = do
   -- Exception handlers declared lower in the hierarchy take precedence over
   -- those in the hierarchy; ExceptionHandlers is a left-biased monoid.
   return $ mconcat [handlers, moduleHandlers, ifaceHandlers]
+
+getEffectiveCallbackThrows :: Callback -> Generator Bool
+getEffectiveCallbackThrows cb = case callbackThrows cb of
+  Just b -> return b
+  Nothing -> moduleCallbacksThrow <$> askModule >>= \case
+    Just b -> return b
+    Nothing -> interfaceCallbacksThrow <$> askInterface
 
 getClassExceptionId :: Class -> Generator ExceptionId
 getClassExceptionId cls = do

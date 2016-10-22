@@ -20,6 +20,7 @@ module Main (main) where
 import Foreign.Hoppy.Generator.Main (run)
 import Foreign.Hoppy.Generator.Language.Haskell (addImports, sayLn)
 import Foreign.Hoppy.Generator.Spec
+import Foreign.Hoppy.Generator.Spec.ClassFeature
 import Foreign.Hoppy.Generator.Types
 import Language.Haskell.Syntax (
   HsName (HsIdent),
@@ -44,6 +45,7 @@ main = case interfaceResult of
 interfaceResult :: Either String Interface
 interfaceResult =
   interfaceAddHaskellModuleBase ["Foreign", "Hoppy", "Test"] =<<
+  interfaceSetExceptionSupportModule testModule <$>
   interface "test" modules
 
 modules :: [Module]
@@ -167,6 +169,8 @@ testModule =
   , ExportFn f_throwsWriteException
   , ExportFn f_throwsPtrCtr
   , ExportFn f_throwsAny
+  , ExportCallback cb_ThrowingCallback
+  , ExportFn f_invokeThrowingCallback
   ]
 
 c_IntBox :: Class
@@ -194,7 +198,8 @@ c_PtrCtr =
   addReqIncludes [includeLocal "ptrctr.hpp"] $
   -- This class is an exception, so that we can test the lifecycle of exception
   -- objects.
-  makeClassException $
+  classMakeException $
+  classAddFeatures [Copyable] $
   makeClass (ident "PtrCtr") Nothing []
   [ mkCtor "new" []
   , mkStaticMethod "newGcedObj" [] $ toGcT $ objT c_PtrCtr
@@ -699,26 +704,34 @@ f_takesBetterBoolsCallback =
 c_BaseException :: Class
 c_BaseException =
   addReqIncludes [includeLocal "exceptions.hpp"] $
-  makeClassException $
-  makeClass (ident "BaseException") Nothing [] []
+  classMakeException $
+  classAddFeatures [Copyable] $
+  makeClass (ident "BaseException") Nothing []
+  [ mkCtor "new" [] ]
 
 c_FileException :: Class
 c_FileException =
   addReqIncludes [includeLocal "exceptions.hpp"] $
-  makeClassException $
-  makeClass (ident "FileException") Nothing [c_BaseException] []
+  classMakeException $
+  classAddFeatures [Copyable] $
+  makeClass (ident "FileException") Nothing [c_BaseException]
+  [ mkCtor "new" [] ]
 
 c_ReadException :: Class
 c_ReadException =
   addReqIncludes [includeLocal "exceptions.hpp"] $
-  makeClassException $
-  makeClass (ident "ReadException") Nothing [c_FileException] []
+  classMakeException $
+  classAddFeatures [Copyable] $
+  makeClass (ident "ReadException") Nothing [c_FileException]
+  [ mkCtor "new" [] ]
 
 c_WriteException :: Class
 c_WriteException =
   addReqIncludes [includeLocal "exceptions.hpp"] $
-  makeClassException $
-  makeClass (ident "WriteException") Nothing [c_FileException] []
+  classMakeException $
+  classAddFeatures [Copyable] $
+  makeClass (ident "WriteException") Nothing [c_FileException]
+  [ mkCtor "new" [] ]
 
 f_throwsBaseException :: Function
 f_throwsBaseException =
@@ -755,3 +768,14 @@ f_throwsAny =
   addReqIncludes [includeLocal "functions.hpp"] $
   handleExceptions [CatchAll] $
   makeFn (ident "throwsAny") Nothing Nonpure [intT] voidT
+
+cb_ThrowingCallback :: Callback
+cb_ThrowingCallback =
+  callbackSetThrows True $
+  makeCallback (toExtName "ThrowingCallback") [] voidT
+
+f_invokeThrowingCallback :: Function
+f_invokeThrowingCallback =
+  addReqIncludes [includeLocal "functions.hpp"] $
+  makeFn (ident "invokeThrowingCallback") Nothing Nonpure
+  [callbackT cb_ThrowingCallback] intT

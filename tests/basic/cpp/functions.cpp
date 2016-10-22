@@ -312,3 +312,20 @@ void throwsAny(int i) {
     case 3: throw std::string("hi");  // A class non-exception class to Hoppy.
     }
 }
+
+int invokeThrowingCallback(ThrowingCallback cb) {
+    try {
+        cb();
+    } catch (const WriteException&) {
+        return 4;
+    } catch (const ReadException&) {
+        return 3;
+    } catch (const FileException&) {
+        return 2;
+    } catch (const BaseException&) {
+        return 1;
+    } catch (...) {
+        return 0;
+    }
+    return -1;
+}

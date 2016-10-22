@@ -136,11 +136,19 @@ sayModuleHeader = do
   addReqsM $ moduleReqs m
   mapM_ (sayExport False) $ M.elems $ moduleExports m
 
+  iface <- askInterface
+  when (interfaceExceptionSupportModule iface == Just m) $
+    sayExceptionSupport False
+
 sayModuleSource :: Generator ()
 sayModuleSource = do
   m <- askModule
   addInclude $ includeLocal $ moduleHppPath m
   mapM_ (sayExport True) $ M.elems $ moduleExports m
+
+  iface <- askInterface
+  when (interfaceExceptionSupportModule iface == Just m) $
+    sayExceptionSupport True
 
 sayExport :: Bool -> Export -> Generator ()
 sayExport sayBody export = case export of
@@ -549,6 +557,8 @@ sayArgNames count =
 
 sayExportCallback :: Bool -> Callback -> Generator ()
 sayExportCallback sayBody cb = do
+  throws <- getEffectiveCallbackThrows cb
+
   let className = callbackClassName cb
       implClassName = callbackImplClassName cb
       fnName = callbackFnName cb
@@ -565,7 +575,9 @@ sayExportCallback sayBody cb = do
 
   addReqsM . mconcat =<< mapM typeReqs (retType:paramTypes)
 
-  let fnCType = fnT paramCTypes retCType
+  let fnCType = fnT ((if throws then ([ptrT intT, ptrT $ ptrT voidT] ++) else id)
+                     paramCTypes)
+                    retCType
       fnPtrCType = ptrT fnCType
 
   if not sayBody
@@ -627,31 +639,74 @@ sayExportCallback sayBody cb = do
                   fnType $ Just $ do
         -- Convert arguments that aren't passed in directly.
         mapM_ (sayArgRead DoEncode) $ zip3 [1..] paramTypes paramCTypeMaybes
+
+        when throws $ do
+          says ["int ", exceptionIdArgName, " = 0;\n"]
+          says ["void *", exceptionPtrArgName, " = 0;\n"]
+
+          -- Add an include for the exception support module to be able to call the
+          -- C++ rethrow function.
+          iface <- askInterface
+          currentModule <- askModule
+          case interfaceExceptionSupportModule iface of
+            Just exceptionSupportModule ->
+              when (exceptionSupportModule /= currentModule) $
+                -- TODO Should this be includeStd?
+                addReqsM $ reqInclude $ includeLocal $ moduleHppPath exceptionSupportModule
+            Nothing -> abort $ "sayExportCallback: " ++ show iface ++
+                       " uses exceptions, so it needs an exception support " ++
+                       "module.  Please use interfaceSetExceptionSupportModule."
+
         -- Invoke the function pointer into foreign code.
-        let sayCall = say "f_(" >> sayArgNames paramCount >> say ")"
+        let sayCall = do
+              say "f_("
+              when throws $ do
+                says ["&", exceptionIdArgName, ", &", exceptionPtrArgName]
+                when (paramCount /= 0) $ say ", "
+              sayArgNames paramCount
+              say ")"
+
+            sayExceptionCheck = when throws $ do
+              says ["if (", exceptionIdArgName, " != 0) { ",
+                    exceptionRethrowFnName, "(", exceptionIdArgName, ", ",
+                    exceptionPtrArgName, "); }\n"]
+
         case (retType, retCTypeMaybe) of
-          (Internal_TVoid, Nothing) -> sayCall >> say ";\n"
-          (_, Nothing) -> say "return " >> sayCall >> say ";\n"
+          (Internal_TVoid, Nothing) -> do
+            sayCall >> say ";\n"
+            sayExceptionCheck
+          (_, Nothing) -> do
+            sayVar "result" Nothing retType >> say " = " >> sayCall >> say ";\n"
+            sayExceptionCheck
+            say "return result;\n"
           (Internal_TBitspace b, Just _) -> do
             addReqsM $ bitspaceReqs b
             let convFn = bitspaceToCppValueFn b
-            say "return "
+            sayVar "result" Nothing retType
+            say " = "
             forM_ convFn $ \f -> says [f, "("]
             sayCall
             when (isJust convFn) $ say ")"
             say ";\n";
+            sayExceptionCheck
+            say "return result;\n"
           (Internal_TObj cls1, Just retCType@(Internal_TPtr (Internal_TConst (Internal_TObj cls2))))
             | cls1 == cls2 -> do
-              sayVar "resultPtr" Nothing retCType >> say " = " >> sayCall >> say ";\n"
-              sayVar "result" Nothing retType >> say " = *resultPtr;\n"
-              say "delete resultPtr;\n"
-              say "return result;\n"
+            sayVar "resultPtr" Nothing retCType >> say " = " >> sayCall >> say ";\n"
+            sayVar "result" Nothing retType >> say " = *resultPtr;\n"
+            say "delete resultPtr;\n"
+            sayExceptionCheck
+            say "return result;\n"
           (Internal_TRef (Internal_TConst (Internal_TObj cls1)),
-           Just (Internal_TPtr (Internal_TConst (Internal_TObj cls2)))) | cls1 == cls2 ->
-            say "return *(" >> sayCall >> say ");\n"
+           Just (Internal_TPtr (Internal_TConst (Internal_TObj cls2)))) | cls1 == cls2 -> do
+            sayVar "result" Nothing retType >> say " = *" >> sayCall >> say ";\n"
+            sayExceptionCheck
+            say "return result;\n"
           (Internal_TRef (Internal_TObj cls1),
-           Just (Internal_TPtr (Internal_TObj cls2))) | cls1 == cls2 ->
-            say "return *(" >> sayCall >> say ");\n"
+           Just (Internal_TPtr (Internal_TObj cls2))) | cls1 == cls2 -> do
+            sayVar "result" Nothing retType >> say " = *" >> sayCall >> say ";\n"
+            sayExceptionCheck
+            say "return result;\n"
           ts -> abort $ concat
                 ["sayExportCallback: Unexpected return types ", show ts, "."]
 
@@ -674,6 +729,39 @@ sayExportCallback sayBody cb = do
                               cbType
       sayFunction fnName ["f", "release", "releaseRelease"] newCallbackFnType $ Just $
         says ["return new ", implClassName, "(f, release, releaseRelease);\n"]
+
+-- | Outputs interface-wide code needed to support exceptions.  Currently, this
+-- comprises the function for rethrowing in C++ an exception transferred from
+-- a foreign language.
+sayExceptionSupport :: Bool -> Generator ()
+sayExceptionSupport sayBody =
+  sayFunction exceptionRethrowFnName
+              ["excId", "voidPtr"]
+              (fnT [intT, ptrT voidT] voidT) $
+  if not sayBody
+  then Nothing
+  else Just $ do
+    iface <- askInterface
+    let excClasses = interfaceAllExceptionClasses iface
+
+    says ["switch (excId) {\n"]
+
+    forM_ excClasses $ \cls -> do
+      excId <- fmap getExceptionId $
+               fromMaybeM (abort $ "sayExceptionSupport: Internal error, " ++ show cls ++
+                           "should have an exception ID, but doesn't.") $
+               interfaceExceptionClassId iface cls
+      says ["case ", show excId, ": {\n"]
+      sayVar "excPtr" Nothing (ptrT $ objT cls) >> say " = reinterpret_cast<" >>
+        sayType Nothing (ptrT $ objT cls) >> says [">(voidPtr);\n"]
+      sayVar "exc" Nothing (objT cls) >> say " = *excPtr;\n"
+      say "delete excPtr;\n"
+      say "throw exc;\n"
+      say "}\n"
+
+    say "}\n"
+    says ["throw \"Internal Hoppy error, ", exceptionRethrowFnName,
+          " got an unknown exception ID.\";\n"]
 
 -- | Returns a 'Type' iff there is a C type distinct from the given C++ type
 -- that should be used for conversion.
@@ -729,10 +817,11 @@ typeReqs t = case t of
     -- TODO Is the right 'ReqsType' being used recursively here?
     mconcat <$> mapM typeReqs (retType:paramTypes)
   Internal_TCallback cb -> do
+    -- TODO Should this be includeStd?
     cbClassReqs <- reqInclude . includeLocal . moduleHppPath <$>
                    findExportModule (callbackExtName cb)
     -- TODO Is the right 'ReqsType' being used recursively here?
-    fnTypeReqs <- typeReqs $ callbackToTFn cb
+    fnTypeReqs <- typeReqs =<< callbackToTFn cb
     return $ cbClassReqs `mappend` fnTypeReqs
   Internal_TObj cls -> return $ classReqs cls
   Internal_TObjToHeap cls -> return $ classReqs cls
@@ -758,3 +847,28 @@ getEffectiveExceptionHandlers handlers = do
   -- Exception handlers declared lower in the hierarchy take precedence over
   -- those in the hierarchy; ExceptionHandlers is a left-biased monoid.
   return $ mconcat [handlers, moduleHandlers, ifaceHandlers]
+
+getEffectiveCallbackThrows :: Callback -> Generator Bool
+getEffectiveCallbackThrows cb = case callbackThrows cb of
+  Just b -> return b
+  Nothing -> moduleCallbacksThrow <$> askModule >>= \case
+    Just b -> return b
+    Nothing -> interfaceCallbacksThrow <$> askInterface
+
+-- | Constructs the function type for a callback.  A callback that throws has
+-- additional parameters.
+--
+-- Keep this in sync with the Haskell generator's version.
+callbackToTFn :: Callback -> Generator Type
+callbackToTFn cb = do
+  throws <- mayThrow
+  return $ Internal_TFn ((if throws then addExcParams else id) $ callbackParams cb)
+                        (callbackReturn cb)
+
+  where mayThrow = case callbackThrows cb of
+          Just t -> return t
+          Nothing -> moduleCallbacksThrow <$> askModule >>= \mt -> case mt of
+            Just t -> return t
+            Nothing -> interfaceCallbacksThrow <$> askInterface
+
+        addExcParams = (++ [ptrT intT, ptrT $ ptrT voidT])

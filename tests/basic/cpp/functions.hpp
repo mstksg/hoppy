@@ -120,5 +120,6 @@ void throwsReadException();
 void throwsWriteException();
 void throwsPtrCtr();
 void throwsAny(int i);
+int invokeThrowingCallback(ThrowingCallback);
 
 #endif

@@ -30,6 +30,7 @@ module Foreign.Hoppy.Generator.Language.Cpp (
   exceptionIdArgName,
   exceptionPtrArgName,
   exceptionVarName,
+  exceptionRethrowFnName,
   Chunk (..),
   runChunkWriter,
   evalChunkWriter,
@@ -125,6 +126,11 @@ exceptionPtrArgName = "excPtr"
 -- | The C++ variable name to use in a @catch@ statement in a gateway function.
 exceptionVarName :: String
 exceptionVarName = "exc_"
+
+-- | The name of the C++ function that receives an exception from a foreign
+-- language and throws it in C++.
+exceptionRethrowFnName :: String
+exceptionRethrowFnName = "genthrow"
 
 -- TODO Fixme, this is most likely backwards, it should be a finite set of
 -- non-identifier chars.  Also (maybe) share some logic with the toExtName

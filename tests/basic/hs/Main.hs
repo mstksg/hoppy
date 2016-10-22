@@ -40,6 +40,7 @@ import Foreign.C (
 import Foreign.ForeignPtr (ForeignPtr, castForeignPtr, withForeignPtr)
 import Foreign.Hoppy.Runtime (
   CBool,
+  CppThrowable,
   UnknownCppException,
   assign,
   catchCpp,
@@ -49,6 +50,7 @@ import Foreign.Hoppy.Runtime (
   encode,
   encodeAs,
   nullptr,
+  throwCpp,
   toGc,
   toPtr,
   touchCppPtr,
@@ -617,6 +619,32 @@ exceptionTests =
           writeIORef threw True
         readIORef threw >>= assertBool "Expected an exception to be thrown."
     ]
+
+  , let testThrowFromHaskellToCpp :: CppThrowable e => IO e -> Int -> IO ()
+        testThrowFromHaskellToCpp ctor expectedResult =
+          invokeThrowingCallback (ctor >>= throwCpp) >>= (@?= expectedResult)
+    in "throwing exceptions" ~: TestList
+       [ "throwing BaseException to C++" ~: testThrowFromHaskellToCpp baseException_new 1
+       , "throwing FileException to C++" ~: testThrowFromHaskellToCpp fileException_new 2
+       , "throwing ReadException to C++" ~: testThrowFromHaskellToCpp readException_new 3
+       , "throwing WriteException to C++" ~: testThrowFromHaskellToCpp writeException_new 4
+
+       , "throwing a GCed object" ~: do
+         testThrowFromHaskellToCpp (toGc =<< baseException_new) 1
+         performGC  -- This should not crash.
+
+       , "throwing and catching all in Haskell" ~: do
+         okVar <- newIORef False
+         e@(ReadException p) <- readException_new
+         catchCpp (throwCpp e) $ \e' -> case e' of
+           -- The exception should have been assigned to the garbage collector,
+           -- and the underlying object should be the same.
+           ReadExceptionGc _ p' -> do
+             p' @?= p
+             writeIORef okVar True
+           _ -> return ()
+         readIORef okVar >>= assertBool "Didn't catch exception as expected."
+       ]
 
   , "exception lifecycle" ~: TestList
     [ "a caught exception object is GCable" ~: do
