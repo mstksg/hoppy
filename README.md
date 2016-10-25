@@ -44,8 +44,8 @@ Hoppy consists of four Cabal packages:
 It can be built and installed with the `install.sh` script.
 
 There is a user's guide written using Haddock at
-`docs/src/Foreign/Hoppy/Documentation.hs`.  You can read it as is, or browse the
-HTML files in `docs/dist/doc` after building.
+`docs/src/Foreign/Hoppy/Documentation/UsersGuide.hs`.  You can read it as is, or
+browse the HTML files in `docs/dist/doc` after building.
 
 ## Developing
 
