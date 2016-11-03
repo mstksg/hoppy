@@ -20,7 +20,8 @@ library
   exposed-modules:
       Foreign.Hoppy.Runtime
   default-extensions:
-      ExistentialQuantification
+      DeriveDataTypeable
+    , ExistentialQuantification
     , FlexibleInstances
     , FunctionalDependencies
     , GeneralizedNewtypeDeriving

@@ -301,7 +301,7 @@ interface' ifName modules options = do
       extNamesToModules =
         M.unionsWith (++) $
         for modules $ \mod ->
-        let extNames = concatMap getAllExtNames $ moduleExports mod
+        let extNames = concatMap getAllExtNames $ M.elems $ moduleExports mod
         in M.fromList $ zip extNames $ repeat [mod]
 
       extNamesInMultipleModules :: [(ExtName, [Module])]

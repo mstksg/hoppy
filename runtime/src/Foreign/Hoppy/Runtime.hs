@@ -413,6 +413,7 @@ instance CppException UnknownCppException where
 data SomeCppException =
     SomeCppException ExceptionClassInfo (Maybe (ForeignPtr ())) (Ptr ())
   | SomeUnknownCppException
+  deriving (Typeable)
 
 instance Exception SomeCppException
 

@@ -42,7 +42,7 @@ import Data.List (intersperse)
 import qualified Data.Map as M
 import Data.Maybe (mapMaybe)
 #if !MIN_VERSION_base(4,8,0)
-import Data.Monoid (mconcat)
+import Data.Monoid (mconcat, mempty)
 #endif
 import qualified Data.Set as S
 import Foreign.Hoppy.Generator.Common

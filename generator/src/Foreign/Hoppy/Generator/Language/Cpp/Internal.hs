@@ -32,6 +32,9 @@ import Control.Monad.Reader (MonadReader, ReaderT, ask, runReaderT)
 import Control.Monad.Writer (WriterT, execWriterT, runWriterT, tell)
 import Control.Monad.Trans (lift)
 import Data.Foldable (forM_)
+#if !MIN_VERSION_base(4,8,0)
+import Data.Functor ((<$))
+#endif
 import Data.List (intersperse)
 import qualified Data.Map as M
 import Data.Maybe (catMaybes, fromMaybe, isJust)
