@@ -1170,128 +1170,133 @@ sayExportClassHsCtors mode cls =
    ctorExceptionHandlers) ctor
 
 sayExportClassHsSpecialFns :: SayExportMode -> Class -> Generator ()
-sayExportClassHsSpecialFns mode cls = withErrorContext "generating special functions" $ do
+sayExportClassHsSpecialFns mode cls = do
   typeName <- toHsDataTypeName Nonconst cls
   typeNameConst <- toHsDataTypeName Const cls
 
   -- Say the delete function.
-  case mode of
-    SayExportForeignImports -> when (classDtorIsPublic cls) $ do
-      addImports $ mconcat [hsImportForForeign, hsImportForPrelude]
-      saysLn ["foreign import ccall \"", classDeleteFnCppName cls, "\" ",
-              toHsClassDeleteFnName' cls, " :: HoppyF.Ptr ",
-              typeNameConst, " -> HoppyP.IO ()"]
-      saysLn ["foreign import ccall \"&", classDeleteFnCppName cls, "\" ",
-              toHsClassDeleteFnPtrName' cls, " :: HoppyF.FunPtr (HoppyF.Ptr ",
-              typeNameConst, " -> HoppyP.IO ())"]
-    -- The user interface to this is the generic 'delete' function, rendered
-    -- elsewhere.
-    SayExportDecls -> return ()
-    SayExportBoot -> return ()
+  withErrorContext "generating delete bindings" $
+    case mode of
+      SayExportForeignImports -> when (classDtorIsPublic cls) $ do
+        addImports $ mconcat [hsImportForForeign, hsImportForPrelude]
+        saysLn ["foreign import ccall \"", classDeleteFnCppName cls, "\" ",
+                toHsClassDeleteFnName' cls, " :: HoppyF.Ptr ",
+                typeNameConst, " -> HoppyP.IO ()"]
+        saysLn ["foreign import ccall \"&", classDeleteFnCppName cls, "\" ",
+                toHsClassDeleteFnPtrName' cls, " :: HoppyF.FunPtr (HoppyF.Ptr ",
+                typeNameConst, " -> HoppyP.IO ())"]
+      -- The user interface to this is the generic 'delete' function, rendered
+      -- elsewhere.
+      SayExportDecls -> return ()
+      SayExportBoot -> return ()
 
-  case mode of
-    SayExportForeignImports -> return ()
-    SayExportDecls -> do
-      addImports $ mconcat [hsImport1 "Prelude" "($)",
-                            hsImportForForeign,
-                            hsImportForRuntime]
-      ln
-      saysLn ["instance HoppyFHR.Assignable (HoppyF.Ptr (HoppyF.Ptr ", typeName, ")) ",
-              typeName, " where"]
-      indent $ sayLn "assign ptr' value' = HoppyF.poke ptr' $ HoppyFHR.toPtr value'"
-    SayExportBoot -> return ()
+  withErrorContext "generating pointer Assignable instance" $
+    case mode of
+      SayExportForeignImports -> return ()
+      SayExportDecls -> do
+        addImports $ mconcat [hsImport1 "Prelude" "($)",
+                              hsImportForForeign,
+                              hsImportForRuntime]
+        ln
+        saysLn ["instance HoppyFHR.Assignable (HoppyF.Ptr (HoppyF.Ptr ", typeName, ")) ",
+                typeName, " where"]
+        indent $ sayLn "assign ptr' value' = HoppyF.poke ptr' $ HoppyFHR.toPtr value'"
+      SayExportBoot -> return ()
 
   -- If the class has an assignment operator that takes its own type, then
   -- generate an instance of Assignable.
-  let assignmentMethods = flip filter (classMethods cls) $ \m ->
-        methodApplicability m == MNormal &&
-        (methodParams m == [objT cls] || methodParams m == [refT $ constT $ objT cls]) &&
-        (case methodImpl m of
-          RealMethod name -> name == FnOp OpAssign
-          FnMethod name -> name == FnOp OpAssign)
-      withAssignmentMethod f = case assignmentMethods of
-        [] -> return ()
-        [m] -> f m
-        _ ->
-          throwError $ concat
-          ["Can't determine an Assignable instance to generator for ", show cls,
-          " because it has multiple assignment operators ", show assignmentMethods]
-  when (mode == SayExportDecls) $ withAssignmentMethod $ \m -> do
-    addImports $ mconcat [hsImport1 "Prelude" "(>>)", hsImportForPrelude]
-    valueClassName <- toHsValueClassName cls
-    assignmentMethodName <- toHsMethodName cls m
-    ln
-    saysLn ["instance ", valueClassName, " a => HoppyFHR.Assignable ", typeName, " a where"]
-    indent $
-      saysLn ["assign x' y' = ", assignmentMethodName, " x' y' >> HoppyP.return ()"]
+  withErrorContext "generating Assignable instance" $ do
+    let assignmentMethods = flip filter (classMethods cls) $ \m ->
+          methodApplicability m == MNormal &&
+          (methodParams m == [objT cls] || methodParams m == [refT $ constT $ objT cls]) &&
+          (case methodImpl m of
+            RealMethod name -> name == FnOp OpAssign
+            FnMethod name -> name == FnOp OpAssign)
+        withAssignmentMethod f = case assignmentMethods of
+          [] -> return ()
+          [m] -> f m
+          _ ->
+            throwError $ concat
+            ["Can't determine an Assignable instance to generator for ", show cls,
+            " because it has multiple assignment operators ", show assignmentMethods]
+    when (mode == SayExportDecls) $ withAssignmentMethod $ \m -> do
+      addImports $ mconcat [hsImport1 "Prelude" "(>>)", hsImportForPrelude]
+      valueClassName <- toHsValueClassName cls
+      assignmentMethodName <- toHsMethodName cls m
+      ln
+      saysLn ["instance ", valueClassName, " a => HoppyFHR.Assignable ", typeName, " a where"]
+      indent $
+        saysLn ["assign x' y' = ", assignmentMethodName, " x' y' >> HoppyP.return ()"]
 
   -- A pointer to an object pointer is decodable to an object pointer by peeking
   -- at the value, so generate a Decodable instance.  You are now a two-star
   -- programmer.  There is a generic @Ptr (Ptr a)@ to @Ptr a@ instance which
   -- handles deeper levels.
-  case mode of
-    SayExportForeignImports -> return ()
-
-    SayExportDecls -> do
-      addImports $ mconcat [hsImport1 "Prelude" "(.)",
-                            hsImportForForeign,
-                            hsImportForPrelude,
-                            hsImportForRuntime]
-      ln
-      saysLn ["instance HoppyFHR.Decodable (HoppyF.Ptr (HoppyF.Ptr ",
-              typeName, ")) ", typeName, " where"]
-      indent $ do
-        ctorName <- toHsDataCtorName Unmanaged Nonconst cls
-        saysLn ["decode = HoppyP.fmap ", ctorName, " . HoppyF.peek"]
-
-    SayExportBoot -> do
-      addImports $ mconcat [hsImportForForeign, hsImportForRuntime]
-      ln
-      -- TODO Encodable.
-      saysLn ["instance HoppyFHR.Decodable (HoppyF.Ptr (HoppyF.Ptr ", typeName, ")) ", typeName]
-
-  -- Say Encodable and Decodable instances, if the class is encodable and
-  -- decodable.
-  forM_ (getClassHaskellConversion cls) $ \conv -> do
-    hsType <- classHaskellConversionType conv
-    let hsTypeStr = concat ["(", prettyPrint hsType, ")"]
+  withErrorContext "generating pointer Decodable instance" $ do
     case mode of
       SayExportForeignImports -> return ()
 
       SayExportDecls -> do
-        addImports $ mconcat [hsImportForPrelude, hsImportForRuntime]
-        castMethodName <- toHsCastMethodName Const cls
-
-        -- Say the Encodable instances.
+        addImports $ mconcat [hsImport1 "Prelude" "(.)",
+                              hsImportForForeign,
+                              hsImportForPrelude,
+                              hsImportForRuntime]
         ln
-        saysLn ["instance HoppyFHR.Encodable ", typeName, " ", hsTypeStr, " where"]
+        saysLn ["instance HoppyFHR.Decodable (HoppyF.Ptr (HoppyF.Ptr ",
+                typeName, ")) ", typeName, " where"]
         indent $ do
-          sayLn "encode ="
-          indent $ classHaskellConversionToCppFn conv
-        ln
-        saysLn ["instance HoppyFHR.Encodable ", typeNameConst, " ", hsTypeStr, " where"]
-        indent $
-          saysLn ["encode = HoppyP.fmap (", castMethodName,
-                  ") . HoppyFHR.encodeAs (HoppyP.undefined :: ", typeName, ")"]
-
-        -- Say the Decodable instances.
-        ln
-        saysLn ["instance HoppyFHR.Decodable ", typeName, " ", hsTypeStr, " where"]
-        indent $
-          saysLn ["decode = HoppyFHR.decode . ", castMethodName]
-        ln
-        saysLn ["instance HoppyFHR.Decodable ", typeNameConst, " ", hsTypeStr, " where"]
-        indent $ do
-          sayLn "decode ="
-          indent $ classHaskellConversionFromCppFn conv
+          ctorName <- toHsDataCtorName Unmanaged Nonconst cls
+          saysLn ["decode = HoppyP.fmap ", ctorName, " . HoppyF.peek"]
 
       SayExportBoot -> do
-        addImports hsImportForRuntime
+        addImports $ mconcat [hsImportForForeign, hsImportForRuntime]
         ln
-        saysLn ["instance HoppyFHR.Encodable ", typeName, " (", hsTypeStr, ")"]
-        saysLn ["instance HoppyFHR.Encodable ", typeNameConst, " (", hsTypeStr, ")"]
-        saysLn ["instance HoppyFHR.Decodable ", typeName, " (", hsTypeStr, ")"]
-        saysLn ["instance HoppyFHR.Decodable ", typeNameConst, " (", hsTypeStr, ")"]
+        -- TODO Encodable.
+        saysLn ["instance HoppyFHR.Decodable (HoppyF.Ptr (HoppyF.Ptr ", typeName, ")) ", typeName]
+
+  -- Say Encodable and Decodable instances, if the class is encodable and
+  -- decodable.
+  withErrorContext "generating Encodable/Decodable instances" $ do
+    forM_ (getClassHaskellConversion cls) $ \conv -> do
+      hsType <- classHaskellConversionType conv
+      let hsTypeStr = concat ["(", prettyPrint hsType, ")"]
+      case mode of
+        SayExportForeignImports -> return ()
+
+        SayExportDecls -> do
+          addImports $ mconcat [hsImportForPrelude, hsImportForRuntime]
+          castMethodName <- toHsCastMethodName Const cls
+
+          -- Say the Encodable instances.
+          ln
+          saysLn ["instance HoppyFHR.Encodable ", typeName, " ", hsTypeStr, " where"]
+          indent $ do
+            sayLn "encode ="
+            indent $ classHaskellConversionToCppFn conv
+          ln
+          saysLn ["instance HoppyFHR.Encodable ", typeNameConst, " ", hsTypeStr, " where"]
+          indent $
+            saysLn ["encode = HoppyP.fmap (", castMethodName,
+                    ") . HoppyFHR.encodeAs (HoppyP.undefined :: ", typeName, ")"]
+
+          -- Say the Decodable instances.
+          ln
+          saysLn ["instance HoppyFHR.Decodable ", typeName, " ", hsTypeStr, " where"]
+          indent $
+            saysLn ["decode = HoppyFHR.decode . ", castMethodName]
+          ln
+          saysLn ["instance HoppyFHR.Decodable ", typeNameConst, " ", hsTypeStr, " where"]
+          indent $ do
+            sayLn "decode ="
+            indent $ classHaskellConversionFromCppFn conv
+
+        SayExportBoot -> do
+          addImports hsImportForRuntime
+          ln
+          saysLn ["instance HoppyFHR.Encodable ", typeName, " (", hsTypeStr, ")"]
+          saysLn ["instance HoppyFHR.Encodable ", typeNameConst, " (", hsTypeStr, ")"]
+          saysLn ["instance HoppyFHR.Decodable ", typeName, " (", hsTypeStr, ")"]
+          saysLn ["instance HoppyFHR.Decodable ", typeNameConst, " (", hsTypeStr, ")"]
 
 -- | Generates a non-const @CppException@ instance if the class is an exception
 -- class.
