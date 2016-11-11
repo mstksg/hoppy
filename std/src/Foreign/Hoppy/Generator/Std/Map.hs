@@ -43,10 +43,6 @@ import Foreign.Hoppy.Generator.Language.Haskell (
   toHsClassEntityName,
   )
 import Foreign.Hoppy.Generator.Spec
-import Foreign.Hoppy.Generator.Spec.ClassFeature (
-  ClassFeature (Assignable, Copyable),
-  classAddFeatures,
-  )
 import Foreign.Hoppy.Generator.Std (ValueConversion (ConvertPtr, ConvertValue))
 import Foreign.Hoppy.Generator.Std.Internal (includeHelper)
 import Foreign.Hoppy.Generator.Std.Iterator

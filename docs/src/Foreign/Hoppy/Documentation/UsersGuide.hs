@@ -85,7 +85,6 @@ import Foreign.C (CInt)
 import Foreign.Hoppy.Generator.Language.Haskell
 import Foreign.Hoppy.Generator.Main
 import Foreign.Hoppy.Generator.Spec
-import Foreign.Hoppy.Generator.Spec.ClassFeature
 import Foreign.Hoppy.Generator.Types
 import Foreign.Hoppy.Generator.Version
 import Foreign.Hoppy.Runtime

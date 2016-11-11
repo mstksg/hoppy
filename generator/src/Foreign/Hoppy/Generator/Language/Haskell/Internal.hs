@@ -681,18 +681,16 @@ sayArgProcessing dir t fromVar toVar =
         withValuePtrName <- toHsWithValuePtrName cls
         saysLn [withValuePtrName, " ", fromVar,
                 " $ HoppyP.flip HoppyFHR.withCppPtr $ \\", toVar, " ->"]
-      FromCpp -> case classHaskellConversion $ classConversion cls of
-        ClassConversionNone ->
-          throwError $ concat
-          ["Can't pass a TObj of ", show cls,
-           " from C++ to Haskell because no class conversion is defined"]
-        ClassConversionManual _ -> do
+      FromCpp -> case classHaskellConversionFromCppFn $ getClassHaskellConversion cls of
+        Just _ -> do
           addImports $ mconcat [hsImport1 "Prelude" "(>>=)",
                                 hsImportForRuntime]
           ctorName <- toHsDataCtorName Unmanaged Const cls
           saysLn ["HoppyFHR.decode (", ctorName, " ", fromVar, ") >>= \\", toVar, " ->"]
-        ClassConversionToHeap -> sayArgProcessing dir (objToHeapT cls) fromVar toVar
-        ClassConversionToGc -> sayArgProcessing dir (toGcT t) fromVar toVar
+        Nothing ->
+          throwError $ concat
+          ["Can't pass a TObj of ", show cls,
+           " from C++ to Haskell because no class decode conversion is defined"]
     Internal_TObjToHeap cls -> case dir of
       ToCpp -> throwError $ objToHeapTWrongDirectionErrorMsg Nothing cls
       FromCpp -> sayArgProcessing dir (ptrT $ objT cls) fromVar toVar
@@ -795,19 +793,17 @@ sayCallAndProcessReturn dir t callWords =
         saysLn [ctorName, "=<<"]
         sayCall
     Internal_TObj cls -> case dir of
-      ToCpp -> case classHaskellConversion $ classConversion cls of
-        ClassConversionNone ->
-          throwError $ concat
-          ["Can't return a TObj of ", show cls,
-           " from C++ to Haskell because no class conversion is defined"]
-        ClassConversionManual _ -> do
+      ToCpp -> case classHaskellConversionFromCppFn $ getClassHaskellConversion cls of
+        Just _ -> do
           addImports $ mconcat [hsImports "Prelude" ["(.)", "(=<<)"],
                                 hsImportForRuntime]
           ctorName <- toHsDataCtorName Unmanaged Const cls
           saysLn ["(HoppyFHR.decodeAndDelete . ", ctorName, ") =<<"]
           sayCall
-        ClassConversionToHeap -> sayCallAndProcessReturn dir (objToHeapT cls) callWords
-        ClassConversionToGc -> sayCallAndProcessReturn dir (toGcT t) callWords
+        Nothing ->
+          throwError $ concat
+          ["Can't return a TObj of ", show cls,
+           " from C++ to Haskell because no class decode conversion is defined"]
       FromCpp -> do
         addImports $ mconcat [hsImports "Prelude" ["(.)", "(=<<)"],
                               hsImportForPrelude,
@@ -925,20 +921,25 @@ sayExportClassHsClass doDecls cls cst = withErrorContext "generating Haskell typ
                             hsImportForPrelude]
       indent $ saysLn [hsWithValuePtrName, " = HoppyP.flip ($) . ", hsCastMethodName]
 
-    -- When the class has a native Haskell type, also print an instance for it.
-    forM_ (getClassHaskellConversion cls) $ \conv -> do
-      hsType <- classHaskellConversionType conv
-      ln
-      saysLn ["#if MIN_VERSION_base(4,8,0)"]
-      saysLn ["instance {-# OVERLAPPING #-} ", hsValueClassName, " (", prettyPrint hsType, ")",
-              if doDecls then " where" else ""]
-      saysLn ["#else"]
-      saysLn ["instance ", hsValueClassName, " (", prettyPrint hsType, ")",
-              if doDecls then " where" else ""]
-      saysLn ["#endif"]
-      when doDecls $ do
-        addImports hsImportForRuntime
-        indent $ saysLn [hsWithValuePtrName, " = HoppyFHR.withCppObj"]
+    -- When the class is encodable to a native Haskell type, also print an
+    -- instance for it.
+    let conv = getClassHaskellConversion cls
+    case (classHaskellConversionType conv,
+          classHaskellConversionToCppFn conv) of
+      (Just hsTypeGen, Just _) -> do
+        hsType <- hsTypeGen
+        ln
+        saysLn ["#if MIN_VERSION_base(4,8,0)"]
+        saysLn ["instance {-# OVERLAPPING #-} ", hsValueClassName, " (", prettyPrint hsType, ")",
+                if doDecls then " where" else ""]
+        saysLn ["#else"]
+        saysLn ["instance ", hsValueClassName, " (", prettyPrint hsType, ")",
+                if doDecls then " where" else ""]
+        saysLn ["#endif"]
+        when doDecls $ do
+          addImports hsImportForRuntime
+          indent $ saysLn [hsWithValuePtrName, " = HoppyFHR.withCppObj"]
+      _ -> return ()
 
   -- Print the pointer class definition.
   addExport' hsPtrClassName
@@ -1024,6 +1025,7 @@ sayExportClassHsType doDecls cls cst = withErrorContext "generating Haskell data
               ln
               saysLn ["touchCppPtr (", hsCtor, " _) = HoppyP.return ()"]
               saysLn ["touchCppPtr (", hsCtorGc, " fptr' _) = HoppyF.touchForeignPtr fptr'"]
+
             when (classDtorIsPublic cls) $ do
               addImports $ hsImport1 "Prelude" "(==)"
               ln
@@ -1055,9 +1057,26 @@ sayExportClassHsType doDecls cls cst = withErrorContext "generating Haskell data
                         " :: HoppyF.FunPtr (HoppyF.Ptr () -> HoppyP.IO ())) ",
                         "(HoppyF.castPtr ptr' :: HoppyF.Ptr ())"]
                 saysLn ["toGc this'@(", hsCtorGc, " {}) = HoppyP.return this'"]
+
+            forM_ (classFindCopyCtor cls) $ \copyCtor -> do
+              copyCtorName <- toHsCtorName cls copyCtor
+              ln
+              saysLn ["instance HoppyFHR.Copyable ", hsTypeName, " ",
+                      case cst of
+                        Nonconst -> hsTypeName
+                        Const -> hsTypeNameOppConst,
+                      " where copy = ", copyCtorName]
+
     else do saysLn ["instance HoppyFHR.CppPtr ", hsTypeName]
+
             when (classDtorIsPublic cls) $
               saysLn ["instance HoppyFHR.Deletable ", hsTypeName]
+
+            forM_ (classFindCopyCtor cls) $ \_ ->
+              saysLn ["instance HoppyFHR.Copyable ", hsTypeName, " ",
+                      case cst of
+                        Nonconst -> hsTypeName
+                        Const -> hsTypeNameOppConst]
 
   -- Generate instances for all superclasses' typeclasses.
   genInstances hsTypeName [] cls
@@ -1257,46 +1276,63 @@ sayExportClassHsSpecialFns mode cls = do
   -- Say Encodable and Decodable instances, if the class is encodable and
   -- decodable.
   withErrorContext "generating Encodable/Decodable instances" $ do
-    forM_ (getClassHaskellConversion cls) $ \conv -> do
-      hsType <- classHaskellConversionType conv
-      let hsTypeStr = concat ["(", prettyPrint hsType, ")"]
+    let conv = getClassHaskellConversion cls
+    forM_ (classHaskellConversionType conv) $ \hsTypeGen -> do
+      let hsTypeStrGen = hsTypeGen >>= \hsType -> return $ "(" ++ prettyPrint hsType ++ ")"
+
       case mode of
         SayExportForeignImports -> return ()
 
         SayExportDecls -> do
-          addImports $ mconcat [hsImportForPrelude, hsImportForRuntime]
-          castMethodName <- toHsCastMethodName Const cls
-
           -- Say the Encodable instances.
-          ln
-          saysLn ["instance HoppyFHR.Encodable ", typeName, " ", hsTypeStr, " where"]
-          indent $ do
-            sayLn "encode ="
-            indent $ classHaskellConversionToCppFn conv
-          ln
-          saysLn ["instance HoppyFHR.Encodable ", typeNameConst, " ", hsTypeStr, " where"]
-          indent $
-            saysLn ["encode = HoppyP.fmap (", castMethodName,
-                    ") . HoppyFHR.encodeAs (HoppyP.undefined :: ", typeName, ")"]
+          forM_ (classHaskellConversionToCppFn conv) $ \toCppFnGen -> do
+            hsTypeStr <- hsTypeStrGen
+            addImports $ mconcat [hsImportForPrelude, hsImportForRuntime]
+            castMethodName <- toHsCastMethodName Const cls
+
+            ln
+            saysLn ["instance HoppyFHR.Encodable ", typeName, " ", hsTypeStr, " where"]
+            indent $ do
+              sayLn "encode ="
+              indent toCppFnGen
+            ln
+            saysLn ["instance HoppyFHR.Encodable ", typeNameConst, " ", hsTypeStr, " where"]
+            indent $
+              saysLn ["encode = HoppyP.fmap (", castMethodName,
+                      ") . HoppyFHR.encodeAs (HoppyP.undefined :: ", typeName, ")"]
 
           -- Say the Decodable instances.
-          ln
-          saysLn ["instance HoppyFHR.Decodable ", typeName, " ", hsTypeStr, " where"]
-          indent $
-            saysLn ["decode = HoppyFHR.decode . ", castMethodName]
-          ln
-          saysLn ["instance HoppyFHR.Decodable ", typeNameConst, " ", hsTypeStr, " where"]
-          indent $ do
-            sayLn "decode ="
-            indent $ classHaskellConversionFromCppFn conv
+          forM_ (classHaskellConversionFromCppFn conv) $ \fromCppFnGen -> do
+            hsTypeStr <- hsTypeStrGen
+            addImports hsImportForRuntime
+            castMethodName <- toHsCastMethodName Const cls
+
+            ln
+            saysLn ["instance HoppyFHR.Decodable ", typeName, " ", hsTypeStr, " where"]
+            indent $
+              saysLn ["decode = HoppyFHR.decode . ", castMethodName]
+            ln
+            saysLn ["instance HoppyFHR.Decodable ", typeNameConst, " ", hsTypeStr, " where"]
+            indent $ do
+              sayLn "decode ="
+              indent fromCppFnGen
 
         SayExportBoot -> do
-          addImports hsImportForRuntime
-          ln
-          saysLn ["instance HoppyFHR.Encodable ", typeName, " (", hsTypeStr, ")"]
-          saysLn ["instance HoppyFHR.Encodable ", typeNameConst, " (", hsTypeStr, ")"]
-          saysLn ["instance HoppyFHR.Decodable ", typeName, " (", hsTypeStr, ")"]
-          saysLn ["instance HoppyFHR.Decodable ", typeNameConst, " (", hsTypeStr, ")"]
+          -- Say the Encodable instances.
+          forM_ (classHaskellConversionToCppFn conv) $ \_ -> do
+            hsTypeStr <- hsTypeStrGen
+            addImports hsImportForRuntime
+            ln
+            saysLn ["instance HoppyFHR.Encodable ", typeName, " (", hsTypeStr, ")"]
+            saysLn ["instance HoppyFHR.Encodable ", typeNameConst, " (", hsTypeStr, ")"]
+
+          -- Say the Decodable instances.
+          forM_ (classHaskellConversionFromCppFn conv) $ \_ -> do
+            hsTypeStr <- hsTypeStrGen
+            addImports hsImportForRuntime
+            ln
+            saysLn ["instance HoppyFHR.Decodable ", typeName, " (", hsTypeStr, ")"]
+            saysLn ["instance HoppyFHR.Decodable ", typeNameConst, " (", hsTypeStr, ")"]
 
 -- | Generates a non-const @CppException@ instance if the class is an exception
 -- class.
@@ -1332,14 +1368,10 @@ sayExportClassExceptionSupport doDecls cls =
               " (HoppyF.castPtr ptr' :: HoppyF.Ptr ", typeNameConst, ")"]
 
       indentSpaces 6 $ do
-        copyCtor <- fromMaybeM (throwError $ "Couldn't find a copy constructor in " ++
-                                show cls ++ ".") $
-                    classFindCopyCtor cls
-        copyCtorName <- toHsCtorName cls copyCtor
         ctorName <- toHsDataCtorName Unmanaged Nonconst cls
         ln
-        saysLn ["copy' = HoppyP.fmap (HoppyF.castPtr . HoppyFHR.toPtr) . ",
-                copyCtorName, " . ", ctorName, " . HoppyF.castPtr"]
+        saysLn ["copy' = HoppyP.fmap (HoppyF.castPtr . HoppyFHR.toPtr) . HoppyFHR.copy . ",
+                ctorName, " . HoppyF.castPtr"]
 
         ln
         saysLn ["toGc' ptr' = HoppyF.newForeignPtr ",
@@ -1558,25 +1590,15 @@ fnToHsTypeAndUse side purity paramTypes returnType exceptionHandlers = do
   let context = mapMaybe fst params :: HsContext
       hsParams = map snd params
 
-  -- Determine the 'HsHsSide' return type for the function.  If the function is
-  -- returning a 'TObj' of a class that uses 'ClassConversionToHeap' or
-  -- 'ClassConversionToGc', then first we wrap the return type.  Then we do the
-  -- conversion to a Haskell type, and wrap the result in 'IO' if the function
-  -- is impure.  (HsCSide types always get wrapped in IO.)
-  returnForGc <- case returnType of
-    Internal_TObj cls -> case classHaskellConversion $ classConversion cls of
-      ClassConversionNone ->
-        throwError $ concat ["Expected ", show cls, " to be returnable from a C++ function"]
-      ClassConversionManual _ -> return returnType
-      ClassConversionToHeap -> return $ objToHeapT cls
-      ClassConversionToGc -> return $ toGcT returnType
-    _ -> return returnType
-  hsReturnForGc <- cppTypeToHsTypeAndUse side returnForGc
+  -- Determine the 'HsHsSide' return type for the function.  Do the conversion
+  -- to a Haskell type, and wrap the result in 'IO' if the function is impure.
+  -- (HsCSide types always get wrapped in IO.)
+  hsReturnInitial <- cppTypeToHsTypeAndUse side returnType
   hsReturnForPurity <- case (purity, side) of
-    (Pure, HsHsSide) -> return hsReturnForGc
+    (Pure, HsHsSide) -> return hsReturnInitial
     _ -> do
       addImports hsImportForPrelude
-      return $ HsTyApp (HsTyCon $ UnQual $ HsIdent "HoppyP.IO") hsReturnForGc
+      return $ HsTyApp (HsTyCon $ UnQual $ HsIdent "HoppyP.IO") hsReturnInitial
 
   return $ HsQualType context $ foldr HsTyFun hsReturnForPurity hsParams
 

@@ -20,7 +20,6 @@ module Main (main) where
 import Foreign.Hoppy.Generator.Main (run)
 import Foreign.Hoppy.Generator.Language.Haskell (addImports, sayLn)
 import Foreign.Hoppy.Generator.Spec
-import Foreign.Hoppy.Generator.Spec.ClassFeature
 import Foreign.Hoppy.Generator.Types
 import Language.Haskell.Syntax (
   HsName (HsIdent),
@@ -178,11 +177,11 @@ c_IntBox =
   addReqIncludes [includeLocal "intbox.hpp"] $
   classSetHaskellConversion
     ClassHaskellConversion
-    { classHaskellConversionType = do
+    { classHaskellConversionType = Just $ do
       addImports $ hsWholeModuleImport "Foreign.Hoppy.Test.Basic.HsBox"
       return $ HsTyCon $ UnQual $ HsIdent "HsBox"
-    , classHaskellConversionToCppFn = sayLn "intBox_newWithValue . getHsBox"
-    , classHaskellConversionFromCppFn = do
+    , classHaskellConversionToCppFn = Just $ sayLn "intBox_newWithValue . getHsBox"
+    , classHaskellConversionFromCppFn = Just $ do
       addImports $ hsImports "Prelude" ["(.)", "fmap"]
       sayLn "fmap HsBox . intBox_get"
     } $
@@ -217,6 +216,7 @@ c_PtrCtrWithToHeapConversion :: Class
 c_PtrCtrWithToHeapConversion =
   addReqIncludes [includeLocal "ptrctr.hpp"] $
   classSetConversionToHeap $
+  classAddFeatures [Copyable] $
   makeClass (ident "PtrCtr") (Just $ toExtName "PtrCtrWithToHeapConversion") []
   [ mkCtor "new" []
   , mkStaticMethod' "newGcedObj" "newHeapObj" [] $ objT c_PtrCtrWithToHeapConversion
@@ -229,6 +229,7 @@ c_PtrCtrWithToGcConversion :: Class
 c_PtrCtrWithToGcConversion =
   addReqIncludes [includeLocal "ptrctr.hpp"] $
   classSetConversionToGc $
+  classAddFeatures [Copyable] $
   makeClass (ident "PtrCtr") (Just $ toExtName "PtrCtrWithToGcConversion") []
   [ mkCtor "new" []
   , mkStaticMethod "newGcedObj" [] $ objT c_PtrCtrWithToGcConversion

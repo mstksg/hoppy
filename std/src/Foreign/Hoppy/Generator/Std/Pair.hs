@@ -30,10 +30,6 @@ module Foreign.Hoppy.Generator.Std.Pair (
 import Data.Monoid (mconcat)
 #endif
 import Foreign.Hoppy.Generator.Spec
-import Foreign.Hoppy.Generator.Spec.ClassFeature (
-  ClassFeature (Assignable, Copyable),
-  classAddFeatures,
-  )
 import Foreign.Hoppy.Generator.Std.Internal (includeHelper)
 import Foreign.Hoppy.Generator.Types
 import Foreign.Hoppy.Generator.Version (CppVersion (Cpp2011), activeCppVersion, collect, just, test)

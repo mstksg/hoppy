@@ -17,6 +17,13 @@
   "makeClass ... [ctors] $ [methods] ++ mkProps [props]" to
   "makeClass ... [ctors..., methods..., props...]".
 
+- [API change] Split class convertibility into convertibility in each direction
+  (issue #15).  Now classSetConversionToGc and classSetConversionToHeap are not
+  special; they're just implemented as a regular class conversion that only
+  supports decoding.  This allows container classes whose conversions use
+  'encode' and 'decode' to convert their elements, to contain convert-to-GC/heap
+  objects as well now.
+
 - Added support for class member variables.
 
 - Added support for function pointers (issue #14).

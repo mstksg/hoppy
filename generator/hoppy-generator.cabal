@@ -29,6 +29,8 @@ library
     , Foreign.Hoppy.Generator.Common.Consume
     , Foreign.Hoppy.Generator.Language.Cpp.Internal
     , Foreign.Hoppy.Generator.Language.Haskell.Internal
+    , Foreign.Hoppy.Generator.Spec.Base
+    , Foreign.Hoppy.Generator.Spec.Conversion
   default-extensions:
       FlexibleContexts
     , FlexibleInstances

@@ -19,6 +19,7 @@
 
 -- | Bindings for common class operations, such as copy construction.
 module Foreign.Hoppy.Generator.Spec.ClassFeature (
+  -- * Class features
   ClassFeature (..),
   classAddFeatures,
   ) where
@@ -26,7 +27,7 @@ module Foreign.Hoppy.Generator.Spec.ClassFeature (
 #if !MIN_VERSION_base(4,8,0)
 import Data.Monoid (mempty)
 #endif
-import Foreign.Hoppy.Generator.Spec
+import Foreign.Hoppy.Generator.Spec.Base
 import Foreign.Hoppy.Generator.Types
 
 -- | Sets of functionality that can be stamped onto a class with

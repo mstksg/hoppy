@@ -26,6 +26,7 @@ module Foreign.Hoppy.Runtime (
   CppPtr (..),
   Deletable (..),
   Assignable (..),
+  Copyable (..),
   Encodable (..),
   encodeAs,
   Decodable (..),
@@ -187,6 +188,14 @@ instance Assignable (Ptr CDouble) Double where
 
 instance Storable a => Assignable (Ptr a) a where
   assign = poke
+
+-- | A typeclass for creating copies of C++ objects.  Every C++ class with a
+-- copy constructor will have two instances:
+--
+-- > instance Copyable Foo Foo
+-- > instance Copyable FooConst Foo
+class Copyable from to | from -> to where
+  copy :: from -> IO to
 
 -- | For a C++ class that also has a native Haskell representation (e.g. value
 -- types such as @std::string@), this typeclass allows converting a Haskell

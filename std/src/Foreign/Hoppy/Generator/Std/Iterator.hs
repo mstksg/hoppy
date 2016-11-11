@@ -29,6 +29,7 @@ module Foreign.Hoppy.Generator.Std.Iterator (
 import Data.Maybe (catMaybes, isJust)
 import Foreign.Hoppy.Generator.Spec (
   Class,
+  ClassFeature (Assignable, Copyable, Equatable),
   MethodApplicability (MNormal),
   Operator (
     OpAdd,
@@ -43,15 +44,12 @@ import Foreign.Hoppy.Generator.Spec (
   Type,
   addReqIncludes,
   classAddEntities,
+  classAddFeatures,
   ident2,
   makeFnMethod,
   mkConstMethod',
   mkCtor,
   mkMethod',
-  )
-import Foreign.Hoppy.Generator.Spec.ClassFeature (
-  ClassFeature (Assignable, Copyable, Equatable),
-  classAddFeatures,
   )
 import Foreign.Hoppy.Generator.Types
 import Foreign.Hoppy.Generator.Std.Internal (includeHelper)

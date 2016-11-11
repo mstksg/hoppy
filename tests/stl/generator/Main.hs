@@ -24,10 +24,6 @@ import Data.Monoid (mempty)
 #endif
 import Foreign.Hoppy.Generator.Main (run)
 import Foreign.Hoppy.Generator.Spec
-import Foreign.Hoppy.Generator.Spec.ClassFeature (
-  ClassFeature (Assignable, Comparable, Copyable, Equatable),
-  classAddFeatures,
-  )
 import Foreign.Hoppy.Generator.Std (ValueConversion (ConvertPtr, ConvertValue), mod_std)
 import Foreign.Hoppy.Generator.Std.String (c_string)
 import Foreign.Hoppy.Generator.Types

@@ -24,7 +24,6 @@ import Data.Monoid (mconcat)
 #endif
 import Foreign.Hoppy.Generator.Language.Haskell (addImports, sayLn)
 import Foreign.Hoppy.Generator.Spec
-import Foreign.Hoppy.Generator.Spec.ClassFeature
 import Foreign.Hoppy.Generator.Types
 import Language.Haskell.Syntax (
   HsName (HsIdent),
@@ -39,13 +38,13 @@ c_string =
   classAddFeatures [Assignable, Comparable, Copyable, Equatable] $
   classSetHaskellConversion
     ClassHaskellConversion
-      { classHaskellConversionType = do
+      { classHaskellConversionType = Just $ do
         addImports hsImportForPrelude
         return $ HsTyCon $ UnQual $ HsIdent "HoppyP.String"
-      , classHaskellConversionToCppFn = do
+      , classHaskellConversionToCppFn = Just $ do
         addImports $ mconcat [hsImportForPrelude, hsImportForForeignC]
         sayLn "HoppyP.flip HoppyFC.withCString stdString_newFromCString"
-      , classHaskellConversionFromCppFn = do
+      , classHaskellConversionFromCppFn = Just $ do
         addImports $ mconcat [hsImport1 "Control.Monad" "(<=<)", hsImportForForeignC]
         sayLn "HoppyFC.peekCString <=< stdString_c_str"
       } $

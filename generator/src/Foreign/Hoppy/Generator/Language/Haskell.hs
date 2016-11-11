@@ -133,7 +133,7 @@ import Data.Monoid (Monoid, mappend, mconcat, mempty)
 import qualified Data.Set as S
 import Data.Tuple (swap)
 import Foreign.Hoppy.Generator.Common
-import Foreign.Hoppy.Generator.Spec
+import Foreign.Hoppy.Generator.Spec.Base
 import Foreign.Hoppy.Generator.Types
 import qualified Language.Haskell.Pretty as P
 import Language.Haskell.Syntax (
@@ -962,11 +962,11 @@ cppTypeToHsTypeAndUse side t =
           return $ HsTyApp (HsTyCon $ UnQual $ HsIdent "HoppyFHR.CCallback") hsType
     Internal_TObj cls -> case side of
       HsCSide -> cppTypeToHsTypeAndUse side $ ptrT $ constT t
-      HsHsSide -> case getClassHaskellConversion cls of
+      HsHsSide -> case classHaskellConversionType $ getClassHaskellConversion cls of
+        Just typeGen -> typeGen
         Nothing ->
           throwError $ concat
           ["Expected a Haskell type for ", show cls, " but there isn't one"]
-        Just c -> classHaskellConversionType c
     Internal_TObjToHeap cls -> cppTypeToHsTypeAndUse side $ ptrT $ objT cls
     Internal_TToGc t' -> case t' of
       Internal_TRef _ -> cppTypeToHsTypeAndUse side t'  -- References behave the same as pointers.
@@ -975,13 +975,9 @@ cppTypeToHsTypeAndUse side t =
       _ -> throwError $ tToGcInvalidFormErrorMessage Nothing t'
     Internal_TConst t' -> cppTypeToHsTypeAndUse side t'
 
--- | Returns the 'ClassHaskellConversion' of a class, if it has one.
-getClassHaskellConversion :: Class -> Maybe ClassHaskellConversion
-getClassHaskellConversion cls = case classHaskellConversion $ classConversion cls of
-  ClassConversionNone -> Nothing
-  ClassConversionManual c -> Just c
-  ClassConversionToHeap -> Nothing
-  ClassConversionToGc -> Nothing
+-- | Returns the 'ClassHaskellConversion' of a class.
+getClassHaskellConversion :: Class -> ClassHaskellConversion
+getClassHaskellConversion = classHaskellConversion . classConversion
 
 -- | Constructs the function type for a callback.  For Haskell, the type depends
 -- on the side; the C++ side has additional parameters.

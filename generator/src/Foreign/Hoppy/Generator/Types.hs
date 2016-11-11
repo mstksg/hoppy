@@ -58,7 +58,7 @@ module Foreign.Hoppy.Generator.Types (
   constT,
   ) where
 
-import Foreign.Hoppy.Generator.Spec
+import Foreign.Hoppy.Generator.Spec.Base
 
 -- | C++ @void@, Haskell @()@.
 voidT = Internal_TVoid
