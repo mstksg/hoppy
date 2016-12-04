@@ -15,7 +15,7 @@ The `LICENSE` file contains information about Hoppy's license.
 
 ## Dependencies
 
-- GHC 7.8-7.10
+- GHC 7.8-8.0
 - haskell-src (for binding development only)
 - mtl (for binding development only)
 
