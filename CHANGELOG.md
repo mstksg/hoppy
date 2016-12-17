@@ -1,6 +1,8 @@
 # Hoppy Changelog
 
-## Unreleased 0.3.0
+## Unreleased
+
+## 0.3.0 (2016-12-16)
 
 - [API change] Added support for customizing the prefixes of class methods and
   constructors, as well as enum and bitspace values, so that we can simplify the
