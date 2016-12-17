@@ -15,8 +15,13 @@
 -- You should have received a copy of the GNU Affero General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+{-# LANGUAGE CPP #-}
+
 module Main (main) where
 
+#if !MIN_VERSION_base(4,8,0)
+import Control.Applicative ((<$>))
+#endif
 import Foreign.Hoppy.Generator.Main (run)
 import Foreign.Hoppy.Generator.Language.Haskell (addImports, sayLn)
 import Foreign.Hoppy.Generator.Spec

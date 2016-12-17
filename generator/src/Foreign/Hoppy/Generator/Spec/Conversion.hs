@@ -15,6 +15,8 @@
 -- You should have received a copy of the GNU Affero General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+{-# LANGUAGE CPP #-}
+
 -- | The primary data types for specifying C++ interfaces.
 --
 -- 'Show' instances in this module produce strings of the form @\"\<TypeOfObject
@@ -27,6 +29,9 @@ module Foreign.Hoppy.Generator.Spec.Conversion (
   classSetConversionToGc,
   ) where
 
+#if !MIN_VERSION_base(4,8,0)
+import Data.Monoid (mconcat)
+#endif
 import Foreign.Hoppy.Generator.Language.Haskell
 import Foreign.Hoppy.Generator.Spec.Base
 import Foreign.Hoppy.Generator.Types
