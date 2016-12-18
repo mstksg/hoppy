@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Fixed an infinite loop in the generator when using `toGcT . objT` in a
+  callback argument.
+
 ## 0.3.0 (2016-12-16)
 
 - [API change] Added support for customizing the prefixes of class methods and

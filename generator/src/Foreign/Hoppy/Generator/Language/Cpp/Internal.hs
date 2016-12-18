@@ -532,7 +532,7 @@ sayArgRead dir (n, stripConst . normalizeType -> cppType, maybeCType) = case cpp
             -- the heap and let the foreign language manage that value.
             Internal_TObj cls -> objToHeapT cls
             _ -> t'
-      sayArgRead dir (n, cppType, typeToCType newCppType)
+      sayArgRead dir (n, newCppType, typeToCType newCppType)
 
   _ -> convertDefault
 
