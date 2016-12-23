@@ -402,7 +402,7 @@ data UnknownCppException = UnknownCppException
 instance CppException UnknownCppException where
   cppExceptionInfo _ = ExceptionClassInfo
     { exceptionClassId = ExceptionId 1
-    , exceptionClassName = "<Unhandled C++ exception>"
+    , exceptionClassName = "<Unknown C++ exception>"
     , exceptionClassUpcasts = M.empty
     , exceptionClassDelete = error "UnknownCppException.exceptionClassDelete: Should not get here."
     , exceptionClassCopy = error "UnknownCppException.exceptionClassCopy: Should not get here."
