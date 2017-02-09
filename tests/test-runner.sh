@@ -47,10 +47,10 @@ if test -n "$doBuild"; then
     # Build the generator and its dependencies.
     set -x
     cd "$suiteRoot/hs"
-    cabal sandbox delete || true  # Cabal 1.18 fails when sandbox doesn't exist.
-    cabal sandbox init
-    cabal install ../../../{generator,std,runtime}
-    cabal install ../generator
+    cabal sandbox delete --verbose=0 || true  # Cabal 1.18 fails when sandbox doesn't exist.
+    cabal sandbox init --verbose=0
+    cabal install --verbose=0 ../../../{generator,std,runtime}
+    cabal install --verbose=0 ../generator
 
     # Build the C++ library.
     cd ../cpp
@@ -61,7 +61,7 @@ if test -n "$doBuild"; then
 
     # Build and run the Haskell test program.
     .cabal-sandbox/bin/generator --gen-hs .
-    cabal configure --enable-tests --extra-lib-dirs="$suiteRoot/cpp"
+    cabal configure --verbose=0 --enable-tests --extra-lib-dirs="$suiteRoot/cpp"
     LD_LIBRARY_PATH="$suiteRoot/cpp" cabal test
     set +x
     cd ..
