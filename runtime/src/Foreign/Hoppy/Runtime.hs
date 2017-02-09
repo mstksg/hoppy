@@ -309,9 +309,9 @@ withScopedPtr :: Deletable cppPtrType => IO cppPtrType -> (cppPtrType -> IO a) -
 withScopedPtr p = bracket p delete
 
 -- | @withScopedFunPtr m f@ runs @m@ to get a 'FunPtr', which is given to @f@ to
--- execute.  When @f@ finishes, the 'FunPtr' is deleted (via 'bracket').  This
--- is useful in conjunction with function pointers created via generated
--- callback functions.
+-- execute.  When @f@ finishes, the 'FunPtr' is deleted (via 'bracket' and
+-- 'freeHaskellFunPtr').  This is useful in conjunction with function pointers
+-- created via generated callback functions.
 withScopedFunPtr :: IO (FunPtr a) -> (FunPtr a -> IO b) -> IO b
 withScopedFunPtr p = bracket p freeHaskellFunPtr
 

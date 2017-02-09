@@ -489,11 +489,11 @@ function pointers (@'ptrT' ('fnT' ...)@) in Haskell.
 Callback types manifest directly as Haskell function types in @IO@.  Function
 pointers manifest as 'FunPtr's around Haskell function types in @IO@.
 
-No runtime support is exposed to the user for working with callback types
-(internal machinery is generated however).  For function pointer types, a
-function `callbackName_newFunPtr` is exposed from the callback's module that
-makes it easy to wrap anonymous functions in 'FunPtr's that perform the Haskell
-side of conversions, with code like the following:
+No runtime support is exposed to the user for working with internal Haskell
+callback types (some machinery is generated however).  For function pointer
+types, a function `callbackName_newFunPtr` is exposed from the callback's module
+that makes it easy to wrap anonymous functions in 'FunPtr's that perform the
+Haskell side of conversions, with code like the following:
 
 > -- Generator bindings
 >
