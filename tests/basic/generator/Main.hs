@@ -113,6 +113,10 @@ testModule =
   , ExportFn f_makeBoxByRefConstCallbackDriver
   , ExportFn f_makeBoxByPtrCallbackDriver
   , ExportFn f_makeBoxByPtrConstCallbackDriver
+    -- TToGc tests.
+  , ExportFn f_makeBoxToGc
+  , ExportCallback cb_takesBoxToGcCallback
+  , ExportFn f_callBoxToGcCallback
     -- Testing FnMethod.
   , ExportClass c_IntBoxWithFnMethods
     -- Primitive type sizeof checks.
@@ -469,6 +473,22 @@ f_makeBoxByPtrConstCallbackDriver =
   addReqIncludes [includeLocal "functions.hpp"] $
   makeFn (ident "makeBoxByPtrConstCallbackDriver") Nothing Nonpure
   [callbackT cb_MakeBoxByPtrConstCallback, intT] intT
+
+f_makeBoxToGc :: Function
+f_makeBoxToGc =
+  addReqIncludes [includeLocal "functions.hpp"] $
+  makeFn (ident "makeBoxToGc") Nothing Nonpure [intT] $ toGcT $ objT c_IntBox
+
+cb_takesBoxToGcCallback :: Callback
+cb_takesBoxToGcCallback =
+  addReqIncludes [includeLocal "intbox.hpp"] $
+  makeCallback (toExtName "TakesBoxToGcCallback") [toGcT $ objT c_IntBox] $ intT
+
+f_callBoxToGcCallback :: Function
+f_callBoxToGcCallback =
+  addReqIncludes [includeLocal "functions.hpp"] $
+  makeFn (ident "callBoxToGcCallback") Nothing Nonpure
+  [callbackT cb_takesBoxToGcCallback, intT] intT
 
 c_IntBoxWithFnMethods :: Class
 c_IntBoxWithFnMethods =

@@ -73,6 +73,10 @@ int makeBoxByRefConstCallbackDriver(MakeBoxByRefConstCallback, int);
 int makeBoxByPtrCallbackDriver(MakeBoxByPtrCallback, int);
 int makeBoxByPtrConstCallbackDriver(MakeBoxByPtrConstCallback, int);
 
+//// TToGc tests.
+IntBox makeBoxToGc(int);
+int callBoxToGcCallback(TakesBoxToGcCallback, int);
+
 // Primitive type sizeof checks.
 bool isTrue(bool x);
 bool isFalse(bool x);

@@ -2,8 +2,8 @@
 
 ## Unreleased
 
-- Fixed an infinite loop in the generator when using `toGcT . objT` in a
-  callback argument.
+- Fixed an infinite loop in the C++ generator and a mistake in the Haskell
+  generator when using `toGcT . objT` in a callback argument (issue #22).
 
 ## 0.3.0 (2016-12-16)
 

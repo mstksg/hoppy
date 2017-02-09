@@ -699,7 +699,17 @@ sayArgProcessing dir t fromVar toVar =
       FromCpp -> do
         addImports $ mconcat [hsImport1 "Prelude" "(>>=)",
                               hsImportForRuntime]
-        saysLn ["HoppyFHR.toGc ", fromVar, " >>= \\", toVar, " ->"]
+        ctorName <-
+          maybe (throwError $ tToGcInvalidFormErrorMessage Nothing t')
+                (toHsDataCtorName Unmanaged Nonconst) $
+          case stripConst t' of
+            Internal_TObj cls -> Just cls
+            Internal_TRef (Internal_TConst (Internal_TObj cls)) -> Just cls
+            Internal_TRef (Internal_TObj cls) -> Just cls
+            Internal_TPtr (Internal_TConst (Internal_TObj cls)) -> Just cls
+            Internal_TPtr (Internal_TObj cls) -> Just cls
+            _ -> Nothing
+        saysLn ["HoppyFHR.toGc (", ctorName, " ", fromVar, ") >>= \\", toVar, " ->"]
     Internal_TConst t' -> sayArgProcessing dir t' fromVar toVar
   where noConversion = saysLn ["let ", toVar, " = ", fromVar, " in"]
         sayCoerceIntegral = do

@@ -146,6 +146,14 @@ int makeBoxByPtrConstCallbackDriver(MakeBoxByPtrConstCallback cb, int value) {
     return result;
 }
 
+IntBox makeBoxToGc(int value) {
+    return IntBox(value);
+}
+
+int callBoxToGcCallback(TakesBoxToGcCallback cb, int value) {
+    return cb(IntBox(value));
+}
+
 bool isTrue(bool x) {
     // Use external linkage to prevent this from being reduced to the identity
     // function.
