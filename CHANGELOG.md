@@ -2,10 +2,14 @@
 
 ## Unreleased
 
+## hoppy-generator-0.3.1 (2017-02-18)
+
 - Fixed an infinite loop in the C++ generator and a mistake in the Haskell
   generator when using `toGcT . objT` in a callback argument (issue #22).
 
-## 0.3.0 (2016-12-16)
+- Dependency bump to support directory-1.3 in GHC 8.0.2.
+
+## *-0.3.0 (2016-12-16)
 
 - [API change] Added support for customizing the prefixes of class methods and
   constructors, as well as enum and bitspace values, so that we can simplify the
@@ -43,11 +47,11 @@
 - Added the ability to enable custom Haskell language extensions for generated
   modules.
 
-## 0.2.1 (2016-10-01)
+## *-0.2.1 (2016-10-01)
 
 - Bumped the upper version of the base dependency to 5; base releases often.
 
-## 0.2.0 (2016-06-29)
+## *-0.2.0 (2016-06-29)
 
 - Added foreign garbage collector support (issue #5).
 
@@ -68,6 +72,6 @@
 
 - Small fixes to the user guide and unit tests.
 
-## 0.1.0 (2016-02-08)
+## *-0.1.0 (2016-02-08)
 
 - Initial release.
