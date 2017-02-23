@@ -41,28 +41,32 @@ declare -r doClean=${doClean-y}
 # build outputs to clean up.
 declare -r filesToClean=${filesToClean:-}
 
+run() {
+    echo "> $*"
+    "$@" |& sed 's/^/    /'
+}
+
 if test -n "$doBuild"; then
     echo "Running tests in $suite."
 
     # Build the generator and its dependencies.
-    set -x
     cd "$suiteRoot/hs"
-    cabal sandbox delete --verbose=0 || true  # Cabal 1.18 fails when sandbox doesn't exist.
-    cabal sandbox init --verbose=0
-    cabal install --verbose=0 ../../../{generator,std,runtime}
-    cabal install --verbose=0 ../generator
+    run cabal sandbox delete || true  # Cabal 1.18 fails when sandbox doesn't exist.
+    run cabal sandbox init
+    run cabal install ../../../{generator,std,runtime}
+    run cabal install ../generator
 
     # Build the C++ library.
     cd ../cpp
-    make clean
-    ../hs/.cabal-sandbox/bin/generator --gen-cpp .
-    make
+    run make clean
+    run ../hs/.cabal-sandbox/bin/generator --gen-cpp .
+    run make
     cd ../hs
 
     # Build and run the Haskell test program.
-    .cabal-sandbox/bin/generator --gen-hs .
-    cabal configure --verbose=0 --enable-tests --extra-lib-dirs="$suiteRoot/cpp"
-    LD_LIBRARY_PATH="$suiteRoot/cpp" cabal test
+    run .cabal-sandbox/bin/generator --gen-hs .
+    run cabal configure --enable-tests --extra-lib-dirs="$suiteRoot/cpp"
+    LD_LIBRARY_PATH="$suiteRoot/cpp" run cabal test
     set +x
     cd ..
 fi
@@ -74,9 +78,9 @@ if test -n "$doClean"; then
     set +e
     cabal sandbox delete
     cabal clean
-    rm -fv Foreign/Hoppy/Test/*.hs{,-boot}
+    rm -f Foreign/Hoppy/Test/*.hs{,-boot}
     cd ../generator
     cabal clean
     cd ..
-    rm -fv -- cpp/"$suite".{hpp,cpp} cpp/*.o cpp/*.so $filesToClean
+    rm -f -- cpp/"$suite".{hpp,cpp} cpp/*.o cpp/*.so $filesToClean
 fi
