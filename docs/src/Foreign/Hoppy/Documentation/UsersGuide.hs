@@ -28,8 +28,20 @@ module Foreign.Hoppy.Documentation.UsersGuide (
   -- ** Project setup
   -- $getting-started-project-setup
 
-  -- ** Concepts
-  -- $getting-started-concepts
+  -- ** A first binding
+  -- $getting-started-a-first-binding
+
+  -- ** Types
+  -- $getting-started-types
+
+  -- ** Wrapping up the string binding
+  -- $getting-started-wrapping-up-the-string-binding
+
+  -- ** Objects
+  -- $getting-started-objects
+
+  -- ** API versioning
+  -- $getting-started-api-versioning
 
   -- * Generators
   -- $generators
@@ -120,7 +132,7 @@ of the generated bindings).
 -}
 {- $getting-started
 
-This section is for getting out of the gate running.
+This section provides a gentle introduction to working with Hoppy.
 
 -}
 {- $getting-started-project-setup
@@ -128,9 +140,9 @@ This section is for getting out of the gate running.
 To bind to a C++ library, first the binding author writes a generator program
 (@\/generator@) in Haskell.  This program should define the complete C++
 interface that is to be exposed.  The binding author also writes a @Main.hs@
-file for invoking the generator (usually deferring to
-"Foreign.Hoppy.Generator.Main").  If necessary, she should also write wrappers
-for C++ things that she doesn't want to expose directly (in @\/cpp@).
+file for invoking the generator (usually deferring to 'defaultMain').  If
+necessary, she should also write wrappers for C++ things that she doesn't want
+to expose directly (in @\/cpp@).
 
 Then, her build process should perform the following steps:
 
@@ -157,46 +169,272 @@ system's library search path, then she will need to specify
 The unit tests provide some simple examples of this setup.
 
 -}
-{- $getting-started-concepts
+{- $getting-started-a-first-binding
 
 A complete C++ API is specified using Haskell data structures in
 "Foreign.Hoppy.Generator.Spec".  At the top level is the 'Interface' type.  An
-interface contains 'Module's which correspond to a portion of functionality of
-the interface (collections of classes, functions, files, etc.).  Functionality
-can be grouped arbitrarily into modules and doesn't have to follow the structure
-of existing C++ files.  Modules contain 'Export's which refer to concrete things
-that provide bindings.  Binding definitions take advantage of Haskell's
-laziness, and can be highly circular, a simple case being a class that includes
-a method that makes use of the class in its parameter or return types.
+interface contains 'Module's which correspond to portions of functionality of
+their interface; that is, collections of classes, functions, files, etc.
+Functionality can be grouped arbitrarily into modules and doesn't have to follow
+the structure of existing C++ files.  Modules contain 'Export's which refer to
+concrete bound entities ('Function's, 'Class'es, etc.).
 
-Each export has an /external name/ that uniquely identifies it within an
-interface.  This name can be different from the name of the C++ entity the
-export is referring to.  An external name is munged by the code generators and
-must be a valid identifier in all languages a set of bindings will use, so it is
-restricted to characters in the range @[a-zA-Z0-9_]@, and must start with an
-alphabetic character.  Character case in external names will be preserved as
+For starters, we will look at a single class.  Let's write a binding for
+@std::string@.  An initial version could start as follows.
+
+@
+import "Foreign.Hoppy.Generator.Spec"
+
+c_string :: 'Class'
+c_string =
+  'addReqIncludes' ['includeStd' \"string\"] $
+  'makeClass' ('ident1' \"std\" \"string\") (Just $ 'toExtName' \"StdString\")
+  []
+  [ 'mkCtor' \"new\" []
+  , 'mkConstMethod' \"at\" ['intT'] 'charT'
+  , 'mkConstMethod' \"string\" [] 'sizeT'
+  ]
+@
+
+There is quite a bit to look at here, so let's work through it.
+
+First, everything that can be exported has two names besides the name used for
+the Haskell binding (@c_string@ above).  'Identifier's are used to specify the
+qualified C++ names of exports, including namespaces and template arguments.
+For this example, our identifier is @std::string@, which we specify with the
+'ident1' call above.  The number indicates the number of leading namespace
+components.  'ident' can be used for top-level entities.
+
+Exported entities also each have an /external name/ that uniquely identifies it
+within an interface.  This name can be different from the name of the C++ entity
+the export is referring to.  An external name is munged by the code generators
+and must be a valid identifier in all languages a set of bindings will use, so
+it is restricted to characters in the range @[a-zA-Z0-9_]@, and must start with
+an alphabetic character.  Character case in external names will be preserved as
 much as possible in generated code, although case conversions are sometimes
 necessary (e.g. Haskell requiring identifiers to begin with upper or lower case
-characters).
+characters).  In the example, the 'toExtName' call specifies an explicit
+external name for the class.  @Nothing@ may be provided to automatically derive
+an external name from the given identifier.  The derived name is based on the
+last component of the identifier, which in this case is just @string@.
+Converting this to a Haskell type name gives @String@, which collides with the
+built-in string type, so we give an explicit external name instead.
 
-C++ bindings for exportable things usually need @#include@s in order to access
-those things.  This is done with 'Include' and 'Reqs'.  All exportable things
-have an instance of 'HasReqs' and 'addReqIncludes' can be used to add includes.
+The third argument to 'makeClass' is a list of superclasses.  @std::string@ does
+not derive from any classes so we leave this empty in the example.  When
+specifying interfaces in Hoppy, only publicly accessible components need to (and
+in fact, can) be referenced by Hoppy: public base classes, public methods and
+variables, but never protected or private entities.
 
-C++ identifiers are represented by the 'Identifier' data type and support basic
-template syntax (no metaprogramming).
+The final argument to 'makeClass' is a list of entities within the class.  Here
+we can specify constructors, methods, and variables that the class exposes, via
+the 'ClassEntity' type.  There are a few sets of methods for building class
+entities:
+
+- Basic forms: 'makeCtor', 'makeMethod', and 'makeClassVariable' are the core
+functions for building class entities.  These are fully general, and take
+parameters both for the C++ and external names, as well as staticness,
+constness, etc.  There is also 'makeFnMethod' for defining a method that is
+actually backed by a C++ function, not a method of the class; this can be used
+when manual wrapping of a method is required, to wrap a method with a function
+but make it look like a method.
+
+- Convenience forms: 'mkCtor', 'mkMethod', 'mkConstMethod', 'mkStaticMethod',
+'mkProp', 'mkBoolIsProp', 'mkBoolHasProp', 'mkStaticProp', and 'mkClassVariable'
+only take the C++ name, and derive the external name from it, as well as
+assuming other parameters (staticness, etc.).  These are what you typically use,
+unless you need overloading, in which case use the overloading forms below.
+
+- Overloading forms: 'mkMethod'', 'mkConstMethod'', and 'mkStaticMethod'' are
+convenience functions for overloaded methods.  Overloading is handled by
+defining multiple exports all pointing to a single C++ entity.  These in turn
+become separate Haskell functions.  Because external names must be unique
+though, a different external name must be provided for each overloaded form;
+this is the second argument to these functions.
+
+- Unwrapped forms: Underscore forms for all of the above are provided as well
+(e.g. 'mkMethod_' and 'mkMethod'_') that return the actual object they create
+('Method', 'Ctor', 'ClassVariable') instead of wrapping the result in a
+'ClassEntity' as is usually desired.
+
+Generated C++ bindings for exported entities usually need @#include@s in order
+to access those entities.  This is done with 'Include' and 'Reqs' types.  When
+defining bindings, all exportable types have an instance of the 'HasReqs'
+typeclass, and 'addReqIncludes' can be used to add includes.  'includeStd'
+produces @#include \<...\>@ statements, and 'includeLocal' produces @#include
+\"...\"@.
+
+This use of 'addReqIncludes' also indicates a common pattern for writing class
+bindings.  After constructing a 'Class' with 'makeClass', there are a number of
+functions that modify the class definition in various ways.  These functions'
+types always end in @... -> 'Class' -> 'Class'@, so that they can be chained
+easily.  Among others, these functions include:
+
+- 'addReqIncludes' to add needed C++ @#include@ statements.
+- 'classAddEntities' to add additional entities to a class.
+- 'classAddFeatures' to add common functionality to a class.
+- 'classMakeException' to add exception support for a class.
+- 'classSetConversion' to configure a implicit conversion (discussed later).
+
+The main point of using all of these functions is to chain them on the result of
+'makeClass', but to bind the Haskell binding to final resulting value.  For
+instance, if we have the following class:
+
+@
+c_NotFoundException :: 'Class'
+c_NotFoundException =
+  'addReqIncludes' ['includeStd' "exceptions.hpp"] $
+  'classMakeException' $
+  'makeClass' ('ident' \"NotFoundException\") Nothing []
+  [ 'mkCtor' \"newCopy\" ['objT' c_NotFoundException]
+  ]
+@
+
+Then, 'addReqIncludes' and 'classMakeException' modify the class object, and the
+constructor definition makes use of the resulting object.  This works as
+intended.  In some cases the order of modifiers is important -- for example,
+marking a class as an exception class requires that there be a copy constructor
+defined beforehand -- but usually order of modification does not matter.
+
+Another point of note is the @c_@ prefix used on these two classes.  A suggested
+naming convention for entities is:
+
+- @f_@ for functions ('Function').
+- @c_@ for classes ('Class').
+- @e_@ for enums ('CppEnum').
+- @bs_@ for bitspaces ('Bitspace').
+- @cb_@ for callbacks ('Callback').
+
+Hoppy follows this convention, but you are not required to in your own bindings.
+It enables the use of proper casing on the actual entity name, and avoids
+collision with existing Haskell names.
+
+Given all this, we can improve our @std::string@ binding.  The @at()@ method
+provides a non-const overload that returns a reference to a requested character.
+Let's have two versions of @at()@, as well as expose the fact that @std::string@
+is assignable, comparable, copyable, and equatable, with a second version:
+
+@
+c_string :: 'Class'
+c_string =
+  'addReqIncludes' ['includeStd' \"string\"] $
+  'classAddFeatures' ['Assignable', 'Comparable', 'Copyable', 'Equatable'] $
+  'makeClass' ('ident1' \"std\" \"string\") (Just $ 'toExtName' \"StdString\")
+  []
+  [ 'mkCtor' \"new\" []
+  , 'mkConstMethod'' \"at\" "at" ['intT'] $ 'refT' 'charT'
+  , 'mkConstMethod'' \"at\" "get" ['intT'] 'charT'
+  , 'mkConstMethod' \"string\" [] 'sizeT'
+  ]
+@
+
+-}
+{- $getting-started-types
+
+Let's take a break from @std::string@ for a moment and talk about how we
+represent data types in Hoppy.
 
 All C++ types are represented with the 'Type' data type, values of which are in
 the "Foreign.Hoppy.Generator.Types" module.  This includes primitive numeric
-types, object types, function types, @void@, the const qualifier, etc.  When
-passing values back and forth between C++ and Haskell, generally, primitive
-types are converted to equivalent types on both ends, and pointer types in C++
-are represented by corresponding pointer types in Haskell.
+types, object types, function types, pointers and references, @void@, the const
+qualifier, etc.
 
-For numbers, Haskell declares a number of numeric types in "Foreign.C" for
+A Hoppy 'Type' value has a corresponding C++ type, and also what we refer to as
+a C type, and possibly a Haskell type.  The C++ type is, of course, whatever C++
+type the 'Type' structure represents.  The Haskell type is the Haskell data type
+that the C++ value gets converted to and from when using the bindings from
+Haskell code.  The C type is the C data type that gets passed over the gateway
+between C++ and Haskell, because these types are the common denominator between
+C++ and Haskell.  When passing values back and forth between C++ and Haskell,
+generally, primitive types are converted to equivalent types on both ends, and
+pointer types in C++ are represented by corresponding pointer types in Haskell.
+Other types have special rules.  Conversion code is generated on both sides of
+the gateway to perform the necessary conversions.
+
+For numbers, the Haskell FFI provides numeric types in "Foreign.C" for
 interfacing with C directly.  Hoppy maps C++ numbers to these types, with the
-exception of `bool`, `int`, `float`, and `double`, which map to their native
-Haskell equivalents instead ('Bool', 'Int', 'Float', 'Double').
+exception of @bool@, @int@, @float@, and @double@, which map to their native
+Haskell equivalents instead, for convenience ('Bool', 'Int', 'Float', 'Double').
+
+The mapping between C++ and Haskell types is as follows.  Types that we haven't
+covered are listed here for completeness.
+
+- 'voidT': C++ uses @void@.  The C type is unspecified.  Haskell uses @()@.
+
+- 'boolT', 'intT', 'floatT', 'doubleT': C++ and C use @bool@, @int@, @float@,
+@double@.  Haskell uses 'Bool', 'Int', 'Float', 'Double'.
+
+- 'charT', 'ucharT', and other primitive numeric types: Identical C++ and C
+types; Haskell uses built-in foreign data types.  See
+"Foreign.Hoppy.Generator.Types" for more info.
+
+- 'enumT': C++ uses the enum type.  C uses @int@.  Haskell uses a generated data
+type for the enum.
+
+- 'bitspaceT': C++ and C use a specified type, usually @int@.  Haskell uses a
+generated data type for the bitspace.
+
+- 'ptrT': C++ and C use the raw pointer type.  The Haskell type depends on the
+pointed-to type.  If it's an object pointer, then Haskell uses the generated
+handle data type for the class.  If it's a function pointer, then Haskell uses a
+'FunPtr' of the Haskell function in @IO@ with C types.  Otherwise, Haskell uses
+a 'Ptr' to the C type of the pointed type.
+
+- 'refT': C++ uses the reference type.  Everything else is the same as 'ptrT'.
+
+- 'fnT': Function types aren't useful raw, and need to be wrapped in 'ptrT' to
+be useable in parameter and return types.
+
+- 'callbackT': C++ uses the callback's generated functor class.  C uses an
+internal implementation pointer.  Haskell uses a function in @IO@ of the Haskell
+types of the parameters and return types.
+
+- 'objT': Objects passed by value (not wrapped in 'ptrT' or 'refT').  C++ uses
+the object type (or a const reference), C uses a pointer to the object, and
+Haskell uses a configured type for the class.
+
+- 'objToHeapT': Copies objects to the heap.
+
+- 'toGcT': Assigns objects to the garbage collector.
+
+- 'constT': Wraps types in @const@.
+
+Most of these (enumerations, object types, functions and callbacks...) will be
+discussed in later sections.  For now, please refer to the \"Generators >
+Haskell > Module structure\" section to see what the generated Haskell interface
+looks like for a given entity.
+
+-}
+{- $getting-started-wrapping-up-the-string-binding
+
+Let's package up the @std::string@ binding to get a buildable example.  We
+define a module to export the class, and an interface to collect our modules.
+
+@
+import "Foreign.Hoppy.Generator.Spec"
+
+main :: IO ()
+main = 'defaultMain' interfaceResult
+
+interfaceResult :: Either String 'Interface'
+interfaceResult = do
+  iface <- 'interface' \"example\" [mod_string]
+  'interfaceAddHaskellModuleBase' [\"Example\"] iface
+
+mod_string :: 'Module'
+mod_string =
+  'moduleModify'' ('makeModule' \"mystring\" \"mystring.hpp\" \"mystring.cpp\") $
+  'moduleAddExports' ['ExportClass' c_string]
+@
+
+Each 'Module' produces separate C++ files to be compiled (a header and a source
+file), and a separate Haskell module.  The Haskell module will be named
+@Example.Mystring@, which is the concatenation of the Haskell module base path
+defined on the interface, and the case-corrected name of the module.  A custom
+module path can replace the default with 'moduleAddHaskellName'.
+
+-}
+{- $getting-started-objects
 
 Raw object types (not pointers or references, just the by-value object types,
 i.e. 'objT') are treated differently.  When an object is taken or returned by
@@ -206,16 +444,26 @@ Haskell type is defined for the class.  Other options are available, such as
 having objects be handed off to a foreign garbage collector.  See
 'ClassConversion' for more on object conversions.
 
-Internally, only C types are exchanged over the gateway, since these are what is
-common to both languages.  Conversions are performed on both sides of the
-gateway.  In most cases, the C++, C, and Haskell types all have equivalent
-representation no conversion is necessary.
+TODO
+
+- generated typeclasses and data types
+- the Runtime module
+- pointer types
+- conversions
+- garbage collection (not by default)
+
+-}
+{- $getting-started-api-versioning
+
+TODO
 
 -}
 {- $generators
 
-This section describes the behaviour of the code generators.  The code
-generators live at @Foreign.Hoppy.Generator.Language.\<language>@.  The
+This section describes the behaviour of the code generators, and documents what
+they output for each type of export.
+
+The code generators live at @Foreign.Hoppy.Generator.Language.\<language>@.  The
 top-level module for a language is internal to Hoppy and contains the bulk of
 the generator.  @General@ submodules expose functionality that can control
 generator behaviour.
@@ -491,7 +739,7 @@ pointers manifest as 'FunPtr's around Haskell function types in @IO@.
 
 No runtime support is exposed to the user for working with internal Haskell
 callback types (some machinery is generated however).  For function pointer
-types, a function `callbackName_newFunPtr` is exposed from the callback's module
+types, a function @callbackName_newFunPtr@ is exposed from the callback's module
 that makes it easy to wrap anonymous functions in 'FunPtr's that perform the
 Haskell side of conversions, with code like the following:
 
