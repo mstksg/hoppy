@@ -22,7 +22,7 @@ module Main (main) where
 #if !MIN_VERSION_base(4,8,0)
 import Control.Applicative ((<$>))
 #endif
-import Foreign.Hoppy.Generator.Main (run)
+import Foreign.Hoppy.Generator.Main (defaultMain)
 import Foreign.Hoppy.Generator.Language.Haskell (addImports, sayLn)
 import Foreign.Hoppy.Generator.Spec
 import Foreign.Hoppy.Generator.Types
@@ -31,20 +31,11 @@ import Language.Haskell.Syntax (
   HsQName (UnQual),
   HsType (HsTyCon),
   )
-import System.Environment (getArgs)
-import System.Exit (exitFailure)
 
 {-# ANN module "HLint: ignore Use camelCase" #-}
 
 main :: IO ()
-main = case interfaceResult of
-  Left errorMsg -> do
-    putStrLn $ "Error initializing interface: " ++ errorMsg
-    exitFailure
-  Right iface -> do
-    args <- getArgs
-    _ <- run [iface] args
-    return ()
+main = defaultMain interfaceResult
 
 interfaceResult :: Either String Interface
 interfaceResult =

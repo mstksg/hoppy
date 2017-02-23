@@ -19,28 +19,21 @@
 
 -- | A driver for a command-line interface to a generator.
 --
--- A simple @Main.hs@ for a generator can be:
+-- A simple @Main.hs@ for a generator can simply be:
 --
--- > import Foreign.Hoppy.Generator.Main (run)
--- > import Foreign.Hoppy.Generator.Spec (ErrorMsg, Interface, interface, interfaceResult)
--- > import System.Environment (getArgs)
--- > import System.Exit (exitFailure)
--- > import System.IO (hPutStrLn, stderr)
--- >
--- > iface :: Either ErrorMsg Interface
--- > iface = interface ...
--- >
--- > main :: IO ()
--- > main = case interfaceResult of
--- >   Left errorMsg -> do
--- >     hPutStrLn stderr $ "Error initializing interface: " ++ errorMsg
--- >     exitFailure
--- >   Right iface -> do
--- >     args <- getArgs
--- >     _ <- run [iface] args
--- >     return ()
+-- @
+-- import "Foreign.Hoppy.Generator.Main" ('defaultMain')
+-- import "Foreign.Hoppy.Generator.Spec" ('ErrorMsg', 'Interface', 'interface')
+--
+-- interfaceResult :: Either 'ErrorMsg' 'Interface'
+-- interfaceResult = 'interface' ...
+--
+-- main :: IO ()
+-- main = 'defaultMain' interfaceResult
+-- @
 module Foreign.Hoppy.Generator.Main (
   Action (..),
+  defaultMain,
   run,
   ) where
 
@@ -59,6 +52,7 @@ import qualified Foreign.Hoppy.Generator.Language.Cpp.Internal as Cpp
 import qualified Foreign.Hoppy.Generator.Language.Haskell.Internal as Haskell
 import Foreign.Hoppy.Generator.Spec
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist)
+import System.Environment (getArgs)
 import System.Exit (exitFailure, exitSuccess)
 import System.FilePath ((</>), takeDirectory)
 import System.IO (hPutStrLn, stderr)
@@ -109,6 +103,24 @@ getGeneratedHaskell cache = case generatedHaskell cache of
   _ -> case Haskell.generate $ cacheInterface cache of
     l@(Left _) -> return (cache, l)
     r@(Right gen) -> return (cache { generatedHaskell = Just gen }, r)
+
+-- | This provides a simple @main@ function for a generator.  Define your @main@
+-- as:
+--
+-- @
+-- main = defaultMain $ 'interface' ...
+-- @
+--
+-- Refer to 'run' for how to use the command-line interface.
+defaultMain :: Either String Interface -> IO ()
+defaultMain interfaceResult = case interfaceResult of
+  Left errorMsg -> do
+    hPutStrLn stderr $ "Error initializing interface: " ++ errorMsg
+    exitFailure
+  Right iface -> do
+    args <- getArgs
+    _ <- run [iface] args
+    return ()
 
 -- | @run interfaces args@ runs the driver with the command-line arguments from
 -- @args@ against the listed interfaces, and returns the list of actions

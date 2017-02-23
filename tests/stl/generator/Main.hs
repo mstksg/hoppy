@@ -22,7 +22,7 @@ module Main (main) where
 #if !MIN_VERSION_base(4,8,0)
 import Data.Monoid (mempty)
 #endif
-import Foreign.Hoppy.Generator.Main (run)
+import Foreign.Hoppy.Generator.Main (defaultMain)
 import Foreign.Hoppy.Generator.Spec
 import Foreign.Hoppy.Generator.Std (ValueConversion (ConvertPtr, ConvertValue), mod_std)
 import Foreign.Hoppy.Generator.Std.String (c_string)
@@ -32,20 +32,11 @@ import qualified Foreign.Hoppy.Generator.Std.Map as Map
 import qualified Foreign.Hoppy.Generator.Std.Pair as Pair
 import qualified Foreign.Hoppy.Generator.Std.Set as Set
 import qualified Foreign.Hoppy.Generator.Std.Vector as Vector
-import System.Environment (getArgs)
-import System.Exit (exitFailure)
 
 {-# ANN module "HLint: ignore Use camelCase" #-}
 
 main :: IO ()
-main = case interfaceResult of
-  Left errorMsg -> do
-    putStrLn $ "Error initializing interface: " ++ errorMsg
-    exitFailure
-  Right iface -> do
-    args <- getArgs
-    _ <- run [iface] args
-    return ()
+main = defaultMain interfaceResult
 
 interfaceResult :: Either String Interface
 interfaceResult =
