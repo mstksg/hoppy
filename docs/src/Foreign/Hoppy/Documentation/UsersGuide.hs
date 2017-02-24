@@ -37,8 +37,23 @@ module Foreign.Hoppy.Documentation.UsersGuide (
   -- ** Wrapping up the string binding
   -- $getting-started-wrapping-up-the-string-binding
 
+  -- ** Functions
+  -- $getting-started-functions
+
   -- ** Objects
   -- $getting-started-objects
+
+  -- *** Generated bindings
+  -- $getting-started-objects-generated-bindings
+
+  -- *** Passing and returning objects
+  -- $getting-started-objects-passing-and-returning-objects
+
+  -- *** Garbage collection
+  -- $getting-started-objects-garbage-collection
+
+  -- *** Conversions
+  -- $getting-started-objects-conversions
 
   -- ** API versioning
   -- $getting-started-api-versioning
@@ -434,7 +449,246 @@ defined on the interface, and the case-corrected name of the module.  A custom
 module path can replace the default with 'moduleAddHaskellName'.
 
 -}
+{- $getting-started-functions
+
+Let's say we have a C++ function to compute the hypotenuse of a triangle:
+
+> double hypotenuse(double x, double y);
+
+To declare a binding for this, we can write:
+
+@
+f_hypotenuse :: 'Function'
+f_hypotenuse =
+  'makeFn' \"hypotenuse\" Nothing 'Pure' ['doubleT', 'doubleT'] 'doubleT'
+@
+
+Like the first two arguments to 'makeClass', the first two arguments to 'makeFn'
+are its C++ name, and an optional external name that will be derived from the
+C++ name if absent.
+
+The third argument indicates whether or not the function is pure.  'Nonpure'
+generates a function in @IO@, and 'Pure' generates a pure function (using
+'unsafePerformIO' internally).  Most functions should be marked as nonpure,
+either because they have side effects or because you want to control the order
+of their execution with respect to other functions with side effects, but in
+this case (assuming the implementation of @hypontenuse()@ just performs the
+calculation) we can mark it as pure.
+
+Finally, there are the parameter type list and return type.
+
+In Haskell, this will generate the following function, no surprises here:
+
+@
+hypotenuse :: 'Double' -> 'Double' -> 'Double'
+@
+
+-}
 {- $getting-started-objects
+
+There is a lot more to using classes than there is with functions, so we'll
+spend the next several sections discussing how objects work.
+
+-}
+{- $getting-started-objects-generated-bindings
+
+Now that we've seen what is generated for a function, let's see what is
+generated for our @std::string@ binding.  Here is the definition again:
+
+@
+c_string :: 'Class'
+c_string =
+  'addReqIncludes' ['includeStd' \"string\"] $
+  'classAddFeatures' ['Assignable', 'Comparable', 'Copyable', 'Equatable'] $
+  'makeClass' ('ident1' \"std\" \"string\") (Just $ 'toExtName' \"StdString\")
+  []
+  [ 'mkCtor' \"new\" []
+  , 'mkConstMethod'' \"at\" "at" ['intT'] $ 'refT' 'charT'
+  , 'mkConstMethod'' \"at\" "get" ['intT'] 'charT'
+  , 'mkConstMethod' \"string\" [] 'sizeT'
+  ]
+@
+
+The first thing that is generated are data types called __handles__ that
+represent pointers to instances.  For each class, there are two handle types, a
+const and a nonconst version.  These are distinct types so that we can enforce
+const-safety.  Functions for casting constness are created as well.
+
+@
+data StdString
+data StdStringConst
+
+castStdStringToConst :: StdString -> StdStringConst
+castStdStringToNonconst :: StdStringConst -> StdString
+
+instance 'Eq' StdString
+instance 'Eq' StdStringConst
+instance 'Ord' StdString
+instance 'Ord' StdStringConst
+instance 'Show' StdString
+instance 'Show' StdStringConst
+@
+
+These instances operate on the underlying pointer.  There is also a
+"Foreign.Hoppy.Runtime" module in the @hoppy-runtime@ package that holds various
+types and code needed at runtime, and generated bindings make extensive use of
+this package.  There are a number of class-related typeclasses there that also
+contain these types.
+
+@
+instance 'CppPtr' StdString
+instance 'CppPtr' StdStringConst
+instance 'Deletable' StdString
+instance 'Deletable' StdStringConst
+instance 'Foreign.Hoppy.Runtime.Copyable' StdString StdString
+instance 'Foreign.Hoppy.Runtime.Copyable' StdStringConst StdString
+@
+
+'CppPtr' is a typeclass for all handle types.  Unless a class is marked as
+having a private destructor ('classSetDtorPrivate'), you will be able to delete
+it with 'delete'; deletability also enables garbage collection, discussed later.
+Finally, if a class has a copy constructor defined for it (either manually with
+'mkCtor' or via the 'Foreign.Hoppy.Generator.Spec.ClassFeature.Copyable' class
+feature), then it gets instances of 'Foreign.Hoppy.Runtime.Copyable'.
+
+Next, a set of typeclasses are generated to hold values representing the class,
+strings in this case.
+
+@
+class StdStringValue a
+
+class 'CppPtr' this => StdStringConstPtr this where
+  toStdStringConst :: this -> StdStringConst
+
+class StdStringConstPtr this => StdStringPtr this where
+  toStdString :: this -> StdString
+
+instance {OVERLAPPABLE} StdStringConstPtr a => StdStringValue a  -- (sic)
+
+instance StdStringConstPtr StdStringConst
+
+instance StdStringConstPtr StdString
+instance StdStringPtr StdString
+@
+
+The three typeclasses contain string-like types.  @StdStringValue@ is the most
+general, and contains types that can be represented as a @std::string@.  For now
+this includes the handle types; we'll see how to make good use of this typeclass
+in a bit.
+
+The other two typeclasses contain @std::string@ handles.  @StdStringConstPtr@
+contains all handles that via C++ implicit casting could be converted to a
+@StdStringConst@, and likewise for @StdStringPtr@ and @StdString@.  This gives
+the instances above.  The typeclasses' methods can be used to upcast, and
+optionally add const.
+
+In a hierarchy with derived classes, this would be more complicated.  For an
+arbitrary class, the const typeclass has as superclasses the const typeclasses
+for all of the C++ class's superclasses (or just 'CppPtr' if this list is
+empty).  The non-const typeclass has as superclasses the non-const typeclasses
+for all of the C++ class's superclasses, plus the current const typeclass.
+Instances will be generated for all handles as appropriate.  This formalises
+const handles as parallel to nonconst handles in the hierarchy, but also above.
+
+The overlappable instance just says that all @std::string@ handles, const or
+nonconst, are @std::string@ values.
+
+We can also attempt downcasting using @dynamic_cast@.  If @std::string@ had
+superclasses, their handles would have instances of the following typeclasses:
+
+@
+class StdStringSuper a where
+  downToStdString :: a -> StdString
+
+class StdStringSuperConst a where
+  downToStdStringConst :: a -> StdStringConst
+@
+
+Like @dynamic_cast@, these methods will return 'nullptr' if the given object is
+not of an appropriate type.
+
+-}
+{- $getting-started-objects-passing-and-returning-objects
+
+So how do we work with functions that expect objects?  Suppose we have the
+following function:
+
+> void reverse(std::string&);
+
+Then if we define:
+
+@
+f_reverse :: 'Function'
+f_reverse = 'makeFn' \"reverse\" Nothing 'Nonpure' ['refT' $ 'objT' c_string] voidT
+@
+
+We'll get the following binding:
+
+@
+reverse :: StdStringPtr this => this -> IO ()
+@
+
+Unlike primitive types, parameters for object types use typeclass constraints to
+accept a range of types, so that subclasses' handles can also be passed.
+
+There are five different object types that can be used in parameter and return
+types:
+
+1. @('refT' $ 'constT' $ 'objT' c_string)@ is @const std::string&@.
+2. @('refT' $ 'objT' c_string)@ is @std::string&@.
+3. @('ptrT' $ 'constT' $ 'objT' c_string)@ is @const std::string*@.
+4. @('ptrT' $ 'objT' c_string)@ is @std::string*@.
+5. @('objT' c_string)@ is @std::string@.
+
+When used as a parameter type, cases 1 and 3 generate a Haskell parameter type
+of @StdStringConstPtr a => a@, and cases 2 and 4 generate a Haskell parameter
+type of @StdStringPtr a => a@.  There is no distinction between references and
+pointers in Haskell, but if the C++ function expects a mutable object, then so
+does the Haskell binding.  Case 5 generates a Haskell parameter type of
+@StdStringValue a => a@.
+
+You should use the type that the actual function expects, with one exception.
+When the type of a parameter of a C++ function is @const C&@ (case 1), it is
+recommended to just declare it as @C@ (case 5), since this is shorter and is
+fully equivalent when passing a handle (but is also open to the object having a
+conversion added in the future).  This exception does not apply to function
+return types.
+
+When returning values from a function, cases 1 and 3 return a @StdStringConst@,
+cases 2 and 4 return a @StdString@, and what case 5 returns depends on the
+class's defined conversion (discussed later).
+
+-}
+{- $getting-started-objects-garbage-collection
+
+By default, object lifetimes are managed manually.  They are created with
+constructors and eventually destroyed with 'delete'.  Ownership of objects can
+also be passed to the Haskell garbage collector, to be deleted when no
+references are left from Haskell memory to the object.
+
+This is tracked internally by handles.  Handles can either be unmanaged (as they
+are initially) or managed (by the collector).  A managed handle can be created
+from an unmanaged handle by calling 'toGc'.  This assigns the object to be
+tracked by the collector, and 'delete' will be called on the object once no more
+handles are left pointing to it.  'toGc' returns a __new__ handle, and existing
+unmanaged handles for the object should no longer be used, since they will be
+dangling pointers once the object is destroyed.  You should also not manually
+delete an object assigned to the garbage collector, since it will not know and
+will perform a double free once it decides that the object is dead.
+
+If you want to pass an object to the collector immediately upon creation, chain
+its constructor call with @('toGc' '=<<')@.  This is not done by default because
+we don't support revoking the collector's watch over an object, and there are
+times when you want to work with manually managed objects.
+
+-}
+{- $getting-started-objects-conversions
+
+@
+instance {OVERLAPPING} StdStringValue 'String'  -- (sic)
+
+instance StdStringValue a => 'Assignable' StdString a
+@
 
 Raw object types (not pointers or references, just the by-value object types,
 i.e. 'objT') are treated differently.  When an object is taken or returned by
@@ -445,12 +699,6 @@ having objects be handed off to a foreign garbage collector.  See
 'ClassConversion' for more on object conversions.
 
 TODO
-
-- generated typeclasses and data types
-- the Runtime module
-- pointer types
-- conversions
-- garbage collection (not by default)
 
 -}
 {- $getting-started-api-versioning
