@@ -154,7 +154,8 @@ fnT = Internal_TFn
 -- | A handle for calling foreign code from C++.
 callbackT = Internal_TCallback
 
--- | An instance of a class.
+-- | An instance of a class.  When used in a parameter or return type and not
+-- wrapped in a 'ptrT' or 'refT', this is a by-value object.
 objT = Internal_TObj
 
 -- | A special case of 'objT' that is only allowed when passing objects from

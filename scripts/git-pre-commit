@@ -64,13 +64,14 @@ if git ls-files | grep -ve '/Makefile$' -e '/LICENSE$' | \
         xargs git --no-pager grep -n --cached --no-color '^	'
 fi
 
-# Check for long lines.  Ignore long import statements without lists.
-if git --no-pager grep -h --cached '.\{101\}' | \
+# Check for long lines.  Ignore long import statements without lists, and the
+# user's guide.
+if git --no-pager grep -h --cached '.\{101\}' -- . ':!*/UsersGuide.hs' | \
         grep -qv '^import [^(]\+$'; then
     echo
     echo '>100-char lines found:'
     echo
-    git --no-pager grep -n --cached --no-color '.\{101\}' | \
+    git --no-pager grep -n --cached --no-color '.\{101\}' -- . ':!*/UsersGuide.hs' | \
         grep -v '^[^:]\+:[0-9]\+:import [^(]\+$'
     longLinesResult=1
 else
