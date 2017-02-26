@@ -1563,7 +1563,7 @@ data ClassHaskellConversion = ClassHaskellConversion
     -- add exports.
   , classHaskellConversionToCppFn :: Maybe (Haskell.Generator ())
     -- ^ Produces a Haskell expression that evaluates to a function that takes
-    -- an object of the type that 'classHaskellConversionType' generates, and
+    -- an value of the type that 'classHaskellConversionType' generates, and
     -- returns a non-const handle for a new C++ object in IO.  The generator
     -- must output code and may add imports, but must not add exports.
     --
@@ -1571,9 +1571,10 @@ data ClassHaskellConversion = ClassHaskellConversion
     -- present.
   , classHaskellConversionFromCppFn :: Maybe (Haskell.Generator ())
     -- ^ Produces a Haskell expression that evaluates to a function that takes a
-    -- const handle for a C++ object, and returns an value of the type that
-    -- 'classHaskellConversionType' generates, in IO.  The generator must output
-    -- code and may add imports, but must not add exports.
+    -- const handle for a C++ object, and returns a value of the type that
+    -- 'classHaskellConversionType' generates, in IO.  It should not delete the
+    -- handle.  The generator must output code and may add imports, but must not
+    -- add exports.
     --
     -- If this field is present, then 'classHaskellConversionType' must also be
     -- present.
