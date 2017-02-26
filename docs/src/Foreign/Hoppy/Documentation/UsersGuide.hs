@@ -822,7 +822,39 @@ reverse :: StdStringValue a => a -> IO StdString
 -}
 {- $getting-started-api-versioning
 
-TODO
+Hoppy provides API versioning support in the "Foreign.Hoppy.Generator.Version"
+module.  This is mainly done with the 'collect', 'just', and 'test' functions,
+which are a simple wrapper around collecting a list of optional values:
+
+@
+type 'Filtered' = Maybe
+
+'collect' :: ['Filtered' a] -> [a]
+'none' :: 'Filtered' a
+'just' :: a -> 'Filtered' a
+'test' :: Bool -> a -> 'Filtered' a
+@
+
+These can be used anywhere a list is provided to Hoppy to filter based on some
+criteria.  For example, the @std::pair@ binding in @hoppy-std@ defines a @swap@
+method conditionally based on the version of the C++ standard being used:
+
+@
+c_pair :: 'Class'
+c_pair =
+  ... $
+  'makeClass' ... $
+  'collect'
+  [ ...
+  , 'test' ('activeCppVersion' >= 'Cpp2011') $ 'mkMethod' \"swap\" ['refT' $ 'objT' c_pair] 'voidT'
+  ]
+@
+
+It is up to you to decide how to pass to your feature flags into your generator
+(whether by environment variables, Cabal flags, etc.).  If you use environment
+variables, you will need to use 'unsafePerformIO' to access them, since binding
+definitions don't have access to @IO@.  For an example, see the implementation
+of 'activeCppVersion'.
 
 -}
 {- $generators

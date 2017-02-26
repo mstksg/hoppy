@@ -1416,7 +1416,8 @@ instance HasAddendum Class where
 makeClass :: Identifier
           -> Maybe ExtName
           -- ^ An optional external name; will be automatically derived from the
-          -- identifier if absent.
+          -- identifier if absent by dropping leading namespaces, and taking the
+          -- last component (sans template arguments).
           -> [Class]  -- ^ Superclasses.
           -> [ClassEntity]
           -> Class
