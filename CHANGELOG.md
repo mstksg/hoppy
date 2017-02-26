@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## hoppy-generator-0.3.2, hoppy-docs-0.3.1 (2017-02-26)
+
+- Added a proper tutorial to the user's guide, and improved various bits of
+  documentation in the generator.
+
+- Added a default `main` implementation to the generator for bindings to use,
+  instead of having to write their own.
+
 ## hoppy-generator-0.3.1 (2017-02-18)
 
 - Fixed an infinite loop in the C++ generator and a mistake in the Haskell
