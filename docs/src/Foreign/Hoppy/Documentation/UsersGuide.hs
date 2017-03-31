@@ -678,19 +678,27 @@ Haskell garbage collector, to be deleted when no references are left from
 Haskell memory to the object.
 
 This is tracked internally by handles.  Handles can either be unmanaged (as they
-are initially) or managed (by the collector).  A managed handle can be created
-from an unmanaged handle by calling 'toGc'.  This assigns the object to be
-tracked by the collector, and 'delete' will be called on the object once no more
-handles are left pointing to it.  'toGc' returns a __new__ handle, and existing
-unmanaged handles for the object should no longer be used, since they will be
-dangling pointers once the object is destroyed.  There are some points of
-caution around using this function that are worth knowing about; see the
-function documentation for more info.
+are initially) or managed (by the collector).  For simplicity, this is not
+reflected in a handle's type.  A managed handle can be created from an unmanaged
+handle by calling 'toGc'.  This assigns the object to be tracked by the
+collector, and 'delete' will be called on the object once no more handles are
+left pointing to it.  'toGc' returns a __new__ handle, and existing unmanaged
+handles for the object should no longer be used, since they will be dangling
+pointers once the object is destroyed.  There are some points of caution around
+using this function that are worth knowing about; see the function documentation
+for more info.
 
 If you want to pass an object to the collector immediately upon creation, chain
 its constructor call with @('toGc' '=<<')@.  This is not done by default because
 we don't support revoking the collector's watch over an object, and there are
 times when you want to work with manually managed objects.
+
+'toGcT' may be used when defining a function to make an object being passed into
+Haskell be managed by the garbage collector explicitly.  But rather than using
+'toGcT' with value objects, it's better to use 'classSetConversionToGc'.  There
+is also a lesser-used 'objToHeapT' for copying a temporary onto the heap for
+Haskell code to manage without giving it to the garbage collector (and a
+corresponding 'classSetConversionToHeap').
 
 -}
 {- $getting-started-objects-conversions

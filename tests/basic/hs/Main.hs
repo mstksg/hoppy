@@ -269,7 +269,7 @@ conversionTests =
 
 tObjToHeapTests :: Test
 tObjToHeapTests =
-  "objTToHeap" ~: TestList
+  "TObjToHeap" ~: TestList
   [ "PtrCtr functions properly" ~: do
     ptrCtr_resetCounters
     getCounts >>= (@?= (0, 0))

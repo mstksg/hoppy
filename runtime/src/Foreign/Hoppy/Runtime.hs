@@ -124,19 +124,21 @@ coerceIntegral a =
      else error $ "Conversion from " ++ show (typeOf a) ++ " to " ++
           show (typeOf b) ++ " does not preserve the value " ++ show a ++ "."
 
--- | An instance of this class represents a pointer to a C++ object.  All C++
--- classes bound by Hoppy have instances of @CppPtr@.  The lifetime of such an
--- object can optionally be managed by the Haskell garbage collector.  Pointers
--- returned from constructors are unmanaged, and 'toGc' converts an unmanaged
--- pointer to a managed one.  'delete' must not be called on managed pointers.
+-- | An instance of this class represents a handle (a pointer) to a C++ object.
+-- All C++ classes bound by Hoppy have instances of @CppPtr@.  The lifetime of
+-- such an object can optionally be managed by the Haskell garbage collector.
+-- Handles returned from constructors are unmanaged, and 'toGc' converts an
+-- unmanaged handle to a managed one.  'delete' must not be called on managed
+-- handles.
 class CppPtr this where
-  -- | Polymorphic null pointer.
+  -- | Polymorphic null pointer handle.
   nullptr :: this
 
-  -- | Runs an IO action on the 'Ptr' underlying this pointer.  Equivalent to
-  -- 'ForeignPtr.withForeignPtr' for managed pointers: the 'Ptr' is only
+  -- | Runs an IO action on the 'Ptr' underlying this handle.  Equivalent to
+  -- 'ForeignPtr.withForeignPtr' for managed handles: the 'Ptr' is only
   -- guaranteed to be valid until the action returns.  There is no such
-  -- restriction for unmanaged pointers.
+  -- restriction for unmanaged handles, but of course the object must still be
+  -- alive to be used.
   withCppPtr :: this -> (Ptr this -> IO a) -> IO a
 
   -- | Converts to a regular pointer.  For objects managed by the garbage
@@ -146,8 +148,8 @@ class CppPtr this where
   -- 'touchCppPtr' call later on.
   toPtr :: this -> Ptr this
 
-  -- | Equivalent to 'ForeignPtr.touchForeignPtr' for managed object pointers.
-  -- Has no effect on unmanaged pointers.
+  -- | Equivalent to 'ForeignPtr.touchForeignPtr' for managed handles.  Has no
+  -- effect on unmanaged handles.
   touchCppPtr :: this -> IO ()
 
 -- | C++ values that can be deleted.  By default, C++ classes bound by Hoppy are
@@ -156,18 +158,20 @@ class Deletable this where
   -- | Deletes the object with the C++ @delete@ operator.
   delete :: this -> IO ()
 
-  -- | Converts a pointer to one managed by the garbage collector.  A __new__
-  -- managed pointer is returned, and existing pointers __including__ the
-  -- argument remain unmanaged, becoming invalid once all managed pointers are
-  -- unreachable.  Calling this on an already managed pointer has no effect and
+  -- | Converts a handle to one managed by the garbage collector.  A __new__
+  -- managed handle is returned, and existing handles __including__ the
+  -- argument remain unmanaged, becoming invalid once all managed handles are
+  -- unreachable.  Calling this on an already managed handle has no effect and
   -- the argument is simply returned.  It is no longer safe to call 'delete' on
   -- the given object after calling this function.  It is also not safe to call
-  -- this function on unmanaged pointers for a single object multiple times: the
+  -- this function on unmanaged handles for a single object multiple times: the
   -- object will get deleted more than once.
+  --
+  -- Up- and downcasting managed handles keeps the object alive correctly.
   toGc :: this -> IO this
 
 -- | A typeclass for references to C++ values that can be assigned to.  This
--- includes raw pointers ('Ptr'), as well as pointers to object types that have
+-- includes raw pointers ('Ptr'), as well as handles for object types that have
 -- an assignment operator (see
 -- 'Foreign.Hoppy.Generator.Spec.ClassFeature.Assignable').
 class Assignable cppType value where
@@ -214,8 +218,8 @@ class Encodable cppPtrType hsType | cppPtrType -> hsType where
   encode :: hsType -> IO cppPtrType
 
 -- | Takes a dummy argument to help with type resolution of 'encode', a la
--- 'asTypeOf'.  For example, for a C++ pointer type @StdString@ that gets
--- converted to a regular haskell 'String', the expected usage is:
+-- 'asTypeOf'.  For example, for a handle type @StdString@ that gets converted
+-- to a regular haskell 'String', the expected usage is:
 --
 -- > str :: String
 -- > encodeAs (undefined :: StdString) str
@@ -303,8 +307,9 @@ withCppObj :: (Deletable cppPtrType, Encodable cppPtrType hsType)
            => hsType -> (cppPtrType -> IO a) -> IO a
 withCppObj x = bracket (encode x) delete
 
--- | @withScopedPtr m f@ runs @m@ to get a pointer, which is given to @f@ to
--- execute.  When @f@ finishes, the pointer is deleted (via 'bracket').
+-- | @withScopedPtr m f@ runs @m@ to get a handle, which is given to @f@ to
+-- execute.  When @f@ finishes, the handle is deleted (via 'bracket' and
+-- 'delete').
 withScopedPtr :: Deletable cppPtrType => IO cppPtrType -> (cppPtrType -> IO a) -> IO a
 withScopedPtr p = bracket p delete
 
@@ -328,12 +333,10 @@ class CppException e where
   -- | Internal.  Returns metadata about the exception.
   cppExceptionInfo :: e -> ExceptionClassInfo
 
-  -- | Internal.  Constructs an object handle from a GC-managed object's raw
-  -- pointers.
+  -- | Internal.  Constructs a handle from a GC-managed object's raw pointers.
   cppExceptionBuild :: ForeignPtr () -> Ptr () -> e
 
-  -- | Internal.  Constructs a GC-managed object handle from an unmanaged raw
-  -- pointer.
+  -- | Internal.  Constructs a GC-managed handle from an unmanaged raw pointer.
   cppExceptionBuildToGc :: Ptr () -> IO e
 
 -- | A typeclass for C++ values that are throwable as exceptions.  C++ classes that
