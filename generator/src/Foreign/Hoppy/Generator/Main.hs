@@ -61,6 +61,10 @@ import System.IO (hPutStrLn, stderr)
 data Action =
     ListInterfaces
     -- ^ Lists the interfaces compiled into the generator.
+  | ListCppFiles
+    -- ^ Lists the generated files in C++ bindings.
+  | ListHsFiles
+    -- ^ Lists the generated files in Haskell bindings.
   | GenCpp FilePath
     -- ^ Generates C++ wrappers for an interface in the given location.
   | GenHaskell FilePath
@@ -157,6 +161,8 @@ usage stateVar = do
     , "Supported options:"
     , "  --help                      Displays this menu."
     , "  --list-interfaces           Lists the interfaces compiled into this binary."
+    , "  --list-cpp-files            Lists generated file paths in C++ bindings."
+    , "  --list-hs-files             Lists generated file paths in Haskell bindings."
     , "  --gen-cpp <outdir>          Generate C++ bindings in a directory."
     , "  --gen-hs <outdir>           Generate Haskell bindings under the given"
     , "                              top-level source directory."
@@ -170,6 +176,26 @@ processArgs stateVar args =
     "--list-interfaces":rest -> do
       listInterfaces stateVar
       (ListInterfaces:) <$> processArgs stateVar rest
+
+    "--list-cpp-files":rest -> do
+      genResult <- withCurrentCache stateVar getGeneratedCpp
+      case genResult of
+        Left errorMsg -> do
+          putStrLn $ "--list-cpp-files: Failed to generate: " ++ errorMsg
+          exitFailure
+        Right gen -> do
+          mapM_ putStrLn $ M.keys $ Cpp.generatedFiles gen
+          (ListCppFiles:) <$> processArgs stateVar rest
+
+    "--list-hs-files":rest -> do
+      genResult <- withCurrentCache stateVar getGeneratedHaskell
+      case genResult of
+        Left errorMsg -> do
+          putStrLn $ "--list-hs-files: Failed to generate: " ++ errorMsg
+          exitFailure
+        Right gen -> do
+          mapM_ putStrLn $ M.keys $ Haskell.generatedFiles gen
+          (ListHsFiles:) <$> processArgs stateVar rest
 
     "--gen-cpp":baseDir:rest -> do
       baseDirExists <- doesDirectoryExist baseDir

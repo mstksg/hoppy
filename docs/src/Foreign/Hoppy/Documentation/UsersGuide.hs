@@ -132,7 +132,7 @@ few different packages that provide interface definition data structures and
 code generators, some runtime support for Haskell bindings, and interface
 definitions for the C++ standard library.
 
-Bindings using Hoppy have three parts:
+Bindings using Hoppy have three Cabal packages:
 
 - A Haskell generator program (in @\/generator@) that knows the interface
 definition and generates code for the next two parts.
@@ -155,6 +155,11 @@ This section provides a gentle introduction to working with Hoppy.
 
 -}
 {- $getting-started-project-setup
+
+__TODO:__ While this section is still mostly true, the process is now simplified
+by using the "Foreign.Hoppy.Setup" package.  See the complete example in the
+@example/@ directory in the Hoppy source repository.  This section needs
+updating.
 
 To bind to a C++ library, first the binding author writes a generator program
 (@\/generator@) in Haskell.  This program should define the complete C++
@@ -431,6 +436,7 @@ Let's package up the @std::string@ binding to get a buildable example.  We
 define a module to export the class, and an interface to collect our modules.
 
 @
+import "Foreign.Hoppy.Generator.Main"
 import "Foreign.Hoppy.Generator.Spec"
 
 main :: IO ()

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Added default Setup.hs implementations for gateway packages, to encapsulate
+  the magic that is needed to make bindings work (issue #13).  See
+  Foreign.Hoppy.Setup in hoppy-runtime and the example/ directory that uses it.
+
 ## hoppy-generator-0.3.2, hoppy-docs-0.3.1 (2017-02-26)
 
 - Added a proper tutorial to the user's guide, and improved various bits of

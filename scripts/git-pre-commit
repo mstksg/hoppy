@@ -82,7 +82,7 @@ fi
 legalResult=0
 
 licenseCabalForFile() {
-    if [[ $file = std/* ]] || [[ $file = runtime/* ]]; then
+    if [[ $file = std/* ]] || [[ $file = runtime/* ]] || [[ $file = example/* ]]; then
         echo Apache-2.0
     else
         echo AGPL-3
@@ -102,7 +102,7 @@ while read file; do
             grep -q 'Copyright 2' "$file" && \
                 ! grep -q 'Copyright 2[^<]*$' "$file" && \
                 case "$file" in
-                    std/*|runtime/*)
+                    std/*|runtime/*|example/*)
                         grep -qF 'Licensed under the Apache License, Version 2.0' "$file";;
                     *)
                         grep -qF 'GNU Affero General Public License' "$file" && \
@@ -126,7 +126,7 @@ while read file; do
             head -10 "$file" | grep -q Copyright && \
                 (! head -20 "$file" | grep -q 'Copyright[^<]\+$') && \
                 case "$file" in
-                    std/*|runtime/*)
+                    std/*|runtime/*|example/*)
                         head -20 "$file" |
                             grep -qF 'Licensed under the Apache License, Version 2.0' && \
                             grep -q 'license =.*\basl20;' "$file";;
@@ -142,7 +142,7 @@ while read file; do
             head -10 "$file" | grep -q Copyright && \
                 (! head -20 "$file" | grep -q 'Copyright[^<]\+$') && \
                 case "$file" in
-                    std/*|runtime/*)
+                    std/*|runtime/*|example/*)
                         head -20 "$file" | \
                             grep -qF 'Licensed under the Apache License, Version 2.0';;
                     *)
