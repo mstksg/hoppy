@@ -14,6 +14,8 @@
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
 
+{-# LANGUAGE CPP #-}
+
 -- | Implementations of Cabal setup programs for use in packages of generated
 -- bindings.
 --
@@ -78,11 +80,13 @@ import Distribution.Simple.LocalBuildInfo (
   )
 import Distribution.Simple.PackageIndex (lookupPackageName)
 import Distribution.Simple.Program (
-  ProgramSearchPathEntry (ProgramSearchPathDefault),
-  findProgramOnSearchPath,
   getProgramOutput,
   runDbProgram,
   runProgram,
+  )
+import Distribution.Simple.Program.Find (
+  ProgramSearchPathEntry (ProgramSearchPathDefault),
+  findProgramOnSearchPath,
   )
 import Distribution.Simple.Program.Types (
   ConfiguredProgram,
@@ -252,8 +256,11 @@ cppClean project verbosity = do
 
 findSystemProgram :: Verbosity -> FilePath -> IO ConfiguredProgram
 findSystemProgram verbosity basename = do
-  maybePath <- fmap (fmap fst) $  -- We don't care about failed search paths.
-               findProgramOnSearchPath verbosity [ProgramSearchPathDefault] basename
+  maybePath <-
+#if MIN_VERSION_Cabal(1,24,0)
+    fmap (fmap fst) $  -- We don't care about failed search paths.
+#endif
+    findProgramOnSearchPath verbosity [ProgramSearchPathDefault] basename
   case maybePath of
     Just path -> return $ simpleConfiguredProgram basename $ FoundOnSystem path
     Nothing -> die $ "Couldn't find program " ++ show basename ++ "."
