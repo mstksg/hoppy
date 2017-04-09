@@ -78,6 +78,8 @@ import Distribution.Simple.LocalBuildInfo (
   )
 import Distribution.Simple.PackageIndex (lookupPackageName)
 import Distribution.Simple.Program (
+  ProgramSearchPathEntry (ProgramSearchPathDefault),
+  findProgramOnSearchPath,
   getProgramOutput,
   runDbProgram,
   runProgram,
@@ -116,7 +118,7 @@ import Distribution.Simple.UserHooks (
     preTest
     ),
   )
-import Distribution.Simple.Utils (die, findProgramLocation, info)
+import Distribution.Simple.Utils (die, info)
 import Distribution.Verbosity (Verbosity, normal)
 import System.Directory (createDirectoryIfMissing, doesFileExist, removeFile)
 import System.FilePath ((</>), takeDirectory)
@@ -250,7 +252,8 @@ cppClean project verbosity = do
 
 findSystemProgram :: Verbosity -> FilePath -> IO ConfiguredProgram
 findSystemProgram verbosity basename = do
-  maybePath <- findProgramLocation verbosity basename
+  maybePath <- fmap (fmap fst) $  -- We don't care about failed search paths.
+               findProgramOnSearchPath verbosity [ProgramSearchPathDefault] basename
   case maybePath of
     Just path -> return $ simpleConfiguredProgram basename $ FoundOnSystem path
     Nothing -> die $ "Couldn't find program " ++ show basename ++ "."
