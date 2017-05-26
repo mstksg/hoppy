@@ -6,6 +6,11 @@
   the magic that is needed to make bindings work (issue #13).  See
   Foreign.Hoppy.Setup in hoppy-runtime and the example/ directory that uses it.
 
+- Callback functors are now default constructable, so that callbacks in C++ can
+  be optional.  Like std::shared_ptr, casting to bool determines whether the
+  callback is populated and may be called.  It is not valid to invoke a
+  default-constructed callback.
+
 ## hoppy-generator-0.3.2, hoppy-docs-0.3.1 (2017-02-26)
 
 - Added a proper tutorial to the user's guide, and improved various bits of

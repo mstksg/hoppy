@@ -605,8 +605,10 @@ sayExportCallback sayBody cb = do
 
       says ["\nclass ", className, " {\n"]
       say "public:\n"
+      says ["    ", className, "() {}\n"]
       says ["    explicit ", className, "(", implClassName, "* impl) : impl_(impl) {}\n"]
       say "    " >> sayVar "operator()" Nothing fnType >> say ";\n"
+      say "    operator bool() const;\n"
       say "private:\n"
       says ["    std::shared_ptr<", implClassName, "> impl_;\n"]
       say "};\n"
@@ -723,6 +725,12 @@ sayExportCallback sayBody cb = do
           _ -> say "return (*impl_)("
         sayArgNames paramCount
         say ");\n"
+
+      -- Render "operator bool", which detects whether the callback was not
+      -- default-constructed with no actual impl object.
+      says [className, "::operator bool() const {\n"]
+      say "return static_cast<bool>(impl_);\n"
+      say "}\n"
 
       -- Render the function that creates a new callback object.
       let newCallbackFnType = fnT [ fnPtrCType
