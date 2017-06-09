@@ -134,14 +134,14 @@ definitions for the C++ standard library.
 
 Bindings using Hoppy have three Cabal packages:
 
-- A Haskell generator program (in @\/generator@) that knows the interface
-definition and generates code for the next two parts.
+- A Haskell generator program (in @\/myproject-generator@) that knows the
+interface definition and generates code for the next two parts.
 
-- A C++ library (in @\/cpp@) that gets compiled into a shared object containing
+- A C++ library (in @\/myproject-cpp@) that gets compiled into a shared object containing
 the C++ half of the bindings.
 
-- A Haskell library (in @\/hs@) that links against the C++ library and exposes
-the bindings.
+- A Haskell library (in @\/myproject@) that links against the C++ library and
+exposes the bindings.
 
 The path names are suggested subdirectories of a project, and are used in this
 document, but are not required.  Only the latter two items need to be packaged
@@ -156,41 +156,30 @@ This section provides a gentle introduction to working with Hoppy.
 -}
 {- $getting-started-project-setup
 
-__TODO:__ While this section is still mostly true, the process is now simplified
-by using the "Foreign.Hoppy.Setup" package.  See the complete example in the
-@example/@ directory in the Hoppy source repository.  This section needs
-updating.
+To set up a new Hoppy project, it's recommended to start with the project in the
+@example\/@ directory as a base.  It is a minimal project that defines a C++
+function to reverse a @std::string@, exposes that to Haskell via a library, and
+provides a demo program that uses the library.  The @example\/install.sh@ script
+simply compiles and installs the generator, C++, and Haskell packages in turn.
 
-To bind to a C++ library, first the binding author writes a generator program
-(@\/generator@) in Haskell.  This program should define the complete C++
-interface that is to be exposed.  The binding author also writes a @Main.hs@
-file for invoking the generator (usually deferring to 'defaultMain').  If
-necessary, she should also write wrappers for C++ things that she doesn't want
-to expose directly (in @\/cpp@).
+The generator package specifies the C++ interface to be exposed, using the
+functions and data types described in the rest of this section.
 
-Then, her build process should perform the following steps:
+The C++ package is a mostly empty, primarily containing a @Setup.hs@ file that
+invokes Hoppy build hooks, and the C++ code we're binding to.  When building
+this package, Hoppy generates some C++ code and then relies on a Makefile we
+provide for linking it together with any code we provided (see
+@example\/example-cpp\/cpp\/Makefile@).  If you are relying on a system library,
+you can link to it in the Makefile.
 
-1. Compile the generator (@\/generator@).
+The Haskell package is even more empty than the C++ one.  It contains a similar
+@Setup.hs@ to invoke Hoppy.  Nothing else is included in the package's library,
+although you are free to add your own Haskell modules.  The executable ties
+everything together by calling the C++ code.  It reverses the characters of each
+input line it sees.
 
-2. Run the generator to create the C++ and Haskell sides of the bindings in
-@\/cpp@ and @\/hs\/src@ respectively.  See the documentation for 'run' for how
-to invoke a generator.
-
-3. Compile the C++ side of the bindings into a shared object.  Make sure to
-compile with the version of the C++ standard that matches what the generator was
-run with (see 'activeCppVersion').
-
-4. Compile the Haskell side of the bindings, linking with the C++ library.
-
-For this last step, the @.cabal@ file in @\/hs@ should have
-
-> extra-libraries: foo
-
-to link against a shared object @libfoo.so@.  If this library is not on the
-system's library search path, then she will need to specify
-@--extra-lib-dirs=...\/cpp@ to the @cabal configure@ for @\/hs@.
-
-The unit tests provide some simple examples of this setup.
+To publish this project, one would upload all three packages to Hackage.  (But
+make sure to rename it first!)
 
 -}
 {- $getting-started-a-first-binding
