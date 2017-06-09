@@ -22,7 +22,7 @@
 }:
 mkDerivation ({
   pname = "hoppy-docs";
-  version = "0.3.1";
+  version = "0.3.2";
   src = ./.;
   libraryHaskellDepends = [
     base haskell-src hoppy-generator hoppy-runtime
