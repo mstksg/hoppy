@@ -23,4 +23,4 @@ libhoppy-tests-stl.so: std.o stl.o
 	$(CXX) -shared $^ -o $@
 
 clean:
-	-rm stl.cpp stl.hpp *.o *.so
+	-rm std.cpp std.hpp stl.cpp stl.hpp *.o *.so
