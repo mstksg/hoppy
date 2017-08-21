@@ -40,7 +40,8 @@ module Foreign.Hoppy.Generator.Main (
 #if !MIN_VERSION_base(4,8,0)
 import Control.Applicative ((<$>))
 #endif
-import Control.Concurrent.MVar (MVar, modifyMVar, newMVar, readMVar)
+import Control.Arrow ((&&&))
+import Control.Concurrent.MVar (MVar, modifyMVar, modifyMVar_, newMVar, readMVar)
 import Control.Monad ((<=<), unless, when)
 import Data.Foldable (forM_)
 import Data.List (intercalate)
@@ -59,7 +60,9 @@ import System.IO (hPutStrLn, stderr)
 
 -- | Actions that can be requested of the program.
 data Action =
-    ListInterfaces
+    SelectInterface String
+    -- ^ Sets the interface that will be used for subsequent actions.
+  | ListInterfaces
     -- ^ Lists the interfaces compiled into the generator.
   | ListCppFiles
     -- ^ Lists the generated files in C++ bindings.
@@ -71,14 +74,14 @@ data Action =
     -- ^ Generates Haskell bindings for an interface in the given location.
 
 data AppState = AppState
-  { appInterfaces :: [Interface]
+  { appInterfaces :: Map String Interface
   , appCurrentInterface :: Interface
   , appCaches :: Caches
   }
 
 initialAppState :: [Interface] -> AppState
 initialAppState ifaces = AppState
-  { appInterfaces = ifaces
+  { appInterfaces = M.fromList $ map (interfaceName &&& id) ifaces
   , appCurrentInterface = head ifaces
   , appCaches = M.empty
   }
@@ -137,6 +140,9 @@ defaultMain interfaceResult = case interfaceResult of
 --
 -- - __@--list-interfaces@:__ Lists the interfaces compiled into the generator.
 --
+-- - __@--interface \<iface\>@:__ Sets the interface that will be used for
+--   subsequent arguments.
+--
 -- - __@--gen-cpp \<outdir\>@:__ Generates C++ bindings in the given directory.
 --
 -- - __@--gen-hs \<outdir\>@:__ Generates Haskell bindings under the given
@@ -146,6 +152,8 @@ run interfaces args = do
   stateVar <- newMVar $ initialAppState interfaces
   when (null args) $ do
     putStrLn "This is a Hoppy interface generator.  Use --help for options."
+    putStrLn ""
+    putStrLn $ "Interfaces: " ++ unwords (map interfaceName interfaces)
     exitSuccess
   when ("--help" `elem` args) $ usage stateVar >> exitSuccess
   processArgs stateVar args
@@ -160,6 +168,7 @@ usage stateVar = do
     , ""
     , "Supported options:"
     , "  --help                      Displays this menu."
+    , "  --interface <iface>         Sets the interface used for subsequent options."
     , "  --list-interfaces           Lists the interfaces compiled into this binary."
     , "  --list-cpp-files            Lists generated file paths in C++ bindings."
     , "  --list-hs-files             Lists generated file paths in Haskell bindings."
@@ -173,6 +182,17 @@ processArgs stateVar args =
   case args of
     [] -> return []
 
+    "--interface":name:rest -> do
+      modifyMVar_ stateVar $ \state ->
+        case M.lookup name $ appInterfaces state of
+          Nothing -> do
+            hPutStrLn stderr $
+              "--interface: Interface '" ++ name ++ "' doesn't exist in this generator."
+            _ <- exitFailure
+            return state
+          Just iface -> return state { appCurrentInterface = iface }
+      (SelectInterface name:) <$> processArgs stateVar rest
+
     "--list-interfaces":rest -> do
       listInterfaces stateVar
       (ListInterfaces:) <$> processArgs stateVar rest
@@ -181,7 +201,7 @@ processArgs stateVar args =
       genResult <- withCurrentCache stateVar getGeneratedCpp
       case genResult of
         Left errorMsg -> do
-          putStrLn $ "--list-cpp-files: Failed to generate: " ++ errorMsg
+          hPutStrLn stderr $ "--list-cpp-files: Failed to generate: " ++ errorMsg
           exitFailure
         Right gen -> do
           mapM_ putStrLn $ M.keys $ Cpp.generatedFiles gen
@@ -191,7 +211,7 @@ processArgs stateVar args =
       genResult <- withCurrentCache stateVar getGeneratedHaskell
       case genResult of
         Left errorMsg -> do
-          putStrLn $ "--list-hs-files: Failed to generate: " ++ errorMsg
+          hPutStrLn stderr $ "--list-hs-files: Failed to generate: " ++ errorMsg
           exitFailure
         Right gen -> do
           mapM_ putStrLn $ M.keys $ Haskell.generatedFiles gen
@@ -207,7 +227,7 @@ processArgs stateVar args =
       genResult <- withCurrentCache stateVar getGeneratedCpp
       case genResult of
         Left errorMsg -> do
-          putStrLn $ "--gen-cpp: Failed to generate: " ++ errorMsg
+          hPutStrLn stderr $ "--gen-cpp: Failed to generate: " ++ errorMsg
           exitFailure
         Right gen -> do
           forM_ (M.toList $ Cpp.generatedFiles gen) $
@@ -224,7 +244,7 @@ processArgs stateVar args =
       genResult <- withCurrentCache stateVar getGeneratedHaskell
       case genResult of
         Left errorMsg -> do
-          putStrLn $ "--gen-hs: Failed to generate: " ++ errorMsg
+          hPutStrLn stderr $ "--gen-hs: Failed to generate: " ++ errorMsg
           exitFailure
         Right gen -> do
           forM_ (M.toList $ Haskell.generatedFiles gen) $
@@ -232,7 +252,7 @@ processArgs stateVar args =
           (GenHaskell baseDir:) <$> processArgs stateVar rest
 
     arg:_ -> do
-      putStrLn $ "Invalid option or missing argument for " ++ arg ++ "."
+      hPutStrLn stderr $ "Invalid option or missing argument for '" ++ arg ++ "'."
       exitFailure
 
 writeGeneratedFile :: FilePath -> FilePath -> String -> IO ()
@@ -252,7 +272,7 @@ withCurrentCache stateVar fn = modifyMVar stateVar $ \state -> do
   return (state { appCaches = M.insert name cache $ appCaches state }, result)
 
 listInterfaces :: MVar AppState -> IO ()
-listInterfaces = mapM_ (putStrLn . interfaceName) . appInterfaces <=< readMVar
+listInterfaces = mapM_ (putStrLn . interfaceName) <=< getInterfaces
 
 getInterfaces :: MVar AppState -> IO [Interface]
-getInterfaces = fmap appInterfaces . readMVar
+getInterfaces = fmap (M.elems . appInterfaces) . readMVar
