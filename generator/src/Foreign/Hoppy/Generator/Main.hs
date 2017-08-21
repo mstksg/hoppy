@@ -34,6 +34,7 @@
 module Foreign.Hoppy.Generator.Main (
   Action (..),
   defaultMain,
+  defaultMain',
   run,
   ) where
 
@@ -42,7 +43,7 @@ import Control.Applicative ((<$>))
 #endif
 import Control.Arrow ((&&&))
 import Control.Concurrent.MVar (MVar, modifyMVar, modifyMVar_, newMVar, readMVar)
-import Control.Monad ((<=<), unless, when)
+import Control.Monad ((<=<), forM, unless, when)
 import Data.Foldable (forM_)
 import Data.List (intercalate)
 import qualified Data.Map as M
@@ -118,16 +119,23 @@ getGeneratedHaskell cache = case generatedHaskell cache of
 -- main = defaultMain $ 'interface' ...
 -- @
 --
--- Refer to 'run' for how to use the command-line interface.
+-- Refer to 'run' for how to use the command-line interface.  Use 'defaultMain''
+-- if you want to include multiple interfaces in your generator.
 defaultMain :: Either String Interface -> IO ()
-defaultMain interfaceResult = case interfaceResult of
-  Left errorMsg -> do
-    hPutStrLn stderr $ "Error initializing interface: " ++ errorMsg
-    exitFailure
-  Right iface -> do
-    args <- getArgs
-    _ <- run [iface] args
-    return ()
+defaultMain interfaceResult = defaultMain' [interfaceResult]
+
+-- | This is a version of 'defaultMain' that accepts multiple interfaces.
+defaultMain' :: [Either String Interface] -> IO ()
+defaultMain' interfaceResults = do
+  interfaces <- forM interfaceResults $ \interfaceResult -> case interfaceResult of
+    Left errorMsg -> do
+      hPutStrLn stderr $ "Error initializing interface: " ++ errorMsg
+      exitFailure
+    Right iface -> return iface
+
+  args <- getArgs
+  _ <- run interfaces args
+  return ()
 
 -- | @run interfaces args@ runs the driver with the command-line arguments from
 -- @args@ against the listed interfaces, and returns the list of actions
