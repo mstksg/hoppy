@@ -343,8 +343,9 @@ sayExportBitspace mode bitspace =
       ln
       saysLn ["instance ", className, " (", prettyPrint hsCNumType, ") where"]
       indent $ saysLn [toFnName, " = ", hsTypeName]
-      saysLn ["instance ", className, " (", prettyPrint hsHsNumType, ") where"]
-      indent $ saysLn [toFnName, " = ", hsTypeName, " . HoppyFHR.coerceIntegral"]
+      when (hsHsNumType /= hsCNumType) $ do
+        saysLn ["instance ", className, " (", prettyPrint hsHsNumType, ") where"]
+        indent $ saysLn [toFnName, " = ", hsTypeName, " . HoppyFHR.coerceIntegral"]
       saysLn ["instance ", className, " ", hsTypeName, " where"]
       indent $ saysLn [toFnName, " = HoppyP.id"]
 
@@ -362,7 +363,7 @@ sayExportBitspace mode bitspace =
       ln
       forM_ values $ \(num, valueName) -> do
         addExport valueName
-        saysLn [valueName, " = ", hsTypeName, " ", show num]
+        saysLn [valueName, " = ", hsTypeName, " (", show num, ")"]
 
     SayExportBoot -> do
       hsCNumType <- cppTypeToHsTypeAndUse HsCSide $ bitspaceType bitspace
@@ -387,7 +388,8 @@ sayExportBitspace mode bitspace =
         saysLn [toFnName, " :: ", prettyPrint $ HsTyFun tyVar hsType]
       ln
       saysLn ["instance ", className, " (", prettyPrint hsCNumType, ")"]
-      saysLn ["instance ", className, " (", prettyPrint hsHsNumType, ")"]
+      when (hsHsNumType /= hsCNumType) $
+        saysLn ["instance ", className, " (", prettyPrint hsHsNumType, ")"]
       saysLn ["instance ", className, " ", hsTypeName]
       forM_ (bitspaceEnum bitspace) $ \enum -> do
         enumTypeName <- toHsEnumTypeName enum
