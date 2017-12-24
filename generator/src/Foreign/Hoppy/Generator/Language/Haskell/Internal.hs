@@ -448,18 +448,21 @@ sayExportFn mode extName foreignName purity paramTypes retType exceptionHandlers
         forM_ (zip3 paramTypes argNames convertedArgNames) $ \(t, argName, argName') ->
           sayArgProcessing ToCpp t argName argName'
 
-        when catches $ do
-          iface <- askInterface
-          currentModule <- askModule
-          let exceptionSupportModule = interfaceExceptionSupportModule iface
-          when (exceptionSupportModule /= Just currentModule) $
-            addImports . hsWholeModuleImport . getModuleName iface =<<
-            fromMaybeM (throwError "Internal error, an exception support module is not available")
-            exceptionSupportModule
-          addImports $ mconcat [hsImport1 "Prelude" "($)", hsImportForRuntime]
-          sayLn "HoppyFHR.internalHandleExceptions exceptionDb' $"
+        exceptionHandling <-
+          if catches
+          then do iface <- askInterface
+                  currentModule <- askModule
+                  let exceptionSupportModule = interfaceExceptionSupportModule iface
+                  when (exceptionSupportModule /= Just currentModule) $
+                    addImports . hsWholeModuleImport . getModuleName iface =<<
+                    fromMaybeM (throwError
+                                "Internal error, an exception support module is not available")
+                    exceptionSupportModule
+                  addImports $ mconcat [hsImport1 "Prelude" "($)", hsImportForRuntime]
+                  return "HoppyFHR.internalHandleExceptions exceptionDb' $"
+          else return ""
 
-        let callWords = hsFnImportedName : map (' ':) convertedArgNames
+        let callWords = exceptionHandling : hsFnImportedName : map (' ':) convertedArgNames
         sayCallAndProcessReturn ToCpp retType callWords
 
     SayExportBoot ->
@@ -551,6 +554,7 @@ sayExportCallback mode cb =
       SayExportDecls -> do
         addExports [hsNewFunPtrFnName, hsCtorName]
 
+        -- Generate the *_newFunPtr function.
         wholeNewFunPtrFnType <- getWholeNewFunPtrFnType
         let paramCount = length paramTypes
             argNames = map toArgName [1..paramCount]
@@ -561,7 +565,7 @@ sayExportCallback mode cb =
         ln
         saysLn [hsNewFunPtrFnName, " :: ", prettyPrint wholeNewFunPtrFnType]
         saysLn $ hsNewFunPtrFnName : " f'hs = " : hsCtorName'newFunPtr : " $" :
-          case (if throws then (["excIdPtr", "excPtrPtr"] ++) else id) argNames of
+          case (if throws then (++ ["excIdPtr", "excPtrPtr"]) else id) argNames of
             [] -> []
             argNames' -> [" \\", unwords argNames', " ->"]
         indent $ do
@@ -571,6 +575,7 @@ sayExportCallback mode cb =
           sayCallAndProcessReturn FromCpp retType $
             "f'hs" : map (' ':) argNames'
 
+        -- Generate the *_new function.
         wholeCtorType <- getWholeCtorType
         ln
         saysLn [hsCtorName, " :: ", prettyPrint wholeCtorType]

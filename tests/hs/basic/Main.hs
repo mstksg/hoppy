@@ -40,6 +40,7 @@ import Foreign.C (
 import Foreign.ForeignPtr (ForeignPtr, castForeignPtr, withForeignPtr)
 import Foreign.Hoppy.Runtime (
   CBool,
+  CppException,
   CppThrowable,
   UnknownCppException,
   assign,
@@ -670,18 +671,39 @@ exceptionTests =
         return ()
       readIORef threw >>= assertBool "Expected an exception to be thrown."
     ]
+
+  , "catching exceptions from value-returning functions" ~: TestList
+    [ "returning a bool" ~:
+      expectException throwingReturnBool (undefined :: BaseException)
+
+    , "returning an int" ~:
+      expectException throwingReturnInt (undefined :: BaseException)
+
+    , "returning an IntBox by value" ~:
+      expectException throwingReturnIntBox (undefined :: BaseException)
+
+    , -- This test is pretty cool, we call a C++ function which calls a Haskell
+      -- callback which throws, and the exception is propagated back out to the
+      -- original Haskell caller.
+      "returning an IntBox from a callback." ~:
+      expectException
+        (throwingMakeBoxByValueCallbackDriver (\_ -> baseException_new >>= throwCpp) 0)
+        (undefined :: BaseException)
+    ]
   ]
-  where expectException action excType = do
+  where expectException :: CppException e => IO a -> e -> IO ()
+        expectException action excType = do
           threwRef <- newIORef False
-          catchCpp action $ \e ->
+          catchCpp (action >> return ()) $ \e ->
             asTypeOf e excType `seq` writeIORef threwRef True
           threw <- readIORef threwRef
           unless threw $ assertFailure "Expected to catch an exception."
 
+        expectExceptionButNot :: (CppException e1, CppException e2) => IO a -> e1 -> e2 -> IO ()
         expectExceptionButNot action expectedExcType unexpectedExcType = do
           caughtExpectedRef <- newIORef False
           caughtUnexpectedRef <- newIORef False
-          catchCpp (catchCpp action $
+          catchCpp (catchCpp (action >> return ()) $
                     \e -> asTypeOf e unexpectedExcType `seq` writeIORef caughtUnexpectedRef True) $
             \e -> asTypeOf e expectedExcType `seq` writeIORef caughtExpectedRef True
 

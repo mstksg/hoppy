@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+- Bug fixes for bitspaces:
+
+  - Negative numeric values are now supported, as they are for enums.
+
+  - There was a duplicate typeclass instance being generated when a bitspace's
+    Haskell-side Haskell and C numeric types were the same.
+
+- Bug fixes for exception handling:
+
+  - The generated Haskell code for functions that throw and also need
+    Haskell-side return value conversion wouldn't compile (the
+    internalHandleExceptions call was placed at the wrong point).
+
+  - There was a null pointer dereference in C++ coming back from throwing
+    callbacks that return refT or objT.
+
+  - Generated code used a mix of prepended and appended exception arguments for
+    callbacks (everywhere prepended except for callbackToTFn).  Now callbacks
+    consistently append those arguments, as is done for throwing C++ functions.
+
 ## hoppy-generator-0.3.3, hoppy-runtime-0.3.1, hoppy-docs-0.3.2 (2017-06-08)
 
 - Added default Setup.hs implementations for gateway packages, to encapsulate

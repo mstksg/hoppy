@@ -337,3 +337,19 @@ int invokeThrowingCallback(ThrowingCallback cb) {
     }
     return -1;
 }
+
+bool throwingReturnBool() {
+    throw BaseException();
+}
+
+int throwingReturnInt() {
+    throw BaseException();
+}
+
+IntBox throwingReturnIntBox() {
+    throw BaseException();
+}
+
+int throwingMakeBoxByValueCallbackDriver(ThrowingMakeBoxByValueCallback cb, int value) {
+    return cb(value).get();
+}

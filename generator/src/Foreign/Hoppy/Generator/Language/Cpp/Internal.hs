@@ -578,7 +578,7 @@ sayExportCallback sayBody cb = do
 
   addReqsM . mconcat =<< mapM typeReqs (retType:paramTypes)
 
-  let fnCType = fnT ((if throws then ([ptrT intT, ptrT $ ptrT voidT] ++) else id)
+  let fnCType = fnT ((if throws then (++ [ptrT intT, ptrT $ ptrT voidT]) else id)
                      paramCTypes)
                     retCType
       fnPtrCType = ptrT fnCType
@@ -663,14 +663,19 @@ sayExportCallback sayBody cb = do
                        "module.  Please use interfaceSetExceptionSupportModule."
 
         -- Invoke the function pointer into foreign code.
-        let sayCall = do
+        let -- | Generates the call to the foreign language function pointer.
+            sayCall :: Generator ()
+            sayCall = do
               say "f_("
-              when throws $ do
-                says ["&", exceptionIdArgName, ", &", exceptionPtrArgName]
-                when (paramCount /= 0) $ say ", "
               sayArgNames paramCount
+              when throws $ do
+                when (paramCount /= 0) $ say ", "
+                says ["&", exceptionIdArgName, ", &", exceptionPtrArgName]
               say ")"
 
+            -- | Generates code to check whether an exception was thrown by the
+            -- callback, and rethrows it in C++ if so.
+            sayExceptionCheck :: Generator ()
             sayExceptionCheck = when throws $ do
               says ["if (", exceptionIdArgName, " != 0) { ",
                     exceptionRethrowFnName, "(", exceptionIdArgName, ", ",
@@ -698,20 +703,20 @@ sayExportCallback sayBody cb = do
           (Internal_TObj cls1, Just retCType@(Internal_TPtr (Internal_TConst (Internal_TObj cls2))))
             | cls1 == cls2 -> do
             sayVar "resultPtr" Nothing retCType >> say " = " >> sayCall >> say ";\n"
+            sayExceptionCheck
             sayVar "result" Nothing retType >> say " = *resultPtr;\n"
             say "delete resultPtr;\n"
-            sayExceptionCheck
             say "return result;\n"
           (Internal_TRef (Internal_TConst (Internal_TObj cls1)),
            Just (Internal_TPtr (Internal_TConst (Internal_TObj cls2)))) | cls1 == cls2 -> do
-            sayVar "result" Nothing retType >> say " = *" >> sayCall >> say ";\n"
+            sayVar "resultPtr" Nothing retCType >> say " = " >> sayCall >> say ";\n"
             sayExceptionCheck
-            say "return result;\n"
+            say "return *resultPtr;\n"
           (Internal_TRef (Internal_TObj cls1),
            Just (Internal_TPtr (Internal_TObj cls2))) | cls1 == cls2 -> do
-            sayVar "result" Nothing retType >> say " = *" >> sayCall >> say ";\n"
+            sayVar "resultPtr" Nothing retCType >> say " = " >> sayCall >> say ";\n"
             sayExceptionCheck
-            say "return result;\n"
+            say "return *resultPtr;\n"
           ts -> abort $ concat
                 ["sayExportCallback: Unexpected return types ", show ts, "."]
 

@@ -166,6 +166,11 @@ testModule =
   , ExportFn f_throwsAny
   , ExportCallback cb_ThrowingCallback
   , ExportFn f_invokeThrowingCallback
+  , ExportFn f_throwingReturnBool
+  , ExportFn f_throwingReturnInt
+  , ExportFn f_throwingReturnIntBox
+  , ExportCallback cb_ThrowingMakeBoxByValueCallback
+  , ExportFn f_throwingMakeBoxByValueCallbackDriver
   ]
 
 c_IntBox :: Class
@@ -792,3 +797,43 @@ f_invokeThrowingCallback =
   addReqIncludes [includeLocal "functions.hpp"] $
   makeFn (ident "invokeThrowingCallback") Nothing Nonpure
   [callbackT cb_ThrowingCallback] intT
+
+-- This ensures that generated exception handling code plays well with the
+-- conversions necessary for returning booleans from a function.
+f_throwingReturnBool :: Function
+f_throwingReturnBool =
+  addReqIncludes [includeLocal "functions.hpp"] $
+  handleExceptions [CatchClass c_BaseException] $
+  makeFn (ident "throwingReturnBool") Nothing Nonpure [] boolT
+
+-- This ensures that generated exception handling code plays well with generated
+-- code that returns ints from functions -- ints require no conversions, unlike
+-- other types.
+f_throwingReturnInt :: Function
+f_throwingReturnInt =
+  addReqIncludes [includeLocal "functions.hpp"] $
+  handleExceptions [CatchClass c_BaseException] $
+  makeFn (ident "throwingReturnInt") Nothing Nonpure [] intT
+
+-- This ensures that generated exception handling code plays well with the
+-- conversions necessary for returning objects from a function.
+f_throwingReturnIntBox :: Function
+f_throwingReturnIntBox =
+  addReqIncludes [includeLocal "functions.hpp"] $
+  handleExceptions [CatchClass c_BaseException] $
+  makeFn (ident "throwingReturnIntBox") Nothing Nonpure [] $ objT c_IntBox
+
+-- This ensures that generated exception handling code plays well with the
+-- conversions necessary for returning objects from a callback.
+cb_ThrowingMakeBoxByValueCallback :: Callback
+cb_ThrowingMakeBoxByValueCallback =
+  addReqIncludes [includeLocal "intbox.hpp"] $
+  callbackSetThrows True $
+  makeCallback (toExtName "ThrowingMakeBoxByValueCallback") [intT] $ objT c_IntBox
+
+f_throwingMakeBoxByValueCallbackDriver :: Function
+f_throwingMakeBoxByValueCallbackDriver =
+  addReqIncludes [includeLocal "functions.hpp"] $
+  handleExceptions [CatchClass c_BaseException] $
+  makeFn (ident "throwingMakeBoxByValueCallbackDriver") Nothing Nonpure
+  [callbackT cb_ThrowingMakeBoxByValueCallback, intT] intT

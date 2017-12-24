@@ -125,5 +125,9 @@ void throwsWriteException();
 void throwsPtrCtr();
 void throwsAny(int i);
 int invokeThrowingCallback(ThrowingCallback);
+bool throwingReturnBool();
+int throwingReturnInt();
+IntBox throwingReturnIntBox();
+int throwingMakeBoxByValueCallbackDriver(ThrowingMakeBoxByValueCallback, int);
 
 #endif
