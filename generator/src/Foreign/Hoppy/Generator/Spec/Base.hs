@@ -2262,30 +2262,6 @@ handleExceptions :: HandlesExceptions a => [ExceptionHandler] -> a -> a
 handleExceptions classes =
   modifyExceptionHandlers $ mappend mempty {exceptionHandlersList = classes}
 
--- | A collection of imports for a Haskell module.  This is a monoid: import
--- Statements are merged to give the union of imported bindings.
---
--- This structure supports two specific types of imports:
---     - @import Foo (...)@
---     - @import qualified Foo as Bar@
--- Imports with @as@ but without @qualified@, and @qualified@ imports with a
--- spec list, are not supported.  This satisfies the needs of the code
--- generator, and keeps the merging logic simple.
-newtype HsImportSet = HsImportSet
-  { getHsImportSet :: M.Map HsImportKey HsImportSpecs
-    -- ^ Returns the import set's internal map from module names to imported
-    -- bindings.
-  } deriving (Show)
-
-instance Monoid HsImportSet where
-  mempty = HsImportSet M.empty
-
-  mappend (HsImportSet m) (HsImportSet m') =
-    HsImportSet $ M.unionWith mergeImportSpecs m m'
-
-  mconcat sets =
-    HsImportSet $ M.unionsWith mergeImportSpecs $ map getHsImportSet sets
-
 -- | A literal piece of code that will be inserted into a generated source file
 -- after the regular binding glue.  The 'Monoid' instance concatenates code
 -- (actions).
@@ -2318,6 +2294,30 @@ class HasAddendum a where
 addAddendumHaskell :: HasAddendum a => Haskell.Generator () -> a -> a
 addAddendumHaskell gen = modifyAddendum $ \addendum ->
   addendum `mappend` mempty { addendumHaskell = gen }
+
+-- | A collection of imports for a Haskell module.  This is a monoid: import
+-- Statements are merged to give the union of imported bindings.
+--
+-- This structure supports two specific types of imports:
+--     - @import Foo (...)@
+--     - @import qualified Foo as Bar@
+-- Imports with @as@ but without @qualified@, and @qualified@ imports with a
+-- spec list, are not supported.  This satisfies the needs of the code
+-- generator, and keeps the merging logic simple.
+newtype HsImportSet = HsImportSet
+  { getHsImportSet :: M.Map HsImportKey HsImportSpecs
+    -- ^ Returns the import set's internal map from module names to imported
+    -- bindings.
+  } deriving (Show)
+
+instance Monoid HsImportSet where
+  mempty = HsImportSet M.empty
+
+  mappend (HsImportSet m) (HsImportSet m') =
+    HsImportSet $ M.unionWith mergeImportSpecs m m'
+
+  mconcat sets =
+    HsImportSet $ M.unionsWith mergeImportSpecs $ map getHsImportSet sets
 
 -- | Constructor for an import set.
 makeHsImportSet :: M.Map HsImportKey HsImportSpecs -> HsImportSet
