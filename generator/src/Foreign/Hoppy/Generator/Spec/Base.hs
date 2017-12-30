@@ -38,6 +38,7 @@ module Foreign.Hoppy.Generator.Spec.Base (
   interfaceExceptionClassId,
   interfaceExceptionSupportModule,
   interfaceSetExceptionSupportModule,
+  interfaceSetSharedPtr,
   -- * C++ includes
   Include,
   includeStd,
@@ -175,6 +176,7 @@ module Foreign.Hoppy.Generator.Spec.Base (
   hsImportSetMakeSource,
   -- * Internal to Hoppy
   interfaceAllExceptionClasses,
+  interfaceSharedPtr,
   classFindCopyCtor,
   -- ** Haskell imports
   makeHsImportSet,
@@ -255,6 +257,10 @@ data Interface = Interface
     -- ^ When an interface uses C++ exceptions, then one module needs to
     -- manually be selected to contain some interface-specific runtime support.
     -- This is the selected module.
+  , interfaceSharedPtr :: (Reqs, String)
+    -- ^ The name of the @shared_ptr@ class to use, and the requirements to use
+    -- it.  This defaults to using @std::shared_ptr@ from @<memory>@, but can be
+    -- changed if necessary via 'interfaceSetSharedPtr'.
   }
 
 instance Show Interface where
@@ -333,6 +339,7 @@ interface' ifName modules options = do
     , interfaceCallbacksThrow = False
     , interfaceExceptionNamesToIds = exceptionNamesToIds
     , interfaceExceptionSupportModule = Nothing
+    , interfaceSharedPtr = (reqInclude $ includeStd "memory", "std::shared_ptr")
     }
 
 -- | The name of the parent Haskell module under which a Haskell module will be
@@ -398,6 +405,29 @@ interfaceSetExceptionSupportModule mod iface = case interfaceExceptionSupportMod
     else error $ "interfaceSetExceptionSupportModule: " ++ show iface ++
          " already has exception support module " ++ show existingMod ++
          ", trying to set " ++ show mod ++ "."
+
+-- | Installs a custom @std::shared_ptr@ implementation for use by an interface.
+-- Hoppy uses shared pointers for generated callback code.  This function is
+-- useful for building code with compilers that don't provide a conforming
+-- @std::shared_ptr@ implementation.
+--
+-- @interfaceSetSharedPtr ident reqs iface@ modifies @iface@ to use as a
+-- @shared_ptr@ class the C++ identifier @ident@, which needs @reqs@ in order to
+-- be accessed.  @ident@ should be the name of a template to which an arbitrary
+-- @\<T\>@ can be appended, for example @"std::shared_ptr"@.
+--
+-- A @shared_ptr\<T\>@ implementation @foo@ must at least provide the following
+-- interface:
+--
+-- > foo();  // Initialization with a null pointer.
+-- > foo(T*);  // Initialization with a given pointer.
+-- > foo(const foo&);  // Copy-construction.
+-- > T& operator*() const;  // Dereferencing (when non-null).
+-- > T* operator->() const;  // Dereferencing and invocation (when non-null).
+-- > explicit operator bool() const;  // Is the target object null?
+interfaceSetSharedPtr :: String -> Reqs -> Interface -> Interface
+interfaceSetSharedPtr identifier reqs iface =
+  iface { interfaceSharedPtr = (reqs, identifier) }
 
 -- | An @#include@ directive in a C++ file.
 data Include = Include

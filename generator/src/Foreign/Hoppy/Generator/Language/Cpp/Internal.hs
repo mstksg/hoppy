@@ -585,7 +585,8 @@ sayExportCallback sayBody cb = do
   if not sayBody
     then do
       -- Render the class declarations into the header file.
-      addInclude $ includeStd "memory"  -- Needed for std::shared_ptr.
+      (sharedPtrReqs, sharedPtrStr) <- interfaceSharedPtr <$> askInterface
+      addReqsM sharedPtrReqs
 
       says ["\nclass ", implClassName, " {\n"]
       say "public:\n"
@@ -609,7 +610,7 @@ sayExportCallback sayBody cb = do
       say "    " >> sayVar "operator()" Nothing fnType >> say ";\n"
       say "    operator bool() const;\n"
       say "private:\n"
-      says ["    std::shared_ptr<", implClassName, "> impl_;\n"]
+      says ["    ", sharedPtrStr, "<", implClassName, "> impl_;\n"]
       say "};\n"
 
     else do

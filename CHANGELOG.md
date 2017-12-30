@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Added a means for using a custom `shared_ptr` implementation via
+  `interfaceSetSharedPtr`.  Hoppy normally uses `std::shared_ptr` in its
+  implementation of callbacks, but this isn't always available (e.g. with older
+  compilers).
+
 - Bug fixes for bitspaces:
 
   - Negative numeric values are now supported, as they are for enums.
