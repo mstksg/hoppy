@@ -420,9 +420,10 @@ includeLocal path = Include $ "#include \"" ++ path ++ "\"\n"
 -- generated module will @#include@ everything necessary for what is written to
 -- the header and source files separately.  You can declare include dependencies
 -- with e.g. 'addReqIncludes', either for individual exports or at the module
--- level.  Dependencies between modules are handled automatically, and
--- circularity is supported to a certain extent.  See the documentation for the
--- individual language modules for further details.
+-- level (via the @'HasReqs' 'Module'@ instance).  Dependencies between modules
+-- are handled automatically, and circularity is supported to a certain extent.
+-- See the documentation for the individual language modules for further
+-- details.
 data Module = Module
   { moduleName :: String
     -- ^ The module's name.  A module name must identify a unique module within
@@ -560,6 +561,11 @@ instance Monoid Reqs where
 -- | Creates a 'Reqs' that contains the given include.
 reqInclude :: Include -> Reqs
 reqInclude include = mempty { reqsIncludes = S.singleton include }
+
+-- | Contains the data types for bindings to C++ entities: 'Function', 'Class',
+-- etc.  Use 'addReqs' or 'addReqIncludes' to specify requirements for these
+-- entities, e.g. header files that must be included in order to access the
+-- underlying entities that are being bound.
 
 -- | C++ types that have requirements in order to use them in generated
 -- bindings.
@@ -1041,6 +1047,8 @@ stripConst t = case t of
   _ -> t
 
 -- | A C++ variable.
+--
+-- Use this data type's 'HasReqs' instance to make the variable accessible.
 data Variable = Variable
   { varIdentifier :: Identifier
     -- ^ The identifier used to refer to the variable.
@@ -1051,7 +1059,7 @@ data Variable = Variable
     -- 'Foreign.Hoppy.Generator.Types.constT' to indicate that the variable is
     -- read-only.
   , varReqs :: Reqs
-    -- ^ Requirements for bindings to use this variable.
+    -- ^ Requirements for bindings to access this variable.
   , varAddendum :: Addendum
     -- ^ The variable's addendum.
   }
@@ -1106,7 +1114,8 @@ data CppEnum = CppEnum
     -- is broken up into words.  How the words and ext name get combined to make
     -- a name in a particular foreign language depends on the language.
   , enumReqs :: Reqs
-    -- ^ Requirements for a 'Type' to reference this enum.
+    -- ^ Requirements for bindings to access this enum.  Currently unused, but
+    -- will be in the future.
   , enumAddendum :: Addendum
     -- ^ The enum's addendum.
   , enumValuePrefix :: String
@@ -1288,6 +1297,9 @@ data Purity = Nonpure  -- ^ Side-affects are possible.
             deriving (Eq, Show)
 
 -- | A C++ function declaration.
+--
+-- Use this data type's 'HasReqs' instance to make the function accessible.  You
+-- do not need to add requirements for parameter or return types.
 data Function = Function
   { fnCName :: FnName Identifier
     -- ^ The identifier used to call the function.
@@ -1300,7 +1312,7 @@ data Function = Function
   , fnReturn :: Type
     -- ^ The function's return type.
   , fnReqs :: Reqs
-    -- ^ Requirements for a binding to call the function.
+    -- ^ Requirements for bindings to access this function.
   , fnExceptionHandlers :: ExceptionHandlers
     -- ^ Exceptions that the function might throw.
   , fnAddendum :: Addendum
@@ -1346,6 +1358,9 @@ makeFn cName maybeExtName purity paramTypes retType =
 -- | A C++ class declaration.  See 'IsClassEntity' for more information about the
 -- interaction between a class's names and the names of entities within the
 -- class.
+--
+-- Use this data type's 'HasReqs' instance to make the class accessible.  You do
+-- not need to add requirements for methods' parameter or return types.
 data Class = Class
   { classIdentifier :: Identifier
     -- ^ The identifier used to refer to the class.
@@ -1360,7 +1375,7 @@ data Class = Class
   , classConversion :: ClassConversion
     -- ^ Behaviour for converting objects to and from foriegn values.
   , classReqs :: Reqs
-    -- ^ Requirements for a 'Type' to reference this class.
+    -- ^ Requirements for bindings to access this class.
   , classAddendum :: Addendum
     -- ^ The class's addendum.
   , classIsMonomorphicSuperclass :: Bool
@@ -2163,6 +2178,9 @@ mkBoolHasProp_ name =
 
 -- | A non-C++ function that can be invoked via a C++ functor or function
 -- pointer.
+--
+-- Use this data type's 'HasReqs' instance to add extra requirements, however
+-- manually adding requirements for parameter and return types is not necessary.
 data Callback = Callback
   { callbackExtName :: ExtName
     -- ^ The callback's external name.
@@ -2175,7 +2193,7 @@ data Callback = Callback
     -- C++ during its execution.  When absent, the value is inherited from
     -- 'moduleCallbacksThrow' and 'interfaceCallbacksThrow'.
   , callbackReqs :: Reqs
-    -- ^ Requirements for the callback.
+    -- ^ Extra requirements for the callback.
   , callbackAddendum :: Addendum
     -- ^ The callback's addendum.
   }
