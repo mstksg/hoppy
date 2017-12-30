@@ -22,7 +22,7 @@
 }:
 mkDerivation ({
   pname = "hoppy-generator";
-  version = "0.3.3";
+  version = "0.3.4";
   src = ./.;
   libraryHaskellDepends = [
     base containers directory filepath haskell-src mtl

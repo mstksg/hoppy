@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## hoppy-generator-0.3.4, hoppy-runtime-0.3.2 (2017-12-30)
+
 - Added a means for using a custom `shared_ptr` implementation via
   `interfaceSetSharedPtr`.  Hoppy normally uses `std::shared_ptr` in its
   implementation of callbacks, but this isn't always available (e.g. with older
