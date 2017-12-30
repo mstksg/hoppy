@@ -234,10 +234,7 @@ sayExport sayBody export = case export of
     unless (classIsSubclassOfMonomorphic cls) $
       forM_ (classSuperclasses cls) $ genDowncastFns cls
 
-  ExportCallback cb -> do
-    -- Need <memory> for std::shared_ptr.
-    addReqsM $ callbackReqs cb `mappend` reqInclude (includeStd "memory")
-    sayExportCallback sayBody cb
+  ExportCallback cb -> sayExportCallback sayBody cb
 
   where genUpcastFns :: Class -> Class -> Generator ()
         genUpcastFns cls ancestorCls = do
@@ -576,7 +573,9 @@ sayExportCallback sayBody cb = do
   let paramCTypes = zipWith fromMaybe paramTypes $ map typeToCType paramTypes
       retCType = fromMaybe retType $ typeToCType retType
 
-  addReqsM . mconcat =<< mapM typeReqs (retType:paramTypes)
+  -- Add requirements specified manually by the callback, and for its parameter
+  -- and return types.
+  addReqsM . mconcat . (callbackReqs cb:) =<< mapM typeReqs (retType:paramTypes)
 
   let fnCType = fnT ((if throws then (++ [ptrT intT, ptrT $ ptrT voidT]) else id)
                      paramCTypes)
