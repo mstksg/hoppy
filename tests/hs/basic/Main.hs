@@ -685,7 +685,7 @@ exceptionTests =
     , -- This test is pretty cool, we call a C++ function which calls a Haskell
       -- callback which throws, and the exception is propagated back out to the
       -- original Haskell caller.
-      "returning an IntBox from a callback." ~:
+      "returning an IntBox from a callback" ~:
       expectException
         (throwingMakeBoxByValueCallbackDriver (\_ -> baseException_new >>= throwCpp) 0)
         (undefined :: BaseException)
