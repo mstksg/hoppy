@@ -25,7 +25,7 @@
 
 let
 
-  realCompiler = if compiler == null then "ghc801" else compiler;
+  realCompiler = if compiler == null then "ghc822" else compiler;
 
   hoppyDir = ./.;
 

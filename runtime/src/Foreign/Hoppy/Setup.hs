@@ -63,7 +63,11 @@ module Foreign.Hoppy.Setup (
 import Control.Monad (forM_, unless, when)
 import Data.List (isInfixOf)
 import Distribution.InstalledPackageInfo (libraryDirs)
+#if MIN_VERSION_Cabal(2,0,0)
+import Distribution.Package (mkPackageName)
+#else
 import Distribution.Package (PackageName (PackageName))
+#endif
 import Distribution.PackageDescription (
   HookedBuildInfo,
   PackageDescription,
@@ -122,7 +126,12 @@ import Distribution.Simple.UserHooks (
     preTest
     ),
   )
-import Distribution.Simple.Utils (die, info)
+#if MIN_VERSION_Cabal(2,0,0)
+import Distribution.Simple.Utils (die')
+#else
+import Distribution.Simple.Utils (die)
+#endif
+import Distribution.Simple.Utils (info)
 import Distribution.Verbosity (Verbosity, normal)
 import System.Directory (createDirectoryIfMissing, doesFileExist, removeFile)
 import System.FilePath ((</>), takeDirectory)
@@ -232,14 +241,26 @@ cppConfigure project verbosity localBuildInfo generatorProgram = do
 cppBuild :: Verbosity -> LocalBuildInfo -> IO ()
 cppBuild verbosity localBuildInfo = do
   hasMakefile <- doesFileExist "Makefile"
-  unless hasMakefile $ die "No Makefile found."
+  unless hasMakefile $
+#if MIN_VERSION_Cabal(2,0,0)
+    die' verbosity
+#else
+    die
+#endif
+    "No Makefile found."
   let programDb = withPrograms localBuildInfo
   runDbProgram verbosity makeProgram programDb []
 
 cppInstall :: Verbosity -> PackageDescription -> LocalBuildInfo -> CopyDest -> IO ()
 cppInstall verbosity pkgDesc localBuildInfo dest = do
   hasMakefile <- doesFileExist "Makefile"
-  unless hasMakefile $ die "No Makefile found."
+  unless hasMakefile $
+#if MIN_VERSION_Cabal(2,0,0)
+    die' verbosity
+#else
+    die
+#endif
+    "No Makefile found."
   let programDb = withPrograms localBuildInfo
       libDir = libdir $ absoluteInstallDirs pkgDesc localBuildInfo dest
   createDirectoryIfMissing True libDir
@@ -250,7 +271,13 @@ cppClean project verbosity = do
   removeGeneratedFiles Cpp project verbosity
 
   hasMakefile <- doesFileExist "Makefile"
-  unless hasMakefile $ die "No Makefile found."
+  unless hasMakefile $
+#if MIN_VERSION_Cabal(2,0,0)
+    die' verbosity
+#else
+    die
+#endif
+    "No Makefile found."
   makeProgram <- findSystemProgram verbosity "make"
   runProgram verbosity makeProgram ["clean"]
 
@@ -263,7 +290,13 @@ findSystemProgram verbosity basename = do
     findProgramOnSearchPath verbosity [ProgramSearchPathDefault] basename
   case maybePath of
     Just path -> return $ simpleConfiguredProgram basename $ FoundOnSystem path
-    Nothing -> die $ "Couldn't find program " ++ show basename ++ "."
+    Nothing ->
+#if MIN_VERSION_Cabal(2,0,0)
+      die' verbosity $
+#else
+      die $
+#endif
+      "Couldn't find program " ++ show basename ++ "."
 
 -- | A @main@ implementation to be used in the @Setup.hs@ of a Haskell gateway
 -- package.
@@ -323,17 +356,34 @@ hsConfigure project verbosity localBuildInfo generatorProgram = do
           -- Look for an installed -cpp package.
           let packageName = cppPackageName project
           cppPkg <- case lookupPackageName (installedPkgs localBuildInfo) $
-                         PackageName packageName of
+#if MIN_VERSION_Cabal(2,0,0)
+                         mkPackageName packageName
+#else
+                         PackageName packageName
+#endif
+                         of
             [(_, [pkg])] -> return pkg
-            results -> die $ "Failed to find a unique " ++ packageName ++
-                       " installation.  Found " ++ show results ++ "."
+            results ->
+#if MIN_VERSION_Cabal(2,0,0)
+              die' verbosity $
+#else
+              die $
+#endif
+              "Failed to find a unique " ++ packageName ++
+              " installation.  Found " ++ show results ++ "."
 
           -- Look up the libdir of the package we found.  The filter here is for NixOS,
           -- where libraryDirs includes the library directories of dependencies as well.
           case filter (\x -> packageName `isInfixOf` x) $ libraryDirs cppPkg of
             [libDir] -> return libDir
-            libDirs -> die $ "Expected a single library directory for " ++ packageName ++
-                       ", got " ++ show libDirs ++ "."
+            libDirs ->
+#if MIN_VERSION_Cabal(2,0,0)
+              die' verbosity $
+#else
+              die $
+#endif
+              "Expected a single library directory for " ++ packageName ++
+              ", got " ++ show libDirs ++ "."
 
         storeCppLibDir libDir = do
           createDirectoryIfMissing True $ takeDirectory hsCppLibDirFile

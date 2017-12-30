@@ -7,6 +7,8 @@
   implementation of callbacks, but this isn't always available (e.g. with older
   compilers).
 
+- Added support for Cabal 2.0.
+
 - Bug fixes for bitspaces:
 
   - Negative numeric values are now supported, as they are for enums.
