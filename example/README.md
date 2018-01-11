@@ -8,7 +8,7 @@ code.  `example-cpp/cpp/utils.cpp` contains a function that reverses a string.
 Run `install.sh` to build, test, and install each of these in turn.  `clean.sh`
 removes build outputs.
 
-Copyright 2017 Bryan Gardiner <bog@khumba.net>
+Copyright 2015-2018 Bryan Gardiner <bog@khumba.net>
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.

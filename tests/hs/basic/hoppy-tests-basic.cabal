@@ -3,7 +3,7 @@ version: 0.3.0
 license: AGPL-3
 author: Bryan Gardiner <bog@khumba.net>
 maintainer: Bryan Gardiner <bog@khumba.net>
-copyright: Copyright 2015-2017 Bryan Gardiner
+copyright: Copyright 2015-2018 Bryan Gardiner
 build-type: Simple
 cabal-version: >=1.10
 
