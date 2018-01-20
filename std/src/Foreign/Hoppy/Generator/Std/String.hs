@@ -51,7 +51,7 @@ c_string =
   makeClass (ident1 "std" "string") (Just $ toExtName "StdString") []
   [ mkCtor "new" []
   , mkCtor "newFromCString" [ptrT $ constT charT]
-  , mkConstMethod' "at" "at" [intT] $ refT charT
+  , mkMethod' "at" "at" [intT] $ refT charT
   , mkConstMethod' "at" "get" [intT] charT
   , mkConstMethod "c_str" [] $ ptrT $ constT charT
   , mkConstMethod "size" [] sizeT

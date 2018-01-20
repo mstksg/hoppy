@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Fixed a const-safety bug with methods.  The C++ generator was always using
+  non-const this pointers when writing gateway functions for methods, even when
+  a method was marked as const.  This meant that it was possible to use
+  "mkConstMethod" on a non-const method and pass in const objects (which would
+  be implicitly cast to non-const).
+
+  This may cause breakage when building your bindings, but only does so if you
+  have mistakenly labelled non-const methods as const.  std::string::at() was
+  affected by this and has been corrected.
+
 ## hoppy-generator-0.3.4, hoppy-runtime-0.3.2 (2017-12-30)
 
 - Added a means for using a custom `shared_ptr` implementation via

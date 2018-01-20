@@ -177,7 +177,7 @@ sayExport sayBody export = case export of
 
   ExportClass cls -> when sayBody $ do
     let clsPtr = ptrT $ objT cls
-        justClsPtr = Just clsPtr
+        constClsPtr = ptrT $ constT $ objT cls
     -- TODO Is this redundant for a completely empty class?  (No ctors or methods, private dtor.)
     addReqsM $ classReqs cls  -- This is needed at least for the delete function.
 
@@ -195,7 +195,7 @@ sayExport sayBody export = case export of
     when (classDtorIsPublic cls) $
       sayFunction (classDeleteFnCppName cls)
                   ["self"]
-                  (fnT [ptrT $ constT $ objT cls] voidT) $
+                  (fnT [constClsPtr] voidT) $
         Just $ say "delete self;\n"
 
     -- Export each of the class's variables.
@@ -203,12 +203,15 @@ sayExport sayBody export = case export of
 
     -- Export each of the class's methods.
     forM_ (classMethods cls) $ \method -> do
-      let nonMemberCall =
-            methodStatic method == Static ||
-            case methodImpl method of
-              RealMethod {} -> False
-              FnMethod {} -> True
-      let static = methodStatic method == Static
+      let static = case methodStatic method of
+            Static -> True
+            Nonstatic -> False
+          thisType = case methodConst method of
+            Const -> constClsPtr
+            Nonconst -> clsPtr
+          nonMemberCall = static || case methodImpl method of
+            RealMethod {} -> False
+            FnMethod {} -> True
       sayExportFn (classEntityExtName cls method)
                   (case methodImpl method of
                      RealMethod name -> case name of
@@ -221,7 +224,7 @@ sayExport sayBody export = case export of
                      FnMethod name -> case name of
                        FnName cName -> CallFn $ sayIdentifier cName
                        FnOp op -> CallOp op)
-                  (if nonMemberCall then Nothing else justClsPtr)
+                  (if nonMemberCall then Nothing else Just thisType)
                   (methodParams method)
                   (methodReturn method)
                   (methodExceptionHandlers method)
