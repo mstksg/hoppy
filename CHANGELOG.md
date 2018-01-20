@@ -12,6 +12,8 @@
   have mistakenly labelled non-const methods as const.  std::string::at() was
   affected by this and has been corrected.
 
+- Fixed some incorrect typeclass names in the user's guide.
+
 ## hoppy-generator-0.3.4, hoppy-runtime-0.3.2 (2017-12-30)
 
 - Added a means for using a custom `shared_ptr` implementation via

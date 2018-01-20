@@ -1222,15 +1222,15 @@ objects:
 class ZipperValue a where
   withZipperPtr :: a -> (ZipperConst -> IO b) -> IO b
 
-instance CompressorPtrConst a => ZipperValue a
+instance CompressorConstPtr a => ZipperValue a
 
-class CompressorPtrConst a => ZipperPtrConst a where
+class CompressorConstPtr a => ZipperConstPtr a where
   toZipperConst :: a -> ZipperConst
 
-class (ZipperPtrConst a, CompressorPtr a) => ZipperPtr a where
+class (ZipperConstPtr a, CompressorPtr a) => ZipperPtr a where
   toZipper :: a -> Zipper
 
-instance ZipperPtrConst ZipperConst
+instance ZipperConstPtr ZipperConst
 instance ZipperPtr Zipper
 ... instances required by superclasses ...
 @
