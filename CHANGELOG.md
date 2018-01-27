@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## *-0.4.0 (2018-01-27)
+
 - Fixed a const-safety bug with methods.  The C++ generator was always using
   non-const this pointers when writing gateway functions for methods, even when
   a method was marked as const.  This meant that it was possible to use
