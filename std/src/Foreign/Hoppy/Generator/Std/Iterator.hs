@@ -28,9 +28,7 @@ module Foreign.Hoppy.Generator.Std.Iterator (
 
 import Data.Maybe (catMaybes, isJust)
 import Foreign.Hoppy.Generator.Spec (
-  Class,
   ClassFeature (Assignable, Copyable, Equatable),
-  MethodApplicability (MNormal),
   Operator (
     OpAdd,
     OpAddAssign,
@@ -43,15 +41,20 @@ import Foreign.Hoppy.Generator.Spec (
   Purity (Nonpure),
   Type,
   addReqIncludes,
-  classAddEntities,
   classAddFeatures,
   ident2,
+  np,
+  )
+import Foreign.Hoppy.Generator.Types
+import Foreign.Hoppy.Generator.Spec.Class (
+  Class,
+  MethodApplicability (MNormal),
+  classAddEntities,
   makeFnMethod,
   mkConstMethod',
   mkCtor,
   mkMethod',
   )
-import Foreign.Hoppy.Generator.Types
 import Foreign.Hoppy.Generator.Std.Internal (includeHelper)
 
 -- | Whether an iterator may be used to modify the underlying collection.
@@ -82,12 +85,12 @@ makeTrivialIterator mutable valueTypeMaybe cls =
   classAddEntities ents cls
   where ents =
           catMaybes
-          [ Just $ mkCtor "new" []
+          [ Just $ mkCtor "new" np
           , do valueType <- valueTypeMaybe
                Mutable <- Just mutable
-               return $ mkMethod' OpDeref "get" [] $ refT valueType
+               return $ mkMethod' OpDeref "get" np $ refT valueType
           , do valueType <- valueTypeMaybe
-               return $ mkConstMethod' OpDeref "getConst" [] $ refT $ constT valueType
+               return $ mkConstMethod' OpDeref "getConst" np $ refT $ constT valueType
           , do valueType <- valueTypeMaybe
                Mutable <- Just mutable
                return $
@@ -104,7 +107,7 @@ makeForwardIterator mutable valueTypeMaybe cls =
   classAddEntities ents $
   makeTrivialIterator mutable valueTypeMaybe cls
   where ents =
-          [ mkMethod' OpIncPre "next" [] $ refT $ objT cls
+          [ mkMethod' OpIncPre "next" np $ refT $ objT cls
           ]
 
 -- | Turns a class into a bidirectional iterator, including everything from
@@ -116,7 +119,7 @@ makeBidirectionalIterator mutability valueTypeMaybe cls =
   classAddEntities ents $
   makeForwardIterator mutability valueTypeMaybe cls
   where ents =
-          [ mkMethod' OpDecPre "prev" [] $ refT $ objT cls
+          [ mkMethod' OpDecPre "prev" np $ refT $ objT cls
           ]
 
 -- | @makeRandomIterator mutable valueTypeMaybe distanceType cls@ turns a class

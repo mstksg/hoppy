@@ -42,4 +42,4 @@ data ValueConversion =
 mod_std :: Module
 mod_std = moduleModify' (makeModule "std" "std.hpp" "std.cpp") $
   moduleAddExports
-  [ ExportClass c_string ]
+  [ Export c_string ]

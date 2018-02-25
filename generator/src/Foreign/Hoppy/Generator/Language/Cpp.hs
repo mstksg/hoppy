@@ -19,18 +19,22 @@
 
 -- | Shared portion of the C++ code generator.  Usable by binding definitions.
 module Foreign.Hoppy.Generator.Language.Cpp (
+  -- * Code generation monad
+  Generator,
+  Env,
+  execGenerator,
+  addIncludes, addInclude, addReqsM,
+  askInterface, askModule, abort,
+  -- * Names
+  makeCppName,
   externalNameToCpp,
-  classDeleteFnCppName,
-  classCastFnCppName,
-  callbackClassName,
-  callbackImplClassName,
-  callbackFnName,
   toArgName,
   toArgNameAlt,
   exceptionIdArgName,
   exceptionPtrArgName,
   exceptionVarName,
   exceptionRethrowFnName,
+  -- * Token rendering
   Chunk (..),
   runChunkWriter,
   evalChunkWriter,
@@ -38,19 +42,84 @@ module Foreign.Hoppy.Generator.Language.Cpp (
   runChunkWriterT,
   evalChunkWriterT,
   execChunkWriterT,
+  -- * High-level code generation
   say,
   says,
   sayIdentifier,
+  renderIdentifier,
   sayVar,
   sayType,
+  sayFunction,
+  -- * Auxiliary functions
+  typeToCType,
+  typeReqs,
+  findExportModule,
+  getEffectiveExceptionHandlers,
   ) where
 
+import Control.Monad (unless)
+import Control.Monad.Reader (MonadReader, ReaderT, ask, runReaderT)
 import Control.Monad.Writer (MonadWriter, Writer, WriterT, runWriter, runWriterT, tell)
+import Control.Monad.Trans (lift)
 import Data.Foldable (forM_)
 import Data.List (intercalate, intersperse)
+import qualified Data.Map as M
+import qualified Data.Set as S
 import Foreign.Hoppy.Generator.Common
-import Foreign.Hoppy.Generator.Spec
+import Foreign.Hoppy.Generator.Spec.Base
+import {-# SOURCE #-} Foreign.Hoppy.Generator.Spec.Class (classIdentifier, classReqs)
 import Foreign.Hoppy.Generator.Types
+
+-- TODO Wow let's make this not a type synonym.
+type Generator = ReaderT Env (WriterT [Chunk] (WriterT (S.Set Include) (Either ErrorMsg)))
+
+data Env = Env
+  { envInterface :: Interface
+  , envModule :: Module
+  }
+
+execGenerator :: Interface -> Module -> Maybe String -> Generator a -> Either ErrorMsg String
+execGenerator interface m maybeHeaderGuardName action = do
+  (contents, includes) <-
+    (runWriterT $
+     -- WriterT (S.Set Include) (Either String) String:
+     execChunkWriterT $
+     -- WriterT [Chunk] (WriterT (S.Set Include) (Either String)) a:
+     runReaderT action $ Env interface m)
+    :: Either String (String, S.Set Include)
+  return $ execChunkWriter $ do
+    say "////////// GENERATED FILE, EDITS WILL BE LOST //////////\n"
+    forM_ maybeHeaderGuardName $ \x -> do
+      says ["\n#ifndef ", x, "\n"]
+      says ["#define ", x, "\n"]
+    unless (S.null includes) $ do
+      say "\n"
+      forM_ includes $ say . includeToString
+    say "\nextern \"C\" {\n"
+    say contents
+    say "\n}  // extern \"C\"\n"
+    forM_ maybeHeaderGuardName $ \x ->
+      says ["\n#endif  // ifndef ", x, "\n"]
+
+addIncludes :: [Include] -> Generator ()
+addIncludes = lift . lift . tell . S.fromList
+
+addInclude :: Include -> Generator ()
+addInclude = addIncludes . (:[])
+
+-- Have to call this addReqsM, addReqs is taken by HasReqs.
+addReqsM :: Reqs -> Generator ()
+addReqsM = lift . lift . tell . reqsIncludes
+
+askInterface :: MonadReader Env m => m Interface
+askInterface = fmap envInterface ask
+
+askModule :: MonadReader Env m => m Module
+askModule = fmap envModule ask
+
+-- | Halts generation and returns the given error message.
+abort :: ErrorMsg -> Generator a
+abort = lift . lift . lift . Left
 
 cppNameSeparator :: String
 cppNameSeparator = "__"
@@ -66,42 +135,6 @@ externalNamePrefix = "genpop"
 externalNameToCpp :: ExtName -> String
 externalNameToCpp extName =
   makeCppName [externalNamePrefix, fromExtName extName]
-
-makeClassCppName :: String -> Class -> String
-makeClassCppName prefix cls = makeCppName [prefix, fromExtName $ classExtName cls]
-
--- | \"gendel\" is the prefix used for wrappers for @delete@ calls.
-classDeleteFnPrefix :: String
-classDeleteFnPrefix = "gendel"
-
--- | Returns the C++ binding function name of the wrapper for the delete method
--- for a class.
-classDeleteFnCppName :: Class -> String
-classDeleteFnCppName = makeClassCppName classDeleteFnPrefix
-
--- | @classCastFnCppName fromCls toCls@ returns the name of the generated C++
--- function that casts a pointer from @fromCls@ to @toCls@.
-classCastFnCppName :: Class -> Class -> String
-classCastFnCppName from to =
-  concat [ "gencast__"
-         , fromExtName $ classExtName from
-         , "__"
-         , fromExtName $ classExtName to
-         ]
-
--- | Returns the name of the outer, copyable class for a callback.
-callbackClassName :: Callback -> String
-callbackClassName = fromExtName . callbackExtName
-
--- | Returns the name of the internal, non-copyable implementation class for a
--- callback.
-callbackImplClassName :: Callback -> String
-callbackImplClassName = (++ "_impl") . fromExtName . callbackExtName
-
--- | Returns the name of the C++ binding function that creates a C++ callback
--- wrapper object from a function pointer to foreign code.
-callbackFnName :: Callback -> String
-callbackFnName = externalNameToCpp . callbackExtName
 
 -- | Returns a distinct argument variable name for each nonnegative number.
 toArgName :: Int -> String
@@ -210,6 +243,10 @@ sayIdentifier =
               sequence_ $ intersperse (say ", ") $ map (sayType Nothing) args
               say ">"
 
+-- | Renders an 'Identifier' to a string.
+renderIdentifier :: Identifier -> String
+renderIdentifier = execChunkWriter . sayIdentifier
+
 -- | @sayVar name maybeParamNames t@ speaks a variable declaration of the form
 -- @\<type\> \<name\>@, where @\<name\>@ is the given name, and @\<type\>@ is
 -- rendered by giving @maybeParamNames@ and @t@ to 'sayType'.
@@ -235,49 +272,21 @@ sayType' (normalizeType -> t) maybeParamNames outerPrec unwrappedOuter =
               else say "(" >> unwrappedOuter >> say ")"
   in case t of
     Internal_TVoid -> say "void" >> outer
-    Internal_TBool -> say "bool" >> outer
-    Internal_TChar -> say "char" >> outer
-    Internal_TUChar -> say "unsigned char" >> outer
-    Internal_TShort -> say "short" >> outer
-    Internal_TUShort -> say "unsigned short" >> outer
-    Internal_TInt -> say "int" >> outer
-    Internal_TUInt -> say "unsigned int" >> outer
-    Internal_TLong -> say "long" >> outer
-    Internal_TULong -> say "unsigned long" >> outer
-    Internal_TLLong -> say "long long" >> outer
-    Internal_TULLong -> say "unsigned long long" >> outer
-    Internal_TFloat -> say "float" >> outer
-    Internal_TDouble -> say "double" >> outer
-    Internal_TInt8 -> say "int8_t" >> outer
-    Internal_TInt16 -> say "int16_t" >> outer
-    Internal_TInt32 -> say "int32_t" >> outer
-    Internal_TInt64 -> say "int64_t" >> outer
-    Internal_TWord8 -> say "uint8_t" >> outer
-    Internal_TWord16 -> say "uint16_t" >> outer
-    Internal_TWord32 -> say "uint32_t" >> outer
-    Internal_TWord64 -> say "uint64_t" >> outer
-    Internal_TPtrdiff -> say "ptrdiff_t" >> outer
-    Internal_TSize -> say "size_t" >> outer
-    Internal_TSSize -> say "ssize_t" >> outer
-    Internal_TEnum e -> sayIdentifier (enumIdentifier e) >> outer
-    Internal_TBitspace b -> case bitspaceCppTypeIdentifier b of
-      Just identifier -> sayIdentifier identifier >> outer
-      Nothing -> sayType' (bitspaceType b) maybeParamNames outerPrec unwrappedOuter
     Internal_TPtr t' -> sayType' t' Nothing prec $ say "*" >> outer
     Internal_TRef t' -> sayType' t' Nothing prec $ say "&" >> outer
-    Internal_TFn paramTypes retType -> sayType' retType Nothing prec $ do
+    Internal_TFn params retType -> sayType' retType Nothing prec $ do
       outer
       say "("
       sequence_ $ intersperse (say ", ") $
-        for (zip paramTypes $ maybe (repeat Nothing) (map Just) maybeParamNames) $
-        \(ptype, pname) ->
-        sayType' ptype Nothing topPrecedence $ forM_ pname say
+        for (zip params $ maybe (repeat Nothing) (map Just) $ maybeParamNames) $
+        \(param, pname) ->
+        sayType' (parameterType param) Nothing topPrecedence $ forM_ pname say
       say ")"
-    Internal_TCallback cb -> says [callbackImplClassName cb, "*"] >> outer
     Internal_TObj cls -> sayIdentifier (classIdentifier cls) >> outer
     Internal_TObjToHeap cls ->
       sayType' (refT $ constT $ objT cls) maybeParamNames outerPrec unwrappedOuter
     Internal_TToGc t' -> sayType' t' maybeParamNames outerPrec unwrappedOuter
+    Internal_TManual s -> say (conversionSpecCppName $ conversionSpecCpp s) >> outer  -- TODO Reqs!
     Internal_TConst t' -> sayType' t' maybeParamNames outerPrec $ say "const" >> unwrappedOuter
                  -- TODO ^ Is using the outer stuff correctly here?
 
@@ -290,3 +299,58 @@ typePrecedence t = case t of
   Internal_TPtr {} -> 9
   Internal_TRef {} -> 9
   _ -> 8
+
+sayFunction :: String -> [String] -> Type -> Maybe (Generator ()) -> Generator ()
+sayFunction name paramNames t maybeBody = do
+  case t of
+    Internal_TFn {} -> return ()
+    _ -> abort $ concat ["sayFunction: A function type is required, given ", show t, "."]
+  say "\n"  -- New top-level structure, leave a blank line.
+  sayVar name (Just paramNames) t
+  case maybeBody of
+    Nothing -> say ";\n"
+    Just body -> do
+      say " {\n"
+      body  -- TODO Indent.
+      say "}\n"
+
+-- | Returns a 'Type' iff there is a C type distinct from the given C++ type
+-- that should be used for conversion.
+typeToCType :: Type -> Generator (Maybe Type)
+typeToCType t = case t of
+  Internal_TRef t' -> return $ Just $ ptrT t'
+  Internal_TObj _ -> return $ Just $ ptrT $ constT t
+  Internal_TObjToHeap cls -> return $ Just $ ptrT $ objT cls
+  Internal_TToGc t'@(Internal_TObj _) -> return $ Just $ ptrT t'
+  Internal_TToGc t' -> typeToCType t'
+  Internal_TConst t' -> typeToCType t'
+  Internal_TManual s -> conversionSpecCppConversionType $ conversionSpecCpp s
+  _ -> return Nothing
+
+typeReqs :: Type -> Generator Reqs
+typeReqs t = case t of
+  Internal_TVoid -> return mempty
+  Internal_TPtr t' -> typeReqs t'
+  Internal_TRef t' -> typeReqs t'
+  Internal_TFn params retType ->
+    -- TODO Is the right 'ReqsType' being used recursively here?
+    mconcat <$> mapM typeReqs (retType : map parameterType params)
+  Internal_TObj cls -> return $ classReqs cls
+  Internal_TObjToHeap cls -> return $ classReqs cls
+  Internal_TToGc t' -> typeReqs t'
+  Internal_TConst t' -> typeReqs t'
+  Internal_TManual s -> conversionSpecCppReqs $ conversionSpecCpp s
+
+findExportModule :: ExtName -> Generator Module
+findExportModule extName =
+  fromMaybeM (abort $ concat
+              ["findExportModule: Can't find module exporting ", fromExtName extName, "."]) =<<
+  fmap (M.lookup extName . interfaceNamesToModules) askInterface
+
+getEffectiveExceptionHandlers :: ExceptionHandlers -> Generator ExceptionHandlers
+getEffectiveExceptionHandlers handlers = do
+  ifaceHandlers <- interfaceExceptionHandlers <$> askInterface
+  moduleHandlers <- getExceptionHandlers <$> askModule
+  -- Exception handlers declared lower in the hierarchy take precedence over
+  -- those higher in the hierarchy; ExceptionHandlers is a left-biased monoid.
+  return $ mconcat [handlers, moduleHandlers, ifaceHandlers]

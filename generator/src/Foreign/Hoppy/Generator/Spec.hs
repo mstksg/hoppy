@@ -24,9 +24,19 @@
 module Foreign.Hoppy.Generator.Spec (
   module Foreign.Hoppy.Generator.Spec.Base,
   module Foreign.Hoppy.Generator.Spec.Conversion,
+  module Foreign.Hoppy.Generator.Spec.Variable,
+  module Foreign.Hoppy.Generator.Spec.Enum,
+  module Foreign.Hoppy.Generator.Spec.Function,
+  module Foreign.Hoppy.Generator.Spec.Callback,
+  module Foreign.Hoppy.Generator.Spec.Class,
   module Foreign.Hoppy.Generator.Spec.ClassFeature,
   ) where
 
 import Foreign.Hoppy.Generator.Spec.Base
+import Foreign.Hoppy.Generator.Spec.Callback
+import Foreign.Hoppy.Generator.Spec.Class
 import Foreign.Hoppy.Generator.Spec.ClassFeature
 import Foreign.Hoppy.Generator.Spec.Conversion
+import Foreign.Hoppy.Generator.Spec.Enum
+import Foreign.Hoppy.Generator.Spec.Function
+import Foreign.Hoppy.Generator.Spec.Variable

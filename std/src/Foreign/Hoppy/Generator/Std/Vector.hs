@@ -39,10 +39,21 @@ import Foreign.Hoppy.Generator.Language.Haskell (
   prettyPrint,
   sayLn,
   saysLn,
+  )
+import Foreign.Hoppy.Generator.Spec
+import Foreign.Hoppy.Generator.Spec.Class (
+  Class,
+  MethodApplicability (MConst),
+  makeClass,
+  makeFnMethod,
+  mkConstMethod,
+  mkConstMethod',
+  mkCtor,
+  mkMethod,
+  mkMethod',
   toHsDataTypeName,
   toHsClassEntityName,
   )
-import Foreign.Hoppy.Generator.Spec
 import Foreign.Hoppy.Generator.Std (ValueConversion (ConvertPtr, ConvertValue))
 import Foreign.Hoppy.Generator.Std.Iterator
 import Foreign.Hoppy.Generator.Types
@@ -93,31 +104,31 @@ instantiate' vectorName t tReqs opts =
         classAddFeatures (Assignable : Copyable : optVectorClassFeatures opts) $
         makeClass (ident1T "std" "vector" [t]) (Just $ toExtName vectorName) [] $
         collect
-        [ just $ mkCtor "new" []
+        [ just $ mkCtor "new" np
         , just $ mkMethod' "at" "at" [sizeT] $ refT t
         , just $ mkConstMethod' "at" "atConst" [sizeT] $ refT $ constT t
-        , just $ mkMethod' "back" "back" [] $ refT t
-        , just $ mkConstMethod' "back" "backConst" [] $ refT $ constT t
-        , just $ mkMethod' "begin" "begin" [] $ toGcT $ objT iterator
-        , just $ mkConstMethod' "begin" "beginConst" [] $ toGcT $ objT constIterator
-        , just $ mkConstMethod "capacity" [] sizeT
-        , just $ mkMethod "clear" [] voidT
-        , just $ mkConstMethod "empty" [] boolT
-        , just $ mkMethod' "end" "end" [] $ toGcT $ objT iterator
-        , just $ mkConstMethod' "end" "endConst" [] $ toGcT $ objT constIterator
+        , just $ mkMethod' "back" "back" np $ refT t
+        , just $ mkConstMethod' "back" "backConst" np $ refT $ constT t
+        , just $ mkMethod' "begin" "begin" np $ toGcT $ objT iterator
+        , just $ mkConstMethod' "begin" "beginConst" np $ toGcT $ objT constIterator
+        , just $ mkConstMethod "capacity" np sizeT
+        , just $ mkMethod "clear" np voidT
+        , just $ mkConstMethod "empty" np boolT
+        , just $ mkMethod' "end" "end" np $ toGcT $ objT iterator
+        , just $ mkConstMethod' "end" "endConst" np $ toGcT $ objT constIterator
         , just $ mkMethod' "erase" "erase" [objT iterator] voidT
         , just $ mkMethod' "erase" "eraseRange" [objT iterator, objT iterator] voidT
-        , just $ mkMethod' "front" "front" [] $ refT t
-        , just $ mkConstMethod' "front" "frontConst" [] $ refT $ constT t
+        , just $ mkMethod' "front" "front" np $ refT t
+        , just $ mkConstMethod' "front" "frontConst" np $ refT $ constT t
         , just $ mkMethod "insert" [objT iterator, t] $ toGcT $ objT iterator
-        , just $ mkConstMethod' "max_size" "maxSize" [] sizeT
-        , just $ mkMethod' "pop_back" "popBack" [] voidT
+        , just $ mkConstMethod' "max_size" "maxSize" np sizeT
+        , just $ mkMethod' "pop_back" "popBack" np voidT
         , just $ mkMethod' "push_back" "pushBack" [t] voidT
         , just $ mkMethod "reserve" [sizeT] voidT
         , just $ mkMethod' "resize" "resize" [sizeT] voidT
         , just $ mkMethod' "resize" "resizeWith" [sizeT, t] voidT
-        , test (activeCppVersion >= Cpp2011) $ mkMethod' "shrink_to_fit" "shrinkToFit" [] voidT
-        , just $ mkConstMethod "size" [] sizeT
+        , test (activeCppVersion >= Cpp2011) $ mkMethod' "shrink_to_fit" "shrinkToFit" np voidT
+        , just $ mkConstMethod "size" np sizeT
         , just $ mkMethod "swap" [refT $ objT vector] voidT
         ]
 
@@ -201,4 +212,4 @@ instantiate' vectorName t tReqs opts =
 -- | Converts an instantiation into a list of exports to be included in a
 -- module.
 toExports :: Contents -> [Export]
-toExports m = map (ExportClass . ($ m)) [c_vector, c_iterator, c_constIterator]
+toExports m = map (Export . ($ m)) [c_vector, c_iterator, c_constIterator]

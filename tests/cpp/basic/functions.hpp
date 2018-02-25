@@ -112,7 +112,7 @@ void doubleIntPtr(int*);
 void doubleIntPtrPtr(int**);
 void doubleIntRef(int&);
 
-// Enum and bitspace tests.
+// Enum tests.
 BetterBool betterBoolId(BetterBool);
 BetterBool takesBetterBoolCallback(BetterBoolCallback callback, BetterBool value);
 BetterBool takesBetterBoolsCallback(BetterBoolsCallback callback, BetterBool value);

@@ -18,18 +18,27 @@
 {-# LANGUAGE CPP #-}
 
 -- | General routines.
+--
+-- Unlike "Foreign.Hoppy.Generator.Util", these are private to the package.
 module Foreign.Hoppy.Generator.Common (
   fromMaybeM,
   fromEitherM,
   maybeFail,
+  whileJust_,
   for,
+  butLast,
   listSubst,
+  listSubst',
+  doubleQuote,
+  strInterpolate,
   zipWithM,
-  writeFileIfDifferent,
   -- * String utilities
   capitalize,
   lowerFirst,
   upperFirst,
+  pluralize,
+  -- * File utilities
+  writeFileIfDifferent,
   ) where
 
 #if !MIN_VERSION_base(4,8,0)
@@ -38,6 +47,9 @@ import Control.Applicative ((<$>))
 import Control.Exception (evaluate)
 import Control.Monad (when)
 import Data.Char (toLower, toUpper)
+import qualified Data.List as L
+import qualified Data.Map as M
+import Data.Map (Map)
 import System.Directory (doesFileExist)
 import System.IO (IOMode (ReadMode), hGetContents, withFile)
 
@@ -53,33 +65,63 @@ fromEitherM = flip either return
 maybeFail :: Monad m => String -> Maybe a -> m a
 maybeFail = fromMaybeM . fail
 
+-- | @whileJust_ gen act@ runs @act@ on values generated from @gen@ until @gen@
+-- returns a @Nothing@.
+whileJust_ :: Monad m => m (Maybe a) -> (a -> m b) -> m ()
+whileJust_ gen act = gen >>= \case
+  Just x -> act x >> whileJust_ gen act
+  Nothing -> return ()
+
 -- | @for = flip map@
 for :: [a] -> (a -> b) -> [b]
 for = flip map
+
+-- | Drops the last item from the list, if non-empty.
+butLast :: [a] -> [a]
+butLast [] = []
+butLast xs = take (length xs - 1) xs
 
 -- | @listSubst a b xs@ replaces all @x@ in @xs@ such that @x == a@ with @b@.
 listSubst :: Eq a => a -> a -> [a] -> [a]
 listSubst x x' = map $ \y -> if y == x then x' else y
 
+-- | @listSubst' a bs xs@ replaces all @x@ in @xs@ such that @x == a@ with the
+-- sequence of items @bs@.
+listSubst' :: Eq a => a -> [a] -> [a] -> [a]
+listSubst' x xs' = concatMap $ \y -> if y == x then xs' else [y]
+
+-- | Renders a double-quoted string, enclosing the given characters in double
+-- quotes and escaping double quotes and backslashes with backslashes.
+doubleQuote :: String -> String
+doubleQuote str = '"' : escape str ++ "\""
+  where escape s =
+          if any (\c -> c == '"' || c == '\\') s
+          then listSubst' '"' "\\\"" $
+               listSubst' '\\' "\\\\" s
+          else s
+
+-- | Takes a map of strings and a target string, and replaces references to keys
+-- enclosed in braces in the target string with their values.  Returns a @Right@
+-- with the replaced string on success, and when an unknown key is encountered
+-- then a @Left@ with the unknown key.
+strInterpolate :: Map String String -> String -> Either String String
+strInterpolate values str = case L.findIndex ('{' ==) str of
+  Nothing -> Right str
+  Just openBraceIndex ->
+    let (prefix, termAndSuffix) = splitAt openBraceIndex str
+    in case L.findIndex ('}' ==) termAndSuffix of
+         Nothing -> Right str
+         Just closeBraceIndex ->
+           let termLength = closeBraceIndex - 1
+               term = take termLength $ tail termAndSuffix
+               suffix = drop (closeBraceIndex + 1) termAndSuffix
+           in case M.lookup term values of
+                Nothing -> Left term
+                Just value -> strInterpolate values $ prefix ++ value ++ suffix
+
 -- | Zips two lists using a monadic function.
 zipWithM :: Monad m => (a -> b -> m c) -> [a] -> [b] -> m [c]
 zipWithM f xs ys = sequence $ zipWith f xs ys
-
--- | If the file specified does not exist or its contents does not match the
--- given string, then this writes the string to the file.
-writeFileIfDifferent :: FilePath -> String -> IO ()
-writeFileIfDifferent path newContents = do
-  exists <- doesFileExist path
-  -- We need to read the file strictly, otherwise lazy IO might try to write the
-  -- file while it's still open and locked for reading.
-  doWrite <- if exists
-             then (newContents /=) <$> readStrictly
-             else return True
-  when doWrite $ writeFile path newContents
-  where readStrictly = withFile path ReadMode $ \handle -> do
-            contents <- hGetContents handle
-            _ <- evaluate $ length contents
-            return contents
 
 -- | Upper cases the first character of a string, and lower cases the rest of
 -- it.  Does nothing to an empty string.
@@ -96,3 +138,27 @@ lowerFirst (c:cs) = toLower c : cs
 upperFirst :: String -> String
 upperFirst "" = ""
 upperFirst (c:cs) = toUpper c : cs
+
+-- | Adds a noun onto a number in either singular or plural form, depending on
+-- the number.
+pluralize :: Int -> String -> String -> String
+pluralize num singular plural =
+  if num == 1
+  then "1 " ++ singular
+  else show num ++ " " ++ plural
+
+-- | If the file specified does not exist or its contents does not match the
+-- given string, then this writes the string to the file.
+writeFileIfDifferent :: FilePath -> String -> IO ()
+writeFileIfDifferent path newContents = do
+  exists <- doesFileExist path
+  -- We need to read the file strictly, otherwise lazy IO might try to write the
+  -- file while it's still open and locked for reading.
+  doWrite <- if exists
+             then (newContents /=) <$> readStrictly
+             else return True
+  when doWrite $ writeFile path newContents
+  where readStrictly = withFile path ReadMode $ \handle -> do
+            contents <- hGetContents handle
+            _ <- evaluate $ length contents
+            return contents

@@ -15,7 +15,7 @@
 -- You should have received a copy of the GNU Affero General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-{-# LANGUAGE CPP #-}
+{-# LANGUAGE CPP, UndecidableInstances #-}
 
 -- | A monad for consuming streams.
 module Foreign.Hoppy.Generator.Common.Consume (
@@ -24,18 +24,24 @@ module Foreign.Hoppy.Generator.Common.Consume (
   runConsumeT,
   evalConsumeT,
   execConsumeT,
+  Consume,
+  runConsume,
+  evalConsume,
+  execConsume,
   ) where
 
 #if !MIN_VERSION_base(4,8,0)
 import Control.Applicative ((<*>), Applicative, pure)
 #endif
 import Control.Monad (ap, liftM)
-import Control.Monad.Trans (MonadTrans, lift)
+import Control.Monad.Except (ExceptT)
+import Control.Monad.Identity (Identity, runIdentity)
 import Control.Monad.State (StateT, get, put, runStateT)
+import Control.Monad.Trans (MonadTrans, lift)
 import Data.Tuple (swap)
 
 -- | A typeclass for monads that can consume items from a stream.
-class MonadConsume s m | m -> s where
+class Monad m => MonadConsume s m | m -> s where
   -- | Attempts to consume an item from the stream.  Returns an item if the
   -- stream is not empty.
   next :: m (Maybe s)
@@ -64,6 +70,12 @@ instance Monad m => MonadConsume s (ConsumeT s m) where
       [] -> return Nothing
       x:xs -> put' xs >> return (Just x)
 
+instance MonadConsume s m => MonadConsume s (ExceptT e m) where
+  next = lift next
+
+instance MonadConsume s m => MonadConsume s (StateT d m) where
+  next = lift next
+
 -- | Runs the consume action, returning the remainder of the stream, and the
 -- action's result.
 runConsumeT :: Monad m => [s] -> ConsumeT s m a -> m ([s], a)
@@ -76,6 +88,17 @@ evalConsumeT stream = fmap snd . runConsumeT stream
 -- | Runs the consume action, returning the remainder of the stream.
 execConsumeT :: Monad m => [s] -> ConsumeT s m a -> m [s]
 execConsumeT stream = fmap fst . runConsumeT stream
+
+type Consume s = ConsumeT s Identity
+
+runConsume :: [s] -> Consume s a -> ([s], a)
+runConsume stream m = runIdentity $ runConsumeT stream m
+
+evalConsume :: [s] -> Consume s a -> a
+evalConsume stream = snd . runConsume stream
+
+execConsume :: [s] -> Consume s a -> [s]
+execConsume stream = fst . runConsume stream
 
 get' :: Monad m => ConsumeT s m [s]
 get' = ConsumeT get

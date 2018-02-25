@@ -39,10 +39,21 @@ import Foreign.Hoppy.Generator.Language.Haskell (
   prettyPrint,
   sayLn,
   saysLn,
+  )
+import Foreign.Hoppy.Generator.Spec
+import Foreign.Hoppy.Generator.Spec.Class (
+  Class,
+  MethodApplicability (MConst, MNormal),
+  makeClass,
+  makeFnMethod,
+  mkConstMethod,
+  mkConstMethod',
+  mkCtor,
+  mkMethod,
+  mkMethod',
   toHsDataTypeName,
   toHsClassEntityName,
   )
-import Foreign.Hoppy.Generator.Spec
 import Foreign.Hoppy.Generator.Std (ValueConversion (ConvertPtr, ConvertValue))
 import Foreign.Hoppy.Generator.Std.Internal (includeHelper)
 import Foreign.Hoppy.Generator.Std.Iterator
@@ -106,16 +117,16 @@ instantiate' mapName k v userReqs opts =
         addReqs reqs $
         classAddFeatures (Assignable : Copyable : optUnorderedMapClassFeatures opts) $
         makeClass (ident1T "std" "unordered_map" [k, v]) (Just extName) []
-        [ mkCtor "new" []
+        [ mkCtor "new" np
         , mkMethod' "at" "at" [k] $ refT v
         , mkConstMethod' "at" "atConst" [k] $ refT $ constT v
-        , mkMethod' "begin" "begin" [] $ toGcT $ objT iterator
-        , mkConstMethod' "begin" "beginConst" [] $ toGcT $ objT constIterator
-        , mkMethod "clear" [] voidT
+        , mkMethod' "begin" "begin" np $ toGcT $ objT iterator
+        , mkConstMethod' "begin" "beginConst" np $ toGcT $ objT constIterator
+        , mkMethod "clear" np voidT
         , mkConstMethod "count" [k] sizeT
-        , mkConstMethod "empty" [] boolT
-        , mkMethod' "end" "end" [] $ toGcT $ objT iterator
-        , mkConstMethod' "end" "endConst" [] $ toGcT $ objT constIterator
+        , mkConstMethod "empty" np boolT
+        , mkMethod' "end" "end" np $ toGcT $ objT iterator
+        , mkConstMethod' "end" "endConst" np $ toGcT $ objT constIterator
           -- equal_range: find is good enough.
         , mkMethod' "erase" "erase" [objT iterator] voidT
         , mkMethod' "erase" "eraseKey" [k] sizeT
@@ -124,8 +135,8 @@ instantiate' mapName k v userReqs opts =
         , mkConstMethod' "find" "findConst" [k] $ toGcT $ objT constIterator
           -- TODO insert
           -- lower_bound: find is good enough.
-        , mkConstMethod' "max_size" "maxSize" [] sizeT
-        , mkConstMethod "size" [] sizeT
+        , mkConstMethod' "max_size" "maxSize" np sizeT
+        , mkConstMethod "size" np sizeT
         , mkMethod "swap" [refT $ objT map] voidT
           -- upper_bound: find is good enough.
         , mkMethod OpArray [k] $ refT v
@@ -263,4 +274,4 @@ instantiate' mapName k v userReqs opts =
 -- | Converts an instantiation into a list of exports to be included in a
 -- module.
 toExports :: Contents -> [Export]
-toExports m = map (ExportClass . ($ m)) [c_map, c_iterator, c_constIterator]
+toExports m = map (Export . ($ m)) [c_map, c_iterator, c_constIterator]

@@ -15,40 +15,11 @@
 -- You should have received a copy of the GNU Affero General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-{-# LANGUAGE CPP #-}
-
-module Foreign.Hoppy.Generator.Language.Haskell (
-  Managed,
-  Generator,
-  Output,
-  SayExportMode,
-  withErrorContext,
-  addImports,
-  sayLn,
-  prettyPrint,
+module Foreign.Hoppy.Generator.Hook (
+  Hooks,
+  defaultHooks,
   ) where
 
-import Control.Monad.Except (Except)
-import Control.Monad.Reader (ReaderT)
-import Control.Monad.Writer (WriterT)
-import {-# SOURCE #-} Foreign.Hoppy.Generator.Spec.Base (HsImportSet)
-import qualified Language.Haskell.Pretty as P
+data Hooks
 
-data Managed = Unmanaged | Managed
-
-type Generator = ReaderT Env (WriterT Output (Except String))
-
-data Env
-
-data Output
-instance Monoid Output
-
-data SayExportMode
-
-withErrorContext :: String -> Generator a -> Generator a
-
-addImports :: HsImportSet -> Generator ()
-
-sayLn :: String -> Generator ()
-
-prettyPrint :: P.Pretty a => a -> String
+defaultHooks :: Hooks

@@ -19,21 +19,32 @@
 -- these functions, but we try to catch these and fail cleanly as much as
 -- possible.
 module Foreign.Hoppy.Generator.Types (
-  -- * Primitive types
+  -- * Qualifiers
+  constT,
+  -- * Primtive types
   voidT,
+  ptrT,
+  refT,
+  fnT,
+  fnT',
+  -- * Numeric types
   boolT,
+  boolT',
   charT,
   ucharT,
   shortT,
   ushortT,
   intT,
+  intT',
   uintT,
   longT,
   ulongT,
   llongT,
   ullongT,
   floatT,
+  floatT',
   doubleT,
+  doubleT',
   int8T,
   int16T,
   int32T,
@@ -45,101 +56,280 @@ module Foreign.Hoppy.Generator.Types (
   ptrdiffT,
   sizeT,
   ssizeT,
+  -- ** Custom numeric types
+  makeNumericType,
+  convertByCoercingIntegral,
+  convertByCoercingFloating,
   -- * Complex types
-  enumT,
-  bitspaceT,
-  ptrT,
-  refT,
-  fnT,
+  manualT,
   callbackT,
+  enumT,
   objT,
   objToHeapT,
   toGcT,
-  constT,
   ) where
 
+import {-# SOURCE #-} qualified Foreign.Hoppy.Generator.Language.Haskell as LH
+import {-# SOURCE #-} Foreign.Hoppy.Generator.Spec.Callback (callbackT)
+import {-# SOURCE #-} Foreign.Hoppy.Generator.Spec.Enum (enumT)
 import Foreign.Hoppy.Generator.Spec.Base
+import Language.Haskell.Syntax (
+  HsName (HsIdent),
+  HsQName (UnQual),
+  HsType (HsTyCon),
+  )
 
 -- | C++ @void@, Haskell @()@.
 voidT = Internal_TVoid
 
 -- | C++ @bool@, Haskell 'Bool'.
-boolT = Internal_TBool
+--
+-- C++ has sizeof(bool) == 1, whereas Haskell can > 1, so we have to convert.
+boolT =
+  makeNumericType "bool" mempty
+  (do LH.addImports hsImportForPrelude
+      return $ HsTyCon $ UnQual $ HsIdent "HoppyP.Bool")
+  (Just $ do LH.addImports hsImportForForeignC
+             return $ HsTyCon $ UnQual $ HsIdent "HoppyFC.CBool")
+  (CustomConversion $ do
+     LH.addImports $ mconcat [hsImport1 "Prelude" "(.)",
+                              hsImportForPrelude]
+     LH.sayLn "\\x -> HoppyP.return $ if x then 1 else 0")
+  (CustomConversion $ do
+     LH.addImports $ mconcat [hsImports "Prelude" ["(.)", "(/=)"],
+                              hsImportForPrelude]
+     LH.sayLn "(HoppyP.return . (/= 0))")
+
+-- | C++ @bool@, Haskell 'Foreign.C.CBool'.
+boolT' =
+  makeNumericType "bool" mempty
+  (do LH.addImports hsImportForForeignC
+      return $ HsTyCon $ UnQual $ HsIdent "HoppyFC.CBool")
+  Nothing BinaryCompatible BinaryCompatible
 
 -- | C++ @char@, Haskell 'Foreign.C.CChar'.
-charT = Internal_TChar
+charT =
+  makeNumericType "char" mempty
+  (do LH.addImports hsImportForForeignC
+      return $ HsTyCon $ UnQual $ HsIdent "HoppyFC.CChar")
+  Nothing BinaryCompatible BinaryCompatible
 
 -- | C++ @unsigned char@, Haskell 'Foreign.C.CUChar'.
-ucharT = Internal_TUChar
+ucharT =
+  makeNumericType "unsigned char" mempty
+  (do LH.addImports hsImportForForeignC
+      return $ HsTyCon $ UnQual $ HsIdent "HoppyFC.CUChar")
+  Nothing BinaryCompatible BinaryCompatible
 
 -- | C++ @short int@, Haskell 'Foreign.C.CShort'.
-shortT = Internal_TShort
+shortT =
+  makeNumericType "short" mempty
+  (do LH.addImports hsImportForForeignC
+      return $ HsTyCon $ UnQual $ HsIdent "HoppyFC.CShort")
+  Nothing BinaryCompatible BinaryCompatible
 
 -- | C++ @unsigned short int@, Haskell 'Foreign.C.CUShort'.
-ushortT = Internal_TUShort
+ushortT =
+  makeNumericType "unsigned short" mempty
+  (do LH.addImports hsImportForForeignC
+      return $ HsTyCon $ UnQual $ HsIdent "HoppyFC.CUShort")
+  Nothing BinaryCompatible BinaryCompatible
 
--- | C++ @int@, Haskell 'Foreign.C.CInt'.
-intT = Internal_TInt
+-- | C++ @int@, Haskell 'Int'.  See also 'intT''.
+intT =
+  makeNumericType "int" mempty
+  (do LH.addImports hsImportForPrelude
+      return $ HsTyCon $ UnQual $ HsIdent "HoppyP.Int")
+  (Just $ do LH.addImports hsImportForForeignC
+             return $ HsTyCon $ UnQual $ HsIdent "HoppyFC.CInt")
+  convertByCoercingIntegral convertByCoercingIntegral
+
+-- | C++ @int@, Haskell 'Foreign.C.CInt'.  See also 'intT'.
+intT' =
+  makeNumericType "int" mempty
+  (do LH.addImports hsImportForForeignC
+      return $ HsTyCon $ UnQual $ HsIdent "HoppyFC.CInt")
+  Nothing BinaryCompatible BinaryCompatible
 
 -- | C++ @unsigned int@, Haskell 'Foreign.C.CUInt'.
-uintT = Internal_TUInt
+uintT =
+  makeNumericType "unsigned int" mempty
+  (do LH.addImports hsImportForForeignC
+      return $ HsTyCon $ UnQual $ HsIdent "HoppyFC.CUInt")
+  Nothing BinaryCompatible BinaryCompatible
 
 -- | C++ @long int@, Haskell 'Foreign.C.CLong'.
-longT = Internal_TLong
+longT =
+  makeNumericType "long" mempty
+  (do LH.addImports hsImportForForeignC
+      return $ HsTyCon $ UnQual $ HsIdent "HoppyFC.CLong")
+  Nothing BinaryCompatible BinaryCompatible
 
 -- | C++ @unsigned long int@, Haskell 'Foreign.C.CULong'.
-ulongT = Internal_TULong
+ulongT =
+  makeNumericType "unsigned long" mempty
+  (do LH.addImports hsImportForForeignC
+      return $ HsTyCon $ UnQual $ HsIdent "HoppyFC.CULong")
+  Nothing BinaryCompatible BinaryCompatible
 
 -- | C++ @long long int@, Haskell 'Foreign.C.CLLong'.
-llongT = Internal_TLLong
+llongT =
+  makeNumericType "long long" mempty
+  (do LH.addImports hsImportForForeignC
+      return $ HsTyCon $ UnQual $ HsIdent "HoppyFC.CLLong")
+  Nothing BinaryCompatible BinaryCompatible
 
 -- | C++ @unsigned long long int@, Haskell 'Foreign.C.CULLong'.
-ullongT = Internal_TULLong
+ullongT =
+  makeNumericType "unsigned long long" mempty
+  (do LH.addImports hsImportForForeignC
+      return $ HsTyCon $ UnQual $ HsIdent "HoppyFC.CULLong")
+  Nothing BinaryCompatible BinaryCompatible
 
--- | C++ @float@, Haskell 'Foreign.C.CFloat'.
-floatT = Internal_TFloat
+-- | C++ @float@, Haskell 'Prelude.Float'.  See also 'floatT''.
+floatT =
+  makeNumericType "float" mempty
+  (do LH.addImports hsImportForPrelude
+      return $ HsTyCon $ UnQual $ HsIdent "HoppyP.Float")
+  (Just $ do LH.addImports hsImportForForeignC
+             return $ HsTyCon $ UnQual $ HsIdent "HoppyFC.CFloat")
+  convertByCoercingFloating convertByCoercingFloating
 
--- | C++ @double@, Haskell 'Foreign.C.CDouble'.
-doubleT = Internal_TDouble
+-- | C++ @float@, Haskell 'Foreign.C.CFloat'.  See also 'floatT'.
+floatT' =
+  makeNumericType "float" mempty
+  (do LH.addImports hsImportForForeignC
+      return $ HsTyCon $ UnQual $ HsIdent "Foreign.C.CFloat")
+  Nothing BinaryCompatible BinaryCompatible
+
+-- | C++ @double@, Haskell 'Prelude.Double'.  See also 'doubleT''.
+doubleT =
+  makeNumericType "double" mempty
+  (do LH.addImports hsImportForPrelude
+      return $ HsTyCon $ UnQual $ HsIdent "HoppyP.Double")
+  (Just $ do LH.addImports hsImportForForeignC
+             return $ HsTyCon $ UnQual $ HsIdent "HoppyFC.CDouble")
+  convertByCoercingFloating convertByCoercingFloating
+
+-- | C++ @double@, Haskell 'Foreign.C.CDouble'.  See also 'doubleT'.
+doubleT' =
+  makeNumericType "double" mempty
+  (do LH.addImports hsImportForForeignC
+      return $ HsTyCon $ UnQual $ HsIdent "Foreign.C.CDouble")
+  Nothing BinaryCompatible BinaryCompatible
 
 -- | C++ @int8_t@, Haskell 'Data.Int.Int8'.
-int8T = Internal_TInt8
+int8T =
+  makeNumericType "int8_t" (reqInclude $ includeStd "cstdint")
+  (do LH.addImports hsImportForInt
+      return $ HsTyCon $ UnQual $ HsIdent "HoppyDI.Int8")
+  Nothing BinaryCompatible BinaryCompatible
 
 -- | C++ @int16_t@, Haskell 'Data.Int.Int16'.
-int16T = Internal_TInt16
+int16T =
+  makeNumericType "int16_t" (reqInclude $ includeStd "cstdint")
+  (do LH.addImports hsImportForInt
+      return $ HsTyCon $ UnQual $ HsIdent "HoppyDI.Int16")
+  Nothing BinaryCompatible BinaryCompatible
 
 -- | C++ @int32_t@, Haskell 'Data.Int.Int32'.
-int32T = Internal_TInt32
+int32T =
+  makeNumericType "int32_t" (reqInclude $ includeStd "cstdint")
+  (do LH.addImports hsImportForInt
+      return $ HsTyCon $ UnQual $ HsIdent "HoppyDI.Int32")
+  Nothing BinaryCompatible BinaryCompatible
 
 -- | C++ @int64_t@, Haskell 'Data.Int.Int64'.
-int64T = Internal_TInt64
+int64T =
+  makeNumericType "int64_t" (reqInclude $ includeStd "cstdint")
+  (do LH.addImports hsImportForInt
+      return $ HsTyCon $ UnQual $ HsIdent "HoppyDI.Int64")
+  Nothing BinaryCompatible BinaryCompatible
 
 -- | C++ @uint8_t@, Haskell 'Data.Word.Word8'.
-word8T = Internal_TWord8
+word8T =
+  makeNumericType "uint8_t" (reqInclude $ includeStd "cstdint")
+  (do LH.addImports hsImportForWord
+      return $ HsTyCon $ UnQual $ HsIdent "HoppyDW.Word8")
+  Nothing BinaryCompatible BinaryCompatible
 
 -- | C++ @uint16_t@, Haskell 'Data.Word.Word16'.
-word16T = Internal_TWord16
+word16T =
+  makeNumericType "uint16_t" (reqInclude $ includeStd "cstdint")
+  (do LH.addImports hsImportForWord
+      return $ HsTyCon $ UnQual $ HsIdent "HoppyDW.Word16")
+  Nothing BinaryCompatible BinaryCompatible
 
 -- | C++ @uint32_t@, Haskell 'Data.Word.Word32'.
-word32T = Internal_TWord32
+word32T =
+  makeNumericType "uint32_t" (reqInclude $ includeStd "cstdint")
+  (do LH.addImports hsImportForWord
+      return $ HsTyCon $ UnQual $ HsIdent "HoppyDW.Word32")
+  Nothing BinaryCompatible BinaryCompatible
 
 -- | C++ @uint64_t@, Haskell 'Data.Word.Word64'.
-word64T = Internal_TWord64
+word64T =
+  makeNumericType "uint64_t" (reqInclude $ includeStd "cstdint")
+  (do LH.addImports hsImportForWord
+      return $ HsTyCon $ UnQual $ HsIdent "HoppyDW.Word64")
+  Nothing BinaryCompatible BinaryCompatible
 
 -- | C++ @ptrdiff_t@, Haskell 'Foreign.C.CPtrdiff'.
-ptrdiffT = Internal_TPtrdiff
+ptrdiffT =
+  makeNumericType "ptrdiff_t" (reqInclude $ includeStd "cstddef")
+  (do LH.addImports hsImportForForeignC
+      return $ HsTyCon $ UnQual $ HsIdent "HoppyFC.CPtrdiff")
+  Nothing BinaryCompatible BinaryCompatible
 
 -- | C++ @size_t@, Haskell 'Foreign.C.CSize'.
-sizeT = Internal_TSize
+sizeT =
+  makeNumericType "size_t" (reqInclude $ includeStd "cstddef")
+  (do LH.addImports hsImportForForeignC
+      return $ HsTyCon $ UnQual $ HsIdent "HoppyFC.CSize")
+  Nothing BinaryCompatible BinaryCompatible
 
 -- | C++ @ssize_t@, Haskell 'System.Posix.Types.CSsize'.
-ssizeT = Internal_TSSize
+ssizeT =
+  makeNumericType "ssize_t" (reqInclude $ includeStd "cstddef")
+  (do LH.addImports hsImportForSystemPosixTypes
+      return $ HsTyCon $ UnQual $ HsIdent "HoppySPT.CSsize")
+  Nothing BinaryCompatible BinaryCompatible
 
--- | A C++ @enum@ value.
-enumT = Internal_TEnum
+-- | TODO Docs.
+makeNumericType ::
+  String
+  -> Reqs
+  -> LH.Generator HsType
+  -> Maybe (LH.Generator HsType)
+  -> ConversionMethod (LH.Generator ())
+  -> ConversionMethod (LH.Generator ())
+  -> Type
+makeNumericType cppName cppReqs hsTypeGen hsCTypeGen convertToCpp convertFromCpp =
+  Internal_TManual spec
+  where spec =
+          (makeConversionSpec cppName $ makeConversionSpecCpp cppName $ return cppReqs)
+          { conversionSpecHaskell =
+              Just $ makeConversionSpecHaskell
+                hsTypeGen
+                hsCTypeGen
+                convertToCpp
+                convertFromCpp
+          }
 
--- | A C++ bitspace value.
-bitspaceT = Internal_TBitspace
+-- | TODO Docs.
+convertByCoercingIntegral :: ConversionMethod (LH.Generator ())
+convertByCoercingIntegral = CustomConversion $ do
+  LH.addImports $ mconcat [hsImport1 "Prelude" "(.)",
+                           hsImportForPrelude,
+                           hsImportForRuntime]
+  LH.sayLn "HoppyP.return . HoppyFHR.coerceIntegral"
+
+-- | TODO Docs.
+convertByCoercingFloating :: ConversionMethod (LH.Generator ())
+convertByCoercingFloating = CustomConversion $ do
+  LH.addImports $ mconcat [hsImport1 "Prelude" "(.)",
+                           hsImportForPrelude]
+  LH.sayLn "HoppyP.return . HoppyP.realToFrac"
 
 -- | A pointer to another type.
 ptrT = Internal_TPtr
@@ -149,10 +339,14 @@ refT = Internal_TRef
 
 -- | A function taking parameters and returning a value (or 'voidT').  Function
 -- pointers must wrap a 'fnT' in a 'ptrT'.
-fnT = Internal_TFn
+--
+-- See also 'fnT'' which accepts parameter information.
+fnT :: [Type] -> Type -> Type
+fnT = Internal_TFn . map toParameter
 
--- | A handle for calling foreign code from C++.
-callbackT = Internal_TCallback
+-- | A version of 'fnT' that accepts additional information about parameters.
+fnT' :: [Parameter] -> Type -> Type
+fnT' = Internal_TFn
 
 -- | An instance of a class.  When used in a parameter or return type and not
 -- wrapped in a 'ptrT' or 'refT', this is a by-value object.
@@ -180,6 +374,10 @@ objToHeapT = Internal_TObjToHeap
 -- - @'toGcT' ('ptrT' ('constT' ('objT' cls)))@
 -- - @'toGcT' ('ptrT' ('objT' cls))@
 toGcT = Internal_TToGc
+
+-- | TODO Docs.
+manualT :: ConversionSpec -> Type
+manualT = Internal_TManual
 
 -- | A @const@ version of another type.
 constT = Internal_TConst

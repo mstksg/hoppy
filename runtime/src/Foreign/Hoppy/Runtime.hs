@@ -22,6 +22,8 @@ module Foreign.Hoppy.Runtime (
   -- the CUChar data constructor for CBool to be marshalled in foreign imports.
   CUChar (CUChar),
   coerceIntegral,
+  -- * Enumerations
+  CppEnum (..),
   -- * Objects
   CppPtr (..),
   Deletable (..),
@@ -88,6 +90,7 @@ import Foreign.C (
   CULong,
   CUShort,
   )
+import GHC.Stack (HasCallStack)
 import System.IO.Unsafe (unsafePerformIO)
 import System.Posix.Types (CSsize)
 import Unsafe.Coerce (unsafeCoerce)
@@ -123,6 +126,19 @@ coerceIntegral a =
      then b
      else error $ "Conversion from " ++ show (typeOf a) ++ " to " ++
           show (typeOf b) ++ " does not preserve the value " ++ show a ++ "."
+
+-- | An instance @e@ of this class represents a value belonging to a C++
+-- enumeration with numeric type @n@.
+class CppEnum n e | e -> n where
+  -- | Converts a number into an enum value.
+  --
+  -- If the Hoppy binding didn't request that the enum support arbitrary unknown
+  -- values, then given an entry not explicitly supported by the enum, this
+  -- throws an exception.
+  toCppEnum :: HasCallStack => n -> e
+
+  -- | Extracts the number that an enum value represents.
+  fromCppEnum :: e -> n
 
 -- | An instance of this class represents a handle (a pointer) to a C++ object.
 -- All C++ classes bound by Hoppy have instances of @CppPtr@.  The lifetime of

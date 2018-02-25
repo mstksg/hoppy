@@ -48,15 +48,15 @@ v_FlubVarConst :: Variable
 v_FlubVarConst = makeVariable (ident "flubVarConst") Nothing $ constT charT
 
 e_FlubEnum :: CppEnum
-e_FlubEnum = makeEnum (ident "FlubEnum") Nothing enumValues
+e_FlubEnum = makeEnum (ident "FlubEnum") Nothing flubEnumValues
 
 bs_FlubBitspace :: Bitspace
 bs_FlubBitspace =
   bitspaceAddEnum e_FlubEnum $
-  makeBitspace (toExtName "FlubBitspace") intT enumValues
+  makeBitspace (toExtName "FlubBitspace") intT flubEnumValues
 
-enumValues :: [(Int, [String])]
-enumValues =
+flubEnumValues :: [(Integer, [String])]
+flubEnumValues =
   [ (0x1, ["option", "a"])
   , (0x2, ["option", "b"])
   , (0x4, ["option", "c"])

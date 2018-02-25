@@ -34,6 +34,7 @@ import Data.Monoid (mconcat)
 #endif
 import Foreign.Hoppy.Generator.Language.Haskell
 import Foreign.Hoppy.Generator.Spec.Base
+import Foreign.Hoppy.Generator.Spec.Class
 import Foreign.Hoppy.Generator.Types
 
 -- | Modifies a class's 'ClassConversion' structure by setting all languages
