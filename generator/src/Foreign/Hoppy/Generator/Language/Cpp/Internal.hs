@@ -864,7 +864,7 @@ getEffectiveExceptionHandlers handlers = do
   ifaceHandlers <- interfaceExceptionHandlers <$> askInterface
   moduleHandlers <- getExceptionHandlers <$> askModule
   -- Exception handlers declared lower in the hierarchy take precedence over
-  -- those in the hierarchy; ExceptionHandlers is a left-biased monoid.
+  -- those higher in the hierarchy; ExceptionHandlers is a left-biased monoid.
   return $ mconcat [handlers, moduleHandlers, ifaceHandlers]
 
 getEffectiveCallbackThrows :: Callback -> Generator Bool

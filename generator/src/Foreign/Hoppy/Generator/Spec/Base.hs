@@ -2294,8 +2294,7 @@ instance Monoid ExceptionHandlers where
   mempty = ExceptionHandlers []
 
   mappend e1 e2 =
-    ExceptionHandlers
-    (S.toList $ S.fromList $ exceptionHandlersList e1 ++ exceptionHandlersList e2)
+    ExceptionHandlers $ exceptionHandlersList e1 ++ exceptionHandlersList e2
 
 -- | Types that can handle exceptions.
 class HandlesExceptions a where
@@ -2308,7 +2307,7 @@ class HandlesExceptions a where
 -- | Appends additional exception handlers to an object.
 handleExceptions :: HandlesExceptions a => [ExceptionHandler] -> a -> a
 handleExceptions classes =
-  modifyExceptionHandlers $ mappend mempty {exceptionHandlersList = classes}
+  modifyExceptionHandlers $ mappend mempty { exceptionHandlersList = classes }
 
 -- | A literal piece of code that will be inserted into a generated source file
 -- after the regular binding glue.  The 'Monoid' instance concatenates code
