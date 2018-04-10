@@ -1408,9 +1408,9 @@ sayExportClassExceptionSupport doDecls cls =
                   when (classIsException ancestorCls) $ do
                     let path' = ancestorCls : path
                     ancestorId <- getClassExceptionId ancestorCls
-                    ancestorCastChain <- forM (zip path' $ drop 1 path') $ \(from, to) ->
+                    ancestorCastChain <- forM (zip path' $ drop 1 path') $ \(to, from) ->
                       -- We're upcasting, so 'from' is the subclass.
-                      toHsCastPrimitiveName from to from
+                      toHsCastPrimitiveName from from to
                     saysLn $ concat [ [if first then "[" else ",",
                                        " ( HoppyFHR.ExceptionId ",
                                        show $ getExceptionId ancestorId,
