@@ -123,6 +123,7 @@ import Distribution.Simple.UserHooks (
     preCopy,
     preInst,
     preReg,
+    preRepl,
     preTest
     ),
   )
@@ -334,6 +335,7 @@ hsUserHooks project =
   , preCopy = \_ _ -> addLibDir  -- Not sure if necessary, but doesn't hurt.
   , preInst = \_ _ -> addLibDir  -- Not sure if necessary, but doesn't hurt.
   , preReg = \_ _ -> addLibDir  -- Necessary.
+  , preRepl = \_ _ -> addLibDir -- Necessary.
 
   , cleanHook = \pkgDesc z hooks flags -> do
       cleanHook simpleUserHooks pkgDesc z hooks flags
