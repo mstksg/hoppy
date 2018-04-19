@@ -1,0 +1,209 @@
+-- This file is part of Hoppy.
+--
+-- Copyright 2015-2018 Bryan Gardiner <bog@khumba.net>
+--
+-- Licensed under the Apache License, Version 2.0 (the "License");
+-- you may not use this file except in compliance with the License.
+-- You may obtain a copy of the License at
+--
+--     http://www.apache.org/licenses/LICENSE-2.0
+--
+-- Unless required by applicable law or agreed to in writing, software
+-- distributed under the License is distributed on an "AS IS" BASIS,
+-- WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-- See the License for the specific language governing permissions and
+-- limitations under the License.
+
+{-# LANGUAGE CPP #-}
+
+-- | Bindings for @std::unordered_set@.
+module Foreign.Hoppy.Generator.Std.UnorderedSet (
+  Options (..),
+  defaultOptions,
+  Contents (..),
+  instantiate,
+  instantiate',
+  toExports,
+  ) where
+
+import Control.Monad (forM, when)
+#if !MIN_VERSION_base(4,8,0)
+import Data.Monoid (mconcat)
+#endif
+import Foreign.Hoppy.Generator.Language.Haskell (
+  HsTypeSide (HsHsSide),
+  addImports,
+  cppTypeToHsTypeAndUse,
+  indent,
+  ln,
+  prettyPrint,
+  sayLn,
+  saysLn,
+  toHsCastMethodName,
+  toHsDataTypeName,
+  toHsClassEntityName,
+  )
+import Foreign.Hoppy.Generator.Spec
+import Foreign.Hoppy.Generator.Std (ValueConversion (ConvertPtr, ConvertValue))
+import Foreign.Hoppy.Generator.Std.Internal (includeHelper)
+import Foreign.Hoppy.Generator.Std.Iterator
+import Foreign.Hoppy.Generator.Types
+
+-- | Options for instantiating the set classes.
+data Options = Options
+  { optUnorderedSetClassFeatures :: [ClassFeature]
+    -- ^ Additional features to add to the @std::unordered_set@ class.  UnorderedSets are always
+    -- 'Assignable', 'Comparable', and 'Copyable', but you may want to add
+    -- 'Foreign.Hoppy.Generator.Spec.ClassFeature.Equatable' if your value type
+    -- supports those.
+  , optValueConversion :: Maybe ValueConversion
+  }
+
+-- | The default options have no additional 'ClassFeature's.
+defaultOptions :: Options
+defaultOptions = Options [] Nothing
+
+-- | A set of instantiated set classes.
+data Contents = Contents
+  { c_set :: Class  -- ^ @std::unordered_set\<T>@
+  , c_iterator :: Class  -- ^ @std::unordered_set\<T>::iterator@
+  }
+
+-- | @instantiate className t tReqs@ creates a set of bindings for an
+-- instantiation of @std::unordered_set@ and associated types (e.g. iterators).  In the
+-- result, the 'c_set' class has an external name of @className@, and the
+-- iterator class is further suffixed with @\"Iterator\"@.
+instantiate :: String -> Type -> Reqs -> Contents
+instantiate setName t tReqs = instantiate' setName t tReqs defaultOptions
+
+-- | 'instantiate' with additional options.
+instantiate' :: String -> Type -> Reqs -> Options -> Contents
+instantiate' setName t tReqs opts =
+  let reqs = mconcat
+             [ tReqs
+             , reqInclude $ includeHelper "unordered_set.hpp"
+             , reqInclude $ includeStd "unordered_set"
+             ]
+      iteratorName = setName ++ "Iterator"
+
+      set =
+        (case optValueConversion opts of
+           Nothing -> id
+           Just conversion -> addAddendumHaskell $ makeAddendum conversion) $
+        addReqs reqs $
+        classAddFeatures (Assignable : Copyable : optUnorderedSetClassFeatures opts) $
+        makeClass (ident1T "std" "unordered_set" [t]) (Just $ toExtName setName) []
+        [ mkCtor "new" []
+        , mkConstMethod "begin" [] $ toGcT $ objT iterator
+        , mkMethod "clear" [] voidT
+        , mkConstMethod "count" [t] sizeT
+          -- TODO count
+        , mkConstMethod "empty" [] boolT
+        , mkConstMethod "end" [] $ toGcT $ objT iterator
+          -- equalRange: find is good enough.
+        , mkMethod' "erase" "erase" [objT iterator] voidT
+        , mkMethod' "erase" "eraseRange" [objT iterator, objT iterator] voidT
+        , mkMethod "find" [t] $ toGcT $ objT iterator
+          -- TODO Replace these with a single version that returns a (toGcT std::pair).
+        , makeFnMethod (ident2 "hoppy" "unordered_set" "insert") "insert"
+          MNormal Nonpure [refT $ objT set, t] boolT
+        , makeFnMethod (ident2 "hoppy" "unordered_set" "insertAndGetIterator") "insertAndGetIterator"
+          MNormal Nonpure [refT $ objT set, t] $ toGcT $ objT iterator
+          -- lower_bound: find is good enough.
+        , mkConstMethod' "max_size" "maxSize" [] sizeT
+        , mkConstMethod "size" [] sizeT
+        , mkMethod "swap" [refT $ objT set] voidT
+          -- upper_bound: find is good enough.
+        ]
+
+      -- Unordered set iterators are always constant, because modifying elements in place
+      -- will change their hash values and corrupt the container.
+      iterator =
+        addReqs reqs $
+        makeForwardIterator Constant (Just t) $
+        makeClass (identT' [("std", Nothing), ("unordered_set", Just [t]), ("iterator", Nothing)])
+        (Just $ toExtName iteratorName) [] []
+
+      -- The addendum for the unordered_set class contains HasContents and FromContents
+      -- instances.
+      makeAddendum conversion = do
+        addImports $ mconcat [hsImport1 "Prelude" "($)",
+                              hsImportForPrelude,
+                              hsImportForRuntime]
+        when (conversion == ConvertValue) $
+          addImports $ mconcat [hsImport1 "Prelude" "(=<<)"]
+
+        hsDataNameConst <- toHsDataTypeName Const set
+        hsDataName <- toHsDataTypeName Nonconst set
+        [hsValueTypeConst, hsValueType] <- forM [Const, Nonconst] $ \cst ->
+            cppTypeToHsTypeAndUse HsHsSide $
+            (case conversion of
+               ConvertPtr -> ptrT
+               ConvertValue -> id) $
+            case cst of
+              Const -> constT t
+              Nonconst -> t
+
+        setConstCast <- toHsCastMethodName Const set
+        setEmpty <- toHsClassEntityName set "empty"
+        setBegin <- toHsClassEntityName set "begin"
+        setEnd <- toHsClassEntityName set "end"
+        iterEq <- toHsClassEntityName iterator OpEq
+        iterGetConst <- toHsClassEntityName iterator "getConst"
+        iterNext <- toHsClassEntityName iterator "next"
+
+        -- Generate const and nonconst HasContents instances.
+        ln
+        saysLn ["instance HoppyFHR.HasContents ", hsDataNameConst,
+                " (", prettyPrint hsValueTypeConst, ") where"]
+        indent $ do
+          sayLn "toContents this' = do"
+          indent $ do
+            saysLn ["empty' <- ", setEmpty, " this'"]
+            sayLn "if empty' then HoppyP.return [] else do"
+            indent $ do
+              saysLn ["end' <- ", setEnd, " this'"]
+              saysLn ["iter' <- ", setBegin, " this'"]
+              sayLn "go' iter' end' []"
+            sayLn "where"
+            indent $ do
+              sayLn "go' iter' end' acc' = do"
+              indent $ do
+                saysLn ["stop' <- ", iterEq, " iter' end'"]
+                sayLn "if stop' then HoppyP.return (HoppyP.reverse acc') else do" -- Do we need to keep the order?
+                indent $ do
+                  saysLn ["_ <- ", iterNext, " iter'"]
+                  saysLn ["value' <- ",
+                          case conversion of
+                            ConvertPtr -> ""
+                            ConvertValue -> "HoppyFHR.decode =<< ",
+                          iterGetConst, " iter'"]
+                  sayLn "go' iter' end' $ value':acc'"
+        ln
+        saysLn ["instance HoppyFHR.HasContents ", hsDataName,
+                " (", prettyPrint hsValueTypeConst, ") where"]
+        indent $
+          saysLn ["toContents = HoppyFHR.toContents . ", setConstCast]
+
+        -- Only generate a nonconst FromContents instance.
+        ln
+        saysLn ["instance HoppyFHR.FromContents ", hsDataName,
+                " (", prettyPrint hsValueType, ") where"]
+        indent $ do
+          sayLn "fromContents values' = do"
+          indent $ do
+            setNew <- toHsClassEntityName set "new"
+            setInsert <- toHsClassEntityName set "insert"
+            saysLn ["set' <- ", setNew]
+            saysLn ["HoppyP.mapM_ (", setInsert, " set') values'"]
+            sayLn "HoppyP.return set'"
+
+  in Contents
+     { c_set = set
+     , c_iterator = iterator
+     }
+
+-- | Converts an instantiation into a list of exports to be included in a
+-- module.
+toExports :: Contents -> [Export]
+toExports m = map (ExportClass . ($ m)) [c_set, c_iterator]
