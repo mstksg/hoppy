@@ -67,6 +67,7 @@ defaultOptions = Options [] Nothing
 data Contents = Contents
   { c_set :: Class  -- ^ @std::set\<T>@
   , c_iterator :: Class  -- ^ @std::set\<T>::iterator@
+  , c_constIterator :: Class  -- ^ @std::set\<T>::const_iterator@
   }
 
 -- | @instantiate className t tReqs@ creates a set of bindings for an
@@ -94,12 +95,14 @@ instantiate' setName t tReqs opts =
         classAddFeatures (Assignable : Comparable : Copyable : optSetClassFeatures opts) $
         makeClass (ident1T "std" "set" [t]) (Just $ toExtName setName) []
         [ mkCtor "new" []
-        , mkConstMethod "begin" [] $ toGcT $ objT iterator
+        , mkMethod' "begin" "begin" [] $ toGcT $ objT iterator
+        , mkConstMethod' "begin" "beginConst" [] $ toGcT $ objT constIterator
         , mkMethod "clear" [] voidT
         , mkConstMethod "count" [t] sizeT
           -- TODO count
         , mkConstMethod "empty" [] boolT
-        , mkConstMethod "end" [] $ toGcT $ objT iterator
+        , mkMethod' "end" "end" [] $ toGcT $ objT iterator
+        , mkConstMethod' "end" "endConst" [] $ toGcT $ objT constIterator
           -- equalRange: find is good enough.
         , mkMethod' "erase" "erase" [objT iterator] voidT
         , mkMethod' "erase" "eraseRange" [objT iterator, objT iterator] voidT
@@ -117,11 +120,19 @@ instantiate' setName t tReqs opts =
         ]
 
       -- Set iterators are always constant, because modifying elements in place
-      -- will break the internal order of the set.
+      -- will break the internal order of the set.  That said, 'iterator' and
+      -- 'const_iterator' aren't guaranteed to be the same type; only that
+      -- 'iterator' is convertible to 'const_iterator'.
       iterator =
         addReqs reqs $
         makeBidirectionalIterator Constant (Just t) $
         makeClass (identT' [("std", Nothing), ("set", Just [t]), ("iterator", Nothing)])
+        (Just $ toExtName iteratorName) [] []
+
+      constIterator =
+        addReqs reqs $
+        makeBidirectionalIterator Constant (Just t) $
+        makeClass (identT' [("std", Nothing), ("set", Just [t]), ("const_iterator", Nothing)])
         (Just $ toExtName iteratorName) [] []
 
       -- The addendum for the set class contains HasContents and FromContents
@@ -146,8 +157,8 @@ instantiate' setName t tReqs opts =
 
         setConstCast <- toHsCastMethodName Const set
         setEmpty <- toHsClassEntityName set "empty"
-        setBegin <- toHsClassEntityName set "begin"
-        setEnd <- toHsClassEntityName set "end"
+        setBeginConst <- toHsClassEntityName set "beginConst"
+        setEndConst <- toHsClassEntityName set "endConst"
         iterEq <- toHsClassEntityName iterator OpEq
         iterGetConst <- toHsClassEntityName iterator "getConst"
         iterPrev <- toHsClassEntityName iterator "prev"
@@ -162,8 +173,8 @@ instantiate' setName t tReqs opts =
             saysLn ["empty' <- ", setEmpty, " this'"]
             sayLn "if empty' then HoppyP.return [] else do"
             indent $ do
-              saysLn ["begin' <- ", setBegin, " this'"]
-              saysLn ["iter' <- ", setEnd, " this'"]
+              saysLn ["begin' <- ", setBeginConst, " this'"]
+              saysLn ["iter' <- ", setEndConst, " this'"]
               sayLn "go' iter' begin' []"
             sayLn "where"
             indent $ do
@@ -201,9 +212,10 @@ instantiate' setName t tReqs opts =
   in Contents
      { c_set = set
      , c_iterator = iterator
+     , c_constIterator = constIterator
      }
 
 -- | Converts an instantiation into a list of exports to be included in a
 -- module.
 toExports :: Contents -> [Export]
-toExports m = map (ExportClass . ($ m)) [c_set, c_iterator]
+toExports m = map (ExportClass . ($ m)) [c_set, c_iterator, c_constIterator]
