@@ -224,7 +224,7 @@ instantiate' mapName k v userReqs opts =
                 sayLn "go' iter' end' acc' = do"
                 indent $ do
                   saysLn ["stop' <- ", iterEq, " iter' end'"]
-                  sayLn "if stop' then HoppyP.return (HoppyP.reverse acc') else do" -- Do we need to keep the order?
+                  sayLn "if stop' then HoppyP.return (HoppyP.reverse acc') else do"
                   indent $ do
                     saysLn ["_ <- ", iterNext, " iter'"]
                     saysLn ["key' <- ",
