@@ -30,6 +30,8 @@ import qualified Foreign.Hoppy.Generator.Std.List as List
 import qualified Foreign.Hoppy.Generator.Std.Map as Map
 import qualified Foreign.Hoppy.Generator.Std.Pair as Pair
 import qualified Foreign.Hoppy.Generator.Std.Set as Set
+import qualified Foreign.Hoppy.Generator.Std.UnorderedMap as UnorderedMap
+import qualified Foreign.Hoppy.Generator.Std.UnorderedSet as UnorderedSet
 import qualified Foreign.Hoppy.Generator.Std.Vector as Vector
 
 {-# ANN module "HLint: ignore Use camelCase" #-}
@@ -60,6 +62,10 @@ testModule =
   , Pair.toExports pairIntBoxes
   , Set.toExports setInt
   , Set.toExports setIntBox
+  , UnorderedMap.toExports unorderedMapInts
+  , UnorderedMap.toExports unorderedMapIntBoxes
+  , UnorderedSet.toExports unorderedSetInt
+  , UnorderedSet.toExports unorderedSetIntBox
   , Vector.toExports vectorIntBox
   , Vector.toExports vectorIntBoxComparable
   , Vector.toExports vectorIntBoxEquatable
@@ -141,6 +147,32 @@ setIntBox :: Set.Contents
 setIntBox =
   Set.instantiate' "setIntBox" (objT c_IntBoxComparable) intBoxReqs $
   Set.defaultOptions { Set.optValueConversion = Just ConvertPtr }
+
+unorderedMapInts :: UnorderedMap.Contents
+unorderedMapInts =
+  UnorderedMap.instantiate' "unorderedMapInts" intT intT intBoxReqs $
+  UnorderedMap.defaultOptions
+  { UnorderedMap.optKeyConversion = Just ConvertValue
+  , UnorderedMap.optValueConversion = Just ConvertValue
+  }
+
+unorderedMapIntBoxes :: UnorderedMap.Contents
+unorderedMapIntBoxes =
+  UnorderedMap.instantiate' "unorderedMapIntBoxes" (objT c_IntBoxEquatable) (objT c_IntBox) intBoxReqs $
+  UnorderedMap.defaultOptions
+  { UnorderedMap.optKeyConversion = Just ConvertPtr
+  , UnorderedMap.optValueConversion = Just ConvertPtr
+  }
+
+unorderedSetInt :: UnorderedSet.Contents
+unorderedSetInt =
+  UnorderedSet.instantiate' "unorderedSetInt" intT intBoxReqs $
+  UnorderedSet.defaultOptions { UnorderedSet.optValueConversion = Just ConvertValue }
+
+unorderedSetIntBox :: UnorderedSet.Contents
+unorderedSetIntBox =
+  UnorderedSet.instantiate' "unorderedSetIntBox" (objT c_IntBoxEquatable) intBoxReqs $
+  UnorderedSet.defaultOptions { UnorderedSet.optValueConversion = Just ConvertPtr }
 
 vectorIntBox :: Vector.Contents
 vectorIntBox =

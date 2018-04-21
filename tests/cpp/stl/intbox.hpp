@@ -18,6 +18,8 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+#include <functional>
+
 class IntBox {
 public:
     IntBox() : n_(0) {}
@@ -49,6 +51,11 @@ public:
 
     bool operator==(const IntBoxEquatable& other) const { return n_ == other.n_; }
     bool operator!=(const IntBoxEquatable& other) const { return !(*this == other); }
+};
+
+template<>
+struct std::hash<IntBoxEquatable> : public std::unary_function<IntBoxEquatable, std::size_t> {
+    std::size_t operator()(IntBox val) const { return std::hash<int>()(val.get()); }
 };
 
 #endif
