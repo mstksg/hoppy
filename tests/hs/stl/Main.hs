@@ -21,7 +21,7 @@ module Main (main) where
 
 import Control.Monad ((>=>), forM_, when)
 import Foreign (peek)
-import Foreign.C (castCCharToChar, withCString)
+import Foreign.C (castCCharToChar, withCString, withCStringLen)
 import Foreign.Hoppy.Runtime (
   HasContents, assign, decode, encode, fromContents, toContents, toGc, withCppObj, withScopedPtr)
 import Foreign.Hoppy.Test.Std
@@ -63,10 +63,21 @@ stringTests =
     forM_ (zip [0..] "Hello, world!") $ \(i, c) ->
       stdString_get p i >>= (@?= c) . castCCharToChar
 
+  , "encoding NUL" ~:
+    withScopedPtr (encode "A\NULB" :: IO StdString) $ \p -> do
+    stdString_size p >>= (@?= 3)
+    forM_ (zip [0..] "A\NULB") $ \(i, c) ->
+      stdString_get p i >>= (@?= c) . castCCharToChar
+
   , "decoding" ~:
     withCString "Hello, world!" $ \cs ->
     withScopedPtr (stdString_newFromCString cs) $ \s ->
     decode s >>= (@?= "Hello, world!")
+
+  , "decoding NUL" ~:
+    withCStringLen "A\NULB" $ \cs ->
+    withScopedPtr (stdString_newFromCStringLen cs) $ \s ->
+    decode s >>= (@?= "A\NULB")
 
   , "assignment" ~:
     withCppObj "Hello" $ \(s :: StdString) -> do
