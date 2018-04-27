@@ -158,7 +158,10 @@ unorderedMapInts =
 
 unorderedMapIntBoxes :: UnorderedMap.Contents
 unorderedMapIntBoxes =
-  UnorderedMap.instantiate' "unorderedMapIntBoxes" (objT c_IntBoxEquatable) (objT c_IntBox) intBoxReqs $
+  UnorderedMap.instantiate' "unorderedMapIntBoxes"
+                            (objT c_IntBoxEquatable)
+                            (objT c_IntBox)
+                            intBoxReqs $
   UnorderedMap.defaultOptions
   { UnorderedMap.optKeyConversion = Just ConvertPtr
   , UnorderedMap.optValueConversion = Just ConvertPtr

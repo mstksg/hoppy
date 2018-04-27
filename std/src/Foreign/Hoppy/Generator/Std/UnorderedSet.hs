@@ -110,8 +110,8 @@ instantiate' setName t tReqs opts =
           -- TODO Replace these with a single version that returns a (toGcT std::pair).
         , makeFnMethod (ident2 "hoppy" "unordered_set" "insert") "insert"
           MNormal Nonpure [refT $ objT set, t] boolT
-        , makeFnMethod (ident2 "hoppy" "unordered_set" "insertAndGetIterator") "insertAndGetIterator"
-          MNormal Nonpure [refT $ objT set, t] $ toGcT $ objT iterator
+        , makeFnMethod (ident2 "hoppy" "unordered_set" "insertAndGetIterator")
+          "insertAndGetIterator" MNormal Nonpure [refT $ objT set, t] $ toGcT $ objT iterator
           -- lower_bound: find is good enough.
         , mkConstMethod' "max_size" "maxSize" [] sizeT
         , mkConstMethod "size" [] sizeT

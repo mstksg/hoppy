@@ -22,7 +22,7 @@ module Foreign.Hoppy.Generator.Std.String (c_string) where
 #if !MIN_VERSION_base(4,8,0)
 import Data.Monoid (mconcat)
 #endif
-import Foreign.Hoppy.Generator.Language.Haskell (addExport, addImports, sayLn)
+import Foreign.Hoppy.Generator.Language.Haskell (addExport, addImports, indent, sayLn)
 import Foreign.Hoppy.Generator.Spec
 import Foreign.Hoppy.Generator.Types
 import Language.Haskell.Syntax (
@@ -46,8 +46,15 @@ c_string =
         addImports $ mconcat [hsImportForPrelude, hsImportForForeignC]
         sayLn "HoppyP.flip HoppyFC.withCStringLen stdString_newFromCStringLen"
       , classHaskellConversionFromCppFn = Just $ do
-        addImports $ mconcat [hsImportForPrelude, hsImport1 "Prelude" "(>>=)", hsImport1 "Control.Applicative" "(<*)", hsImportForForeignC, hsImportForRuntime]
-        sayLn "(\\s -> stdString_data s >>= \\p -> stdString_size s >>= \\n -> HoppyFC.peekCStringLen (p, HoppyP.fromIntegral n) <* HoppyFHR.touchCppPtr s)"
+        addImports $ mconcat [hsImport1 "Control.Applicative" "(<*)",
+                              hsImportForForeignC,
+                              hsImportForPrelude,
+                              hsImportForRuntime]
+        sayLn "\\s -> do"
+        indent $ do
+          sayLn "p <- stdString_data s"
+          sayLn "n <- stdString_size s"
+          sayLn "HoppyFC.peekCStringLen (p, HoppyP.fromIntegral n) <* HoppyFHR.touchCppPtr s"
       } $
   makeClass (ident1 "std" "string") (Just $ toExtName "StdString") []
   [ mkCtor "new" []
@@ -64,4 +71,6 @@ c_string =
       addImports $ mconcat [hsImportForPrelude, hsImportForForeignC]
       addExport "stdString_newFromCStringLen"
       sayLn "stdString_newFromCStringLen :: HoppyFC.CStringLen -> HoppyP.IO StdString"
-      sayLn "stdString_newFromCStringLen (p,n) = stdString_newFromCStringLen_raw p (HoppyP.fromIntegral n)"
+      sayLn "stdString_newFromCStringLen (p,n) ="
+      indent $ do
+        sayLn "stdString_newFromCStringLen_raw p (HoppyP.fromIntegral n)"

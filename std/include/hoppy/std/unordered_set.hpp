@@ -28,7 +28,10 @@ bool insert(std::unordered_set<T>& set, const T& value) {
 }
 
 template <typename T>
-typename std::unordered_set<T>::iterator insertAndGetIterator(std::unordered_set<T>& set, const T& value) {
+typename std::unordered_set<T>::iterator insertAndGetIterator(
+    std::unordered_set<T>& set,
+    const T& value
+) {
     return set.insert(value).first;
 }
 
