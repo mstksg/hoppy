@@ -22,7 +22,7 @@ module Foreign.Hoppy.Generator.Std.String (c_string) where
 #if !MIN_VERSION_base(4,8,0)
 import Data.Monoid (mconcat)
 #endif
-import Foreign.Hoppy.Generator.Language.Haskell (addImports, sayLn)
+import Foreign.Hoppy.Generator.Language.Haskell (addExport, addImports, sayLn)
 import Foreign.Hoppy.Generator.Spec
 import Foreign.Hoppy.Generator.Types
 import Language.Haskell.Syntax (
@@ -36,6 +36,7 @@ c_string :: Class
 c_string =
   addReqIncludes [includeStd "string"] $
   classAddFeatures [Assignable, Comparable, Copyable, Equatable] $
+  addAddendumHaskell addendum $
   classSetHaskellConversion
     ClassHaskellConversion
       { classHaskellConversionType = Just $ do
@@ -43,16 +44,24 @@ c_string =
         return $ HsTyCon $ UnQual $ HsIdent "HoppyP.String"
       , classHaskellConversionToCppFn = Just $ do
         addImports $ mconcat [hsImportForPrelude, hsImportForForeignC]
-        sayLn "HoppyP.flip HoppyFC.withCString stdString_newFromCString"
+        sayLn "HoppyP.flip HoppyFC.withCStringLen stdString_newFromCStringLen"
       , classHaskellConversionFromCppFn = Just $ do
-        addImports $ mconcat [hsImport1 "Control.Monad" "(<=<)", hsImportForForeignC]
-        sayLn "HoppyFC.peekCString <=< stdString_c_str"
+        addImports $ mconcat [hsImportForPrelude, hsImport1 "Prelude" "(>>=)", hsImport1 "Control.Applicative" "(<*)", hsImportForForeignC, hsImportForRuntime]
+        sayLn "(\\s -> stdString_data s >>= \\p -> stdString_size s >>= \\n -> HoppyFC.peekCStringLen (p, HoppyP.fromIntegral n) <* HoppyFHR.touchCppPtr s)"
       } $
   makeClass (ident1 "std" "string") (Just $ toExtName "StdString") []
   [ mkCtor "new" []
   , mkCtor "newFromCString" [ptrT $ constT charT]
+  , mkCtor "newFromCStringLen_raw" [ptrT $ constT charT, sizeT]
   , mkMethod' "at" "at" [intT] $ refT charT
   , mkConstMethod' "at" "get" [intT] charT
   , mkConstMethod "c_str" [] $ ptrT $ constT charT
+  , mkConstMethod "data" [] $ ptrT $ constT charT
   , mkConstMethod "size" [] sizeT
   ]
+  where
+    addendum = do
+      addImports $ mconcat [hsImportForPrelude, hsImportForForeignC]
+      addExport "stdString_newFromCStringLen"
+      sayLn "stdString_newFromCStringLen :: HoppyFC.CStringLen -> HoppyP.IO StdString"
+      sayLn "stdString_newFromCStringLen (p,n) = stdString_newFromCStringLen_raw p (HoppyP.fromIntegral n)"
