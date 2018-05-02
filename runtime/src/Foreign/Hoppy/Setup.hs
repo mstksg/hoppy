@@ -38,10 +38,10 @@
 -- main =
 --   cppMain $
 --   ProjectConfig
---   { generatorExecutableName = "foobar-generator"
---   , cppPackageName = "foobar-cpp"
---   , cppSourcesDir = "cpp"
---   , hsSourcesDir = "src"
+--   { generatorExecutableName = \"foobar-generator\"
+--   , cppPackageName = \"foobar-cpp\"
+--   , cppSourcesDir = \"cpp\"
+--   , hsSourcesDir = \"src\"
 --   }
 -- @
 --
