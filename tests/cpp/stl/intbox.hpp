@@ -53,9 +53,13 @@ public:
     bool operator!=(const IntBoxEquatable& other) const { return !(*this == other); }
 };
 
+namespace std {
+
 template<>
-struct std::hash<IntBoxEquatable> : public std::unary_function<IntBoxEquatable, std::size_t> {
+struct hash<IntBoxEquatable> : public std::unary_function<IntBoxEquatable, std::size_t> {
     std::size_t operator()(IntBox val) const { return std::hash<int>()(val.get()); }
 };
+
+}  // namespace std
 
 #endif
