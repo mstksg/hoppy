@@ -19,7 +19,10 @@ include all of the following.
 - Fixed NUL character handling in the conversions between Haskell's `String` and
   C++'s `std::string`, each of which can hold NUL characters (MR !10).
 
-- Added bindings for `std::unordered_map` and `std::unordered_set` (MR !9).
+- Fixed the bindings for `std::set` to account for the fact that the C++
+  standard allows `set::iterator` and `set::const_iterator` to be different
+  types, and added bindings for `std::unordered_map` and `std::unordered_set`
+  (MR !9).
 
 - Changes to support 'cabal new-build' and 'new-repl' (MRs !7, !8).
 
