@@ -78,6 +78,7 @@ import Distribution.Simple (defaultMainWithHooks, simpleUserHooks)
 import Distribution.Simple.LocalBuildInfo (
   LocalBuildInfo,
   absoluteInstallDirs,
+  buildDir,
   installedPkgs,
   libdir,
   withPrograms,
@@ -101,6 +102,7 @@ import Distribution.Simple.Program.Types (
   )
 import Distribution.Simple.Setup (
   CopyDest (CopyTo, NoCopyDest),
+  RegisterFlags,
   buildVerbosity,
   cleanVerbosity,
   configVerbosity,
@@ -110,6 +112,8 @@ import Distribution.Simple.Setup (
   fromFlagOrDefault,
   installDistPref,
   installVerbosity,
+  regInPlace,
+  regVerbosity,
   )
 import Distribution.Simple.UserHooks (
   UserHooks (
@@ -118,6 +122,7 @@ import Distribution.Simple.UserHooks (
     cleanHook,
     copyHook,
     instHook,
+    regHook,
     postConf,
     preBuild,
     preCopy,
@@ -207,6 +212,11 @@ cppUserHooks project =
                  flagToMaybe $ installDistPref flags
       cppInstall verbosity pkgDesc localBuildInfo dest
 
+  , regHook = \pkgDesc localBuildInfo hooks flags -> do
+      regHook simpleUserHooks pkgDesc localBuildInfo hooks flags
+      let verbosity = fromFlagOrDefault normal $ regVerbosity flags
+      cppRegister verbosity pkgDesc localBuildInfo flags
+
   , cleanHook = \pkgDesc z hooks flags -> do
       cleanHook simpleUserHooks pkgDesc z hooks flags
       let verbosity = fromFlagOrDefault normal $ cleanVerbosity flags
@@ -266,6 +276,22 @@ cppInstall verbosity pkgDesc localBuildInfo dest = do
       libDir = libdir $ absoluteInstallDirs pkgDesc localBuildInfo dest
   createDirectoryIfMissing True libDir
   runDbProgram verbosity makeProgram programDb ["install", "libdir=" ++ libDir]
+
+cppRegister :: Verbosity -> PackageDescription -> LocalBuildInfo -> RegisterFlags -> IO ()
+cppRegister verbosity _pkgDesc localBuildInfo flags = do
+  hasMakefile <- doesFileExist "Makefile"
+  unless hasMakefile $
+#if MIN_VERSION_Cabal(2,0,0)
+    die' verbosity
+#else
+    die
+#endif
+    "No Makefile found."
+  when (fromFlagOrDefault False (regInPlace flags)) $ do
+    let programDb = withPrograms localBuildInfo
+        libDir = buildDir localBuildInfo
+    createDirectoryIfMissing True libDir
+    runDbProgram verbosity makeProgram programDb ["install", "libdir=" ++ libDir]
 
 cppClean :: ProjectConfig -> Verbosity -> IO ()
 cppClean project verbosity = do
