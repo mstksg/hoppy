@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+## *-0.5.0 (2018-06-05)
+
+Big thanks to Masahiro Sakai for his contributions to this release, which
+include all of the following.
+
+- Fixed exception handlers declared on functions incorrectly being sorted, when
+  the order should be taken as is, because it affects the order in which 'catch'
+  blocks appear in generated C++ code (issue #27).
+
+- Fixed Haskell exception upcasting code, which caused build errors for
+  generated code (MR !3).
+
+- Fixed building of the example program on macOS (MR !4).
+
+- Fixed NUL character handling in the conversions between Haskell's `String` and
+  C++'s `std::string`, each of which can hold NUL characters (MR !10).
+
+- Added bindings for `std::unordered_map` and `std::unordered_set` (MR !9).
+
+- Changes to support 'cabal new-build' and 'new-repl' (MRs !7, !8).
+
 ## *-0.4.0 (2018-01-27)
 
 - Fixed a const-safety bug with methods.  The C++ generator was always using
