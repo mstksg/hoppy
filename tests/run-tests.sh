@@ -50,7 +50,7 @@ announce() {
 
 run() {
     echo "> $*"
-    "$@" |& sed 's/^/    /'
+    "$@" |& sed -u 's/^/    /'
 }
 
 if [[ -n $doBuild ]]; then
