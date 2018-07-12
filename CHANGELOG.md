@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Added the ForeignFunctionInterface extension explicitly to generated bindings,
+  because of a report at https://gitlab.com/khumba/qtah/issues/30 that it isn't
+  always enabled by default.
+
 ## *-0.5.0 (2018-06-05)
 
 Big thanks to Masahiro Sakai for his contributions to this release, which

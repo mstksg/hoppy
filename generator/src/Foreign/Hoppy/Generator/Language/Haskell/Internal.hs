@@ -155,12 +155,22 @@ prependExtensionsPrefix =
   -- GeneralizedNewtypeDeriving is to enable automatic deriving of
   -- Data.Bits.Bits instances for bitspace newtypes.
   concat
-  [ "{-# LANGUAGE CPP, FlexibleContexts, FlexibleInstances, GeneralizedNewtypeDeriving"
-  , ", MultiParamTypeClasses, ScopedTypeVariables, TypeSynonymInstances, UndecidableInstances #-}\n"
+  [ concat $ "{-# LANGUAGE " : intersperse ", " extensions ++ [" #-}\n"]
   , "#if !MIN_VERSION_base(4,8,0)\n"
   , "{-# LANGUAGE OverlappingInstances #-}\n"
   , "#endif\n\n"
   ]
+  where extensions =
+          [ "CPP"
+          , "FlexibleContexts"
+          , "FlexibleInstances"
+          , "ForeignFunctionInterface"
+          , "GeneralizedNewtypeDeriving"
+          , "MultiParamTypeClasses"
+          , "ScopedTypeVariables"
+          , "TypeSynonymInstances"
+          , "UndecidableInstances"
+          ]
 
 generateSource :: Module -> Generator ()
 generateSource m = do
