@@ -2295,7 +2295,7 @@ data ExceptionHandlers = ExceptionHandlers
   }
 
 instance Sem.Semigroup ExceptionHandlers where
-  (<>) e1 e2 = 
+  (<>) e1 e2 =
     ExceptionHandlers $ exceptionHandlersList e1 ++ exceptionHandlersList e2
 
 instance Monoid ExceptionHandlers where

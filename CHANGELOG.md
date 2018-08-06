@@ -6,6 +6,10 @@
   because of a report at https://gitlab.com/khumba/qtah/issues/30 that it isn't
   always enabled by default.
 
+- Added compatibility with GHC 8.4 with respect to the Semigroup Monoid Proposal
+  (https://prime.haskell.org/wiki/Libraries/Proposals/SemigroupMonoid), thanks
+  @locallycompact.
+
 ## *-0.5.0 (2018-06-05)
 
 Big thanks to Masahiro Sakai for his contributions to this release, which
