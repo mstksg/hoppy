@@ -218,6 +218,7 @@ import Data.Maybe (catMaybes, fromMaybe, isJust, isNothing, mapMaybe)
 #if !MIN_VERSION_base(4,8,0)
 import Data.Monoid (Monoid, mappend, mconcat, mempty)
 #endif
+import Data.Semigroup as Sem
 import qualified Data.Set as S
 import Foreign.Hoppy.Generator.Common
 import {-# SOURCE #-} qualified Foreign.Hoppy.Generator.Language.Haskell as Haskell
@@ -581,10 +582,13 @@ data Reqs = Reqs
     -- ^ The includes specified by a 'Reqs'.
   } deriving (Show)
 
+instance Sem.Semigroup Reqs where
+  (<>) (Reqs incl) (Reqs incl') = Reqs $ mappend incl incl'
+
 instance Monoid Reqs where
   mempty = Reqs mempty
 
-  mappend (Reqs incl) (Reqs incl') = Reqs $ mappend incl incl'
+  mappend = (<>)
 
   mconcat reqs = Reqs $ mconcat $ map reqsIncludes reqs
 
@@ -636,7 +640,7 @@ addReqIncludes includes =
 newtype ExtName = ExtName
   { fromExtName :: String
     -- ^ Returns the string an an 'ExtName' contains.
-  } deriving (Eq, Monoid, Ord)
+  } deriving (Eq, Sem.Semigroup, Monoid, Ord)
 
 instance Show ExtName where
   show extName = concat ["$\"", fromExtName extName, "\"$"]
@@ -2290,11 +2294,14 @@ data ExceptionHandlers = ExceptionHandlers
     -- ^ Extracts the list of exception handlers.
   }
 
+instance Sem.Semigroup ExceptionHandlers where
+  (<>) e1 e2 = 
+    ExceptionHandlers $ exceptionHandlersList e1 ++ exceptionHandlersList e2
+
 instance Monoid ExceptionHandlers where
   mempty = ExceptionHandlers []
 
-  mappend e1 e2 =
-    ExceptionHandlers $ exceptionHandlersList e1 ++ exceptionHandlersList e2
+  mappend = (<>)
 
 -- | Types that can handle exceptions.
 class HandlesExceptions a where
@@ -2318,9 +2325,12 @@ data Addendum = Addendum
     -- exports.
   }
 
+instance Sem.Semigroup Addendum where
+  (<>) (Addendum a) (Addendum b) = Addendum $ a >> b
+
 instance Monoid Addendum where
   mempty = Addendum $ return ()
-  mappend (Addendum a) (Addendum b) = Addendum $ a >> b
+  mappend = (<>)
 
 -- | A typeclass for types that have an addendum.
 class HasAddendum a where
@@ -2357,11 +2367,14 @@ newtype HsImportSet = HsImportSet
     -- bindings.
   } deriving (Show)
 
+instance Sem.Semigroup HsImportSet where
+  (<>) (HsImportSet m) (HsImportSet m') =
+    HsImportSet $ M.unionWith mergeImportSpecs m m'
+
 instance Monoid HsImportSet where
   mempty = HsImportSet M.empty
 
-  mappend (HsImportSet m) (HsImportSet m') =
-    HsImportSet $ M.unionWith mergeImportSpecs m m'
+  mappend = (<>)
 
   mconcat sets =
     HsImportSet $ M.unionsWith mergeImportSpecs $ map getHsImportSet sets

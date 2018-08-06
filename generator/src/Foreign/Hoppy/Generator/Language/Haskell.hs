@@ -130,6 +130,7 @@ import Data.Maybe (fromMaybe, isJust)
 #if !MIN_VERSION_base(4,8,0)
 import Data.Monoid (Monoid, mappend, mconcat, mempty)
 #endif
+import Data.Semigroup as Sem
 import qualified Data.Set as S
 import Data.Tuple (swap)
 import Foreign.Hoppy.Generator.Common
@@ -339,11 +340,14 @@ data Output = Output
     -- whole module.
   }
 
+instance Sem.Semigroup Output where
+  (Output e i b x) <> (Output e' i' b' x') =
+    Output (e <> e') (i <> i') (b <> b') (x <> x')
+
 instance Monoid Output where
   mempty = Output mempty mempty mempty mempty
 
-  (Output e i b x) `mappend` (Output e' i' b' x') =
-    Output (e `mappend` e') (i `mappend` i') (b `mappend` b') (x `mappend` x')
+  mappend = (<>)
 
   mconcat os =
     Output (mconcat $ map outputExports os)
