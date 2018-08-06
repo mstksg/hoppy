@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## hoppy-generator-0.5.1 (2018-08-06)
+
 - Added the ForeignFunctionInterface extension explicitly to generated bindings,
   because of a report at https://gitlab.com/khumba/qtah/issues/30 that it isn't
   always enabled by default.
