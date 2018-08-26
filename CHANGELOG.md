@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## hoppy-runtime-0.5.1 (2018-08-25)
+
+- Bump to support Cabal 2.2.
+
 ## hoppy-generator-0.5.1 (2018-08-06)
 
 - Added the ForeignFunctionInterface extension explicitly to generated bindings,
