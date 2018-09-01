@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## hoppy-generator-0.5.2 (2018-09-01)
+
 - Generated bindings now require GHC 7.10 or newer (released Apr 2015), and no
   longer use the CPP extension (issue #35).
 
