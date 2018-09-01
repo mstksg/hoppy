@@ -3,7 +3,10 @@
 ## Unreleased
 
 - Generated bindings now require GHC 7.10 or newer (released Apr 2015), and no
-  longer use the CPP extension.
+  longer use the CPP extension (issue #35).
+
+- Generated bindings now have the MonoLocalBinds extension enabled to address
+  the -Wsimplifiable-class-constraints warning in GHC 8.2+ (issue #36).
 
 ## hoppy-runtime-0.5.1 (2018-08-25)
 

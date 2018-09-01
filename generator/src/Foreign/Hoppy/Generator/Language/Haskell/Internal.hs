@@ -157,6 +157,7 @@ prependExtensionsPrefix =
           , "FlexibleInstances"
           , "ForeignFunctionInterface"
           , "GeneralizedNewtypeDeriving"
+          , "MonoLocalBinds"
           , "MultiParamTypeClasses"
           , "ScopedTypeVariables"
           , "TypeSynonymInstances"
