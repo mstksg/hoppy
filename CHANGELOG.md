@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Generated bindings now require GHC 7.10 or newer (released Apr 2015), and no
+  longer use the CPP extension.
+
 ## hoppy-runtime-0.5.1 (2018-08-25)
 
 - Bump to support Cabal 2.2.

@@ -147,22 +147,13 @@ prependExtensionsPrefix =
   -- to and from String, which is really [Char].
   --
   -- UndecidableInstances is needed for instances of the form "SomeClassConstPtr
-  -- a => SomeClassValue a", and overlapping instances are used for the overlap
-  -- between these instances and instances of SomeClassValue for the class's
-  -- native Haskell type, when it's convertible.  CPP is used for warning-free
-  -- compatibility using overlapping instances with both GHC 7.8 and 7.10.
+  -- a => SomeClassValue a" (overlapping instances are used here too).
   --
   -- GeneralizedNewtypeDeriving is to enable automatic deriving of
   -- Data.Bits.Bits instances for bitspace newtypes.
-  concat
-  [ concat $ "{-# LANGUAGE " : intersperse ", " extensions ++ [" #-}\n"]
-  , "#if !MIN_VERSION_base(4,8,0)\n"
-  , "{-# LANGUAGE OverlappingInstances #-}\n"
-  , "#endif\n\n"
-  ]
+  concat $ "{-# LANGUAGE " : intersperse ", " extensions ++ [" #-}\n"]
   where extensions =
-          [ "CPP"
-          , "FlexibleContexts"
+          [ "FlexibleContexts"
           , "FlexibleInstances"
           , "ForeignFunctionInterface"
           , "GeneralizedNewtypeDeriving"
@@ -936,13 +927,8 @@ sayExportClassHsClass doDecls cls cst = withErrorContext "generating Haskell typ
 
     -- Generate instances for all pointer subtypes.
     ln
-    saysLn ["#if MIN_VERSION_base(4,8,0)"]
     saysLn ["instance {-# OVERLAPPABLE #-} ", hsPtrClassName, " a => ", hsValueClassName, " a",
             if doDecls then " where" else ""]
-    saysLn ["#else"]
-    saysLn ["instance ", hsPtrClassName, " a => ", hsValueClassName, " a",
-            if doDecls then " where" else ""]
-    saysLn ["#endif"]
     when doDecls $ do
       addImports $ mconcat [hsImports "Prelude" ["($)", "(.)"],
                             hsImportForPrelude]
@@ -956,13 +942,8 @@ sayExportClassHsClass doDecls cls cst = withErrorContext "generating Haskell typ
       (Just hsTypeGen, Just _) -> do
         hsType <- hsTypeGen
         ln
-        saysLn ["#if MIN_VERSION_base(4,8,0)"]
         saysLn ["instance {-# OVERLAPPING #-} ", hsValueClassName, " (", prettyPrint hsType, ")",
                 if doDecls then " where" else ""]
-        saysLn ["#else"]
-        saysLn ["instance ", hsValueClassName, " (", prettyPrint hsType, ")",
-                if doDecls then " where" else ""]
-        saysLn ["#endif"]
         when doDecls $ do
           addImports hsImportForRuntime
           indent $ saysLn [hsWithValuePtrName, " = HoppyFHR.withCppObj"]
