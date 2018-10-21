@@ -35,7 +35,7 @@ import Foreign.Hoppy.Generator.Types
 import Foreign.Hoppy.Generator.Version (CppVersion (Cpp2011), activeCppVersion, collect, just, test)
 
 -- | Options for instantiating @pair@.
-data Options = Options
+newtype Options = Options
   { optPairClassFeatures :: [ClassFeature]
     -- ^ Additional features to add to the @std::pair@ class.  Pairs are always
     -- 'Assignable' and 'Copyable'.
@@ -46,7 +46,7 @@ defaultOptions :: Options
 defaultOptions = Options []
 
 -- | A set of instantiated pair classes.
-data Contents = Contents
+newtype Contents = Contents
   { c_pair :: Class  -- ^ @std::pair\<A, B>@
   }
 

@@ -27,6 +27,8 @@ test-suite tests-basic
   other-modules:
       Foreign.Hoppy.Test.Basic
     , Foreign.Hoppy.Test.Basic.HsBox
+  default-extensions:
+      LambdaCase
   default-language: Haskell2010
   ghc-options: -W -fwarn-incomplete-patterns -fwarn-unused-do-bind
   build-depends:

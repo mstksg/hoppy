@@ -26,6 +26,7 @@ library
     , FlexibleInstances
     , FunctionalDependencies
     , GeneralizedNewtypeDeriving
+    , LambdaCase
     , MultiParamTypeClasses
     , ScopedTypeVariables
   build-depends:

@@ -19,7 +19,7 @@ module Main (main) where
 import Foreign.Hoppy.Setup (ProjectConfig (..), cppMain)
 
 main =
-  cppMain $
+  cppMain
   ProjectConfig
   { generatorExecutableName = "hoppy-example-generator"
   , cppPackageName = "hoppy-example-cpp"

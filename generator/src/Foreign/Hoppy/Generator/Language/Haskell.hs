@@ -118,7 +118,7 @@ import Control.Monad.Except (Except, catchError, runExcept, throwError)
 #else
 import Control.Monad.Error (catchError, throwError)
 #endif
-import Control.Monad.Reader (ReaderT, ask, runReaderT)
+import Control.Monad.Reader (ReaderT, asks, runReaderT)
 import Control.Monad.Writer (WriterT, censor, runWriterT, tell)
 import Data.Char (toUpper)
 import Data.Foldable (forM_)
@@ -289,15 +289,15 @@ data Env = Env
 
 -- | Returns the currently generating interface.
 askInterface :: Generator Interface
-askInterface = envInterface <$> ask
+askInterface = asks envInterface
 
 -- | Returns the currently generating module.
 askModule :: Generator Module
-askModule = envModule <$> ask
+askModule = asks envModule
 
 -- | Returns the currently generating module's Haskell module name.
 askModuleName :: Generator String
-askModuleName = envModuleName <$> ask
+askModuleName = asks envModuleName
 
 -- | Looks up the 'Module' containing a given external name, throwing an error
 -- if it can't be found.
@@ -921,9 +921,7 @@ cppTypeToHsTypeAndUse side t =
       HsHsSide -> toHsEnumTypeName e
     Internal_TBitspace b -> case side of
       HsCSide -> cppTypeToHsTypeAndUse side $ bitspaceType b
-      HsHsSide -> do
-        typeName <- toHsBitspaceTypeName b
-        return $ HsTyCon $ UnQual $ HsIdent typeName
+      HsHsSide -> HsTyCon . UnQual . HsIdent <$> toHsBitspaceTypeName b
     Internal_TPtr (Internal_TObj cls) -> do
       -- Same as TPtr (TConst (TObj cls)), but nonconst.
       typeName <- toHsTypeName Nonconst $ classExtName cls
@@ -997,7 +995,7 @@ callbackToTFn side cb = do
 
   where mayThrow = case callbackThrows cb of
           Just t -> return t
-          Nothing -> moduleCallbacksThrow <$> askModule >>= \mt -> case mt of
+          Nothing -> moduleCallbacksThrow <$> askModule >>= \case
             Just t -> return t
             Nothing -> interfaceCallbacksThrow <$> askInterface
 

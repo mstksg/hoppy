@@ -17,5 +17,5 @@
 
 module Foreign.Hoppy.Test.Basic.HsBox where
 
-data HsBox = HsBox { getHsBox :: Int }
-           deriving (Eq, Show)
+newtype HsBox = HsBox { getHsBox :: Int }
+              deriving (Eq, Show)

@@ -45,7 +45,6 @@ module Foreign.Hoppy.Generator.Language.Cpp (
   sayType,
   ) where
 
-import Control.Monad (liftM)
 import Control.Monad.Writer (MonadWriter, Writer, WriterT, runWriter, runWriterT, tell)
 import Data.Foldable (forM_)
 import Data.List (intercalate, intersperse)
@@ -163,15 +162,15 @@ execChunkWriter = snd . runChunkWriter
 -- | Runs a 'Chunk' writer transformer, combining them with 'combineChunks' to
 -- form a single string.
 runChunkWriterT :: Monad m => WriterT [Chunk] m a -> m (a, String)
-runChunkWriterT = liftM (fmap combineChunks) . runWriterT
+runChunkWriterT = fmap (fmap combineChunks) . runWriterT
 
 -- | Runs a 'Chunk' writer transformer and returns the monad's value.
 evalChunkWriterT :: Monad m => WriterT [Chunk] m a -> m a
-evalChunkWriterT = liftM fst . runChunkWriterT
+evalChunkWriterT = fmap fst . runChunkWriterT
 
 -- | Runs a 'Chunk' writer transformer and returns the written log.
 execChunkWriterT :: Monad m => WriterT [Chunk] m a -> m String
-execChunkWriterT = liftM snd . runChunkWriterT
+execChunkWriterT = fmap snd . runChunkWriterT
 
 -- | Flattens a list of chunks down into a single string.  Inserts spaces
 -- between chunks where the ends of adjacent chunks would otherwise merge into a

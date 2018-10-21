@@ -107,19 +107,19 @@ instantiate' listName t tReqs opts =
         , just $ mkConstMethod' "front" "frontConst" [] $ refT $ constT t
         , just $ mkMethod "insert" [objT iterator, t] $ toGcT $ objT iterator
         , just $ mkConstMethod' "max_size" "maxSize" [] sizeT
-        , test (elem Comparable features) $ mkMethod "merge" [refT $ objT list] voidT
+        , test (Comparable `elem` features) $ mkMethod "merge" [refT $ objT list] voidT
           -- TODO merge(list&, Comparator)
         , just $ mkMethod' "pop_back" "popBack" [] voidT
         , just $ mkMethod' "pop_front" "popFront" [] voidT
         , just $ mkMethod' "push_back" "pushBack" [t] voidT
         , just $ mkMethod' "push_front" "pushFront" [t] voidT
-        , test (elem Equatable features) $ mkMethod "remove" [t] voidT
+        , test (Equatable `elem` features) $ mkMethod "remove" [t] voidT
           -- TODO remove_if(UnaryPredicate)
         , just $ mkMethod' "resize" "resize" [sizeT] voidT
         , just $ mkMethod' "resize" "resizeWith" [sizeT, t] voidT
         , just $ mkMethod "reverse" [] voidT
         , just $ mkConstMethod "size" [] sizeT
-        , test (elem Comparable features) $ mkMethod "sort" [] voidT
+        , test (Comparable `elem` features) $ mkMethod "sort" [] voidT
           -- TODO sort(Comparator)
         , just $ mkMethod' "splice" "spliceAll" [objT iterator, refT $ objT list] voidT
         , just $ mkMethod' "splice" "spliceOne"

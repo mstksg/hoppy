@@ -463,7 +463,7 @@ internalHandleCallbackExceptions excIdPtr excPtrPtr doCall = do
   -- Indicate no exception unless we catch something.
   poke excIdPtr 0
 
-  catch doCall $ \caughtEx -> case caughtEx of
+  catch doCall $ \case
     SomeCppException classInfo caughtFPtr caughtPtr -> do
       let ExceptionId excId = exceptionClassId classInfo
       poke excIdPtr excId

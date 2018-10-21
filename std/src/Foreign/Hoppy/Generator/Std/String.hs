@@ -72,5 +72,4 @@ c_string =
       addExport "stdString_newFromCStringLen"
       sayLn "stdString_newFromCStringLen :: HoppyFC.CStringLen -> HoppyP.IO StdString"
       sayLn "stdString_newFromCStringLen (p,n) ="
-      indent $ do
-        sayLn "stdString_newFromCStringLen_raw p (HoppyP.fromIntegral n)"
+      indent $ sayLn "stdString_newFromCStringLen_raw p (HoppyP.fromIntegral n)"

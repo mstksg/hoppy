@@ -474,7 +474,7 @@ f_makeBoxToGc =
 cb_takesBoxToGcCallback :: Callback
 cb_takesBoxToGcCallback =
   addReqIncludes [includeLocal "intbox.hpp"] $
-  makeCallback (toExtName "TakesBoxToGcCallback") [toGcT $ objT c_IntBox] $ intT
+  makeCallback (toExtName "TakesBoxToGcCallback") [toGcT $ objT c_IntBox] intT
 
 f_callBoxToGcCallback :: Function
 f_callBoxToGcCallback =

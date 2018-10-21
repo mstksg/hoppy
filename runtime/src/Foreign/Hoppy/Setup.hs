@@ -438,7 +438,7 @@ removeGeneratedFiles language project verbosity = do
         Cpp -> ("--list-cpp-files", cppSourcesDir)
         Haskell -> ("--list-hs-files", hsSourcesDir)
   generatorProgram <- findSystemProgram verbosity $ generatorExecutableName project
-  generatedFiles <- fmap lines $ getProgramOutput verbosity generatorProgram [listArg]
+  generatedFiles <- lines <$> getProgramOutput verbosity generatorProgram [listArg]
   forM_ generatedFiles $ \file -> do
     let path = sourcesDir project </> file
     exists <- doesFileExist path

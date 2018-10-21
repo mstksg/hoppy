@@ -127,7 +127,7 @@ defaultMain interfaceResult = defaultMain' [interfaceResult]
 -- | This is a version of 'defaultMain' that accepts multiple interfaces.
 defaultMain' :: [Either String Interface] -> IO ()
 defaultMain' interfaceResults = do
-  interfaces <- forM interfaceResults $ \interfaceResult -> case interfaceResult of
+  interfaces <- forM interfaceResults $ \case
     Left errorMsg -> do
       hPutStrLn stderr $ "Error initializing interface: " ++ errorMsg
       exitFailure

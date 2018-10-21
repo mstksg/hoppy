@@ -23,7 +23,7 @@ module Main (main) where
 import Control.Applicative ((<$>), (<*>))
 #endif
 import Control.Exception (evaluate)
-import Control.Monad ((<=<), forM_, unless, when)
+import Control.Monad ((<=<), forM_, unless, void, when)
 import Data.Bits ((.&.), (.|.), xor)
 import Data.IORef (newIORef, readIORef, writeIORef)
 import Foreign.C (
@@ -637,7 +637,7 @@ exceptionTests =
        , "throwing and catching all in Haskell" ~: do
          okVar <- newIORef False
          e@(ReadException p) <- readException_new
-         catchCpp (throwCpp e) $ \e' -> case e' of
+         catchCpp (throwCpp e) $ \case
            -- The exception should have been assigned to the garbage collector,
            -- and the underlying object should be the same.
            ReadExceptionGc _ p' -> do
@@ -694,7 +694,7 @@ exceptionTests =
   where expectException :: CppException e => IO a -> e -> IO ()
         expectException action excType = do
           threwRef <- newIORef False
-          catchCpp (action >> return ()) $ \e ->
+          catchCpp (void action) $ \e ->
             asTypeOf e excType `seq` writeIORef threwRef True
           threw <- readIORef threwRef
           unless threw $ assertFailure "Expected to catch an exception."
@@ -703,7 +703,7 @@ exceptionTests =
         expectExceptionButNot action expectedExcType unexpectedExcType = do
           caughtExpectedRef <- newIORef False
           caughtUnexpectedRef <- newIORef False
-          catchCpp (catchCpp (action >> return ()) $
+          catchCpp (catchCpp (void action) $
                     \e -> asTypeOf e unexpectedExcType `seq` writeIORef caughtUnexpectedRef True) $
             \e -> asTypeOf e expectedExcType `seq` writeIORef caughtExpectedRef True
 

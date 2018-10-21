@@ -27,8 +27,8 @@ module Foreign.Hoppy.Generator.Language.Cpp.Internal (
 #if !MIN_VERSION_base(4,8,0)
 import Control.Applicative ((<$>))
 #endif
-import Control.Monad (liftM, unless, when)
-import Control.Monad.Reader (MonadReader, ReaderT, ask, runReaderT)
+import Control.Monad (unless, when)
+import Control.Monad.Reader (MonadReader, ReaderT, asks, runReaderT)
 import Control.Monad.Writer (WriterT, execWriterT, runWriterT, tell)
 import Control.Monad.Trans (lift)
 import Data.Foldable (forM_)
@@ -68,10 +68,10 @@ addReqsM :: Reqs -> Generator ()
 addReqsM = lift . lift . tell . reqsIncludes
 
 askInterface :: MonadReader Env m => m Interface
-askInterface = liftM envInterface ask
+askInterface = asks envInterface
 
 askModule :: MonadReader Env m => m Module
-askModule = liftM envModule ask
+askModule = asks envModule
 
 -- | Halts generation and returns the given error message.
 abort :: ErrorMsg -> Generator a
@@ -115,7 +115,7 @@ sayFunction name paramNames t maybeBody = do
       say "}\n"
 
 -- | The in-memory result of generating C++ code for an interface.
-data Generation = Generation
+newtype Generation = Generation
   { generatedFiles :: M.Map FilePath String
     -- ^ A map from paths of generated files to the contents of those files.
     -- The file paths are relative paths below the C++ generation root.
@@ -502,8 +502,7 @@ sayArgRead dir (n, stripConst . normalizeType -> cppType, maybeCType) = case cpp
     let check label t' = (label ++ " " ++ show t') <$ typeToCType t'
         mismatches = catMaybes $
                      check "return type" retType :
-                     map (\paramType -> check "parameter" paramType)
-                         paramTypes
+                     map (check "parameter") paramTypes
     unless (null mismatches) $
       abort $ concat $
       "sayArgRead: Some types within a function pointer type use non-C types, " :
@@ -679,7 +678,8 @@ sayExportCallback sayBody cb = do
             -- | Generates code to check whether an exception was thrown by the
             -- callback, and rethrows it in C++ if so.
             sayExceptionCheck :: Generator ()
-            sayExceptionCheck = when throws $ do
+            sayExceptionCheck =
+              when throws $
               says ["if (", exceptionIdArgName, " != 0) { ",
                     exceptionRethrowFnName, "(", exceptionIdArgName, ", ",
                     exceptionPtrArgName, "); }\n"]
@@ -886,7 +886,7 @@ callbackToTFn cb = do
 
   where mayThrow = case callbackThrows cb of
           Just t -> return t
-          Nothing -> moduleCallbacksThrow <$> askModule >>= \mt -> case mt of
+          Nothing -> moduleCallbacksThrow <$> askModule >>= \case
             Just t -> return t
             Nothing -> interfaceCallbacksThrow <$> askInterface
 

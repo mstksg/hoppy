@@ -268,7 +268,7 @@ instance Show Interface where
   show iface = concat ["<Interface ", show (interfaceName iface), ">"]
 
 -- | Optional parameters when constructing an 'Interface' with 'interface'.
-data InterfaceOptions = InterfaceOptions
+newtype InterfaceOptions = InterfaceOptions
   { interfaceOptionsExceptionHandlers :: ExceptionHandlers
   }
 
@@ -306,7 +306,7 @@ interface' ifName modules options = do
       extNamesInMultipleModules :: [(ExtName, [Module])]
       extNamesInMultipleModules =
         M.toList $
-        M.filter (\modules -> case modules of
+        M.filter (\case
                      _:_:_ -> True
                      _ -> False)
         extNamesToModules
@@ -386,7 +386,7 @@ interfaceAllExceptionClasses' :: [Module] -> [Class]
 interfaceAllExceptionClasses' modules =
   flip concatMap modules $ \mod ->
   catMaybes $
-  for (M.elems $ moduleExports mod) $ \export -> case export of
+  for (M.elems $ moduleExports mod) $ \case
     ExportClass cls | classIsException cls -> Just cls
     _ -> Nothing
 
@@ -431,7 +431,7 @@ interfaceSetSharedPtr identifier reqs iface =
   iface { interfaceSharedPtr = (reqs, identifier) }
 
 -- | An @#include@ directive in a C++ file.
-data Include = Include
+newtype Include = Include
   { includeToString :: String
     -- ^ Returns the complete @#include ...@ line for an include, including
     -- trailing newline.
@@ -577,7 +577,7 @@ moduleSetCallbacksThrow b = modify $ \m -> m { moduleCallbacksThrow = b }
 -- | A set of requirements of needed to use an identifier in C++ (function,
 -- type, etc.), via a set of 'Include's.  The monoid instance has 'mempty' as an
 -- empty set of includes, and 'mappend' unions two include sets.
-data Reqs = Reqs
+newtype Reqs = Reqs
   { reqsIncludes :: S.Set Include
     -- ^ The includes specified by a 'Reqs'.
   } deriving (Show)
@@ -934,7 +934,7 @@ ident a = Identifier [IdPart a Nothing]
 
 -- | Creates an identifier of the form @a1::a2::...::aN@.
 ident' :: [String] -> Identifier
-ident' = Identifier . map (\x -> IdPart x Nothing)
+ident' = Identifier . map (\x -> IdPart { idPartBase = x, idPartArgs = Nothing })
 
 -- | Creates an identifier of the form @a::b@.
 ident1 :: String -> String -> Identifier
@@ -1551,9 +1551,10 @@ classSetSubclassOfMonomorphic cls = cls { classIsSubclassOfMonomorphic = True }
 -- | Marks a class as being used as an exception.  This makes the class
 -- throwable and catchable.
 classMakeException :: Class -> Class
-classMakeException cls = case classIsException cls of
-  False -> cls { classIsException = True }
-  True -> cls
+classMakeException cls =
+  if classIsException cls
+  then cls
+  else cls { classIsException = True }
 
 -- | Separately from passing object handles between C++ and foreign languages,
 -- objects can also be made to implicitly convert to native values in foreign
@@ -1572,7 +1573,7 @@ classMakeException cls = case classIsException cls of
 --
 -- The subfields in this object specify how to do conversions between C++ and
 -- foreign languages.
-data ClassConversion = ClassConversion
+newtype ClassConversion = ClassConversion
   { classHaskellConversion :: ClassHaskellConversion
     -- ^ Conversions to and from Haskell.
 
@@ -2289,7 +2290,7 @@ data ExceptionHandler =
 -- | Represents a list of exception handlers to be used for a body of code.
 -- Order is important; a 'CatchAll' will prevent all subsequent handlers from
 -- being invoked.
-data ExceptionHandlers = ExceptionHandlers
+newtype ExceptionHandlers = ExceptionHandlers
   { exceptionHandlersList :: [ExceptionHandler]
     -- ^ Extracts the list of exception handlers.
   }
@@ -2319,7 +2320,7 @@ handleExceptions classes =
 -- | A literal piece of code that will be inserted into a generated source file
 -- after the regular binding glue.  The 'Monoid' instance concatenates code
 -- (actions).
-data Addendum = Addendum
+newtype Addendum = Addendum
   { addendumHaskell :: Haskell.Generator ()
     -- ^ Code to be output into the Haskell binding.  May also add imports and
     -- exports.

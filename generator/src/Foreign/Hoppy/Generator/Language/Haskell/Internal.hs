@@ -66,7 +66,7 @@ import Language.Haskell.Syntax (
 import System.FilePath ((<.>), pathSeparator)
 
 -- | The in-memory result of generating Haskell code for an interface.
-data Generation = Generation
+newtype Generation = Generation
   { generatedFiles :: M.Map FilePath String
     -- ^ A map from paths of generated files to the contents of those files.
     -- The file paths are relative paths below the Haskell generation root.
@@ -94,7 +94,7 @@ generate iface = do
       sccs :: [SCC (Module, Partial)]
       sccs = stronglyConnComp sccInput
 
-  fileContents <- execWriterT $ forM_ sccs $ \scc -> case scc of
+  fileContents <- execWriterT $ forM_ sccs $ \case
     AcyclicSCC (_, p) -> tell [finishPartial p "hs"]
     CyclicSCC mps -> do
       let cycleModNames = S.fromList $ map (partialModuleHsName . snd) mps
@@ -303,11 +303,8 @@ sayExportEnum mode enum =
       addExport hsTypeName
       ln
       saysLn ["data ", hsTypeName]
-      saysLn ["instance HoppyP.Bounded ", hsTypeName]
-      saysLn ["instance HoppyP.Enum ", hsTypeName]
-      saysLn ["instance HoppyP.Eq ", hsTypeName]
-      saysLn ["instance HoppyP.Ord ", hsTypeName]
-      saysLn ["instance HoppyP.Show ", hsTypeName]
+      forM_ ["Bounded", "Enum", "Eq", "Ord", "Show"] $ \cls ->
+        saysLn ["instance HoppyP.", cls, " ", hsTypeName]
 
 sayExportBitspace :: SayExportMode -> Bitspace -> Generator ()
 sayExportBitspace mode bitspace =
@@ -603,7 +600,7 @@ sayArgProcessing :: CallDirection -> Type -> String -> String -> Generator ()
 sayArgProcessing dir t fromVar toVar =
   withErrorContext ("processing argument of type " ++ show t) $
   case t of
-    Internal_TVoid -> throwError $ "TVoid is not a valid argument type"
+    Internal_TVoid -> throwError "TVoid is not a valid argument type"
     Internal_TBool -> case dir of
       ToCpp -> saysLn ["let ", toVar, " = if ", fromVar, " then 1 else 0 in"]
       FromCpp -> do addImports $ hsImport1 "Prelude" "(/=)"
@@ -779,17 +776,16 @@ sayCallAndProcessReturn dir t callWords =
       saysLn ["HoppyP.fmap ", convFn]
       sayCall
     -- The same as TPtr (TConst (TObj _)), but nonconst.
-    Internal_TPtr (Internal_TObj cls) -> do
-      case dir of
-        ToCpp -> do
-          addImports hsImportForPrelude
-          ctorName <- toHsDataCtorName Unmanaged Nonconst cls
-          saysLn ["HoppyP.fmap ", ctorName]
-          sayCall
-        FromCpp -> do
-          addImports $ mconcat [hsImportForPrelude, hsImportForRuntime]
-          sayLn "HoppyP.fmap HoppyFHR.toPtr"
-          sayCall
+    Internal_TPtr (Internal_TObj cls) -> case dir of
+      ToCpp -> do
+        addImports hsImportForPrelude
+        ctorName <- toHsDataCtorName Unmanaged Nonconst cls
+        saysLn ["HoppyP.fmap ", ctorName]
+        sayCall
+      FromCpp -> do
+        addImports $ mconcat [hsImportForPrelude, hsImportForRuntime]
+        sayLn "HoppyP.fmap HoppyFHR.toPtr"
+        sayCall
     -- The same as TPtr (TConst (TObj _)), but nonconst.
     Internal_TPtr (Internal_TConst (Internal_TObj cls)) -> case dir of
       ToCpp -> do
@@ -1260,7 +1256,7 @@ sayExportClassHsSpecialFns mode cls = do
   -- at the value, so generate a Decodable instance.  You are now a two-star
   -- programmer.  There is a generic @Ptr (Ptr a)@ to @Ptr a@ instance which
   -- handles deeper levels.
-  withErrorContext "generating pointer Decodable instance" $ do
+  withErrorContext "generating pointer Decodable instance" $
     case mode of
       SayExportForeignImports -> return ()
 
@@ -1493,9 +1489,10 @@ sayExportClassCastPrimitives mode cls = withErrorContext "generating cast primit
                          prettyPrint $ HsTyFun (HsTyVar $ HsIdent "a") $
                          HsTyCon $ UnQual $ HsIdent typeName]
         ln
-        forAncestors cls $ \super -> case classIsMonomorphicSuperclass super of
-          True -> return False
-          False -> do
+        forAncestors cls $ \super ->
+          if classIsMonomorphicSuperclass super
+          then return False
+          else do
             superTypeName <- toHsDataTypeName cst super
             primitiveCastFn <- toHsCastPrimitiveName cls super cls
             saysLn ["instance ", downCastClassName, " ", superTypeName, " where"]
@@ -1534,11 +1531,11 @@ sayExportClassCastPrimitives mode cls = withErrorContext "generating cast primit
                           clsCtorGcName , " fptr' $ ", primitiveCastFn, " ptr'"]
             return True
 
-    SayExportBoot -> do
+    SayExportBoot ->
       forAncestors cls $ \super -> do
         hsCastFnName <- toHsCastPrimitiveName cls cls super
         superType <- toHsDataTypeName Const super
-        addImports $ hsImportForForeign
+        addImports hsImportForForeign
         addExport hsCastFnName
         saysLn [hsCastFnName, " :: HoppyF.Ptr ", clsType, " -> HoppyF.Ptr ", superType]
         return True
@@ -1645,7 +1642,7 @@ fnToHsTypeAndUse side purity paramTypes returnType exceptionHandlers = do
             return (Just (UnQual $ HsIdent ptrClassName, [t']),
                     t')
           HsCSide -> do
-            addImports $ hsImportForForeign
+            addImports hsImportForForeign
             typeName <- toHsDataTypeName cst cls
             return (Nothing, HsTyApp (HsTyCon $ UnQual $ HsIdent "HoppyF.Ptr") $
                              HsTyVar $ HsIdent typeName)
