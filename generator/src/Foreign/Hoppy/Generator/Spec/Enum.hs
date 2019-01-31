@@ -44,6 +44,8 @@ module Foreign.Hoppy.Generator.Spec.Enum (
   enumReqs,
   enumAddendum,
   enumValuePrefix, enumSetValuePrefix,
+  enumAddEntryNameOverrides,
+  enumGetOverriddenEntryName,
   IsEnumUnknownValueEntry (..),
   enumUnknownValueEntry, enumSetUnknownValueEntry, enumUnknownValueEntryDefaultPrefix,
   enumHasBitOperations, enumSetHasBitOperations,
@@ -56,7 +58,7 @@ module Foreign.Hoppy.Generator.Spec.Enum (
   toHsEnumCtorName, toHsEnumCtorName',
   ) where
 
-import Control.Arrow ((&&&))
+import Control.Arrow ((&&&), (***))
 import Control.Monad (forM, forM_, when)
 import Control.Monad.Except (throwError)
 import Data.Function (on)
@@ -65,6 +67,7 @@ import Foreign.Hoppy.Generator.Common (butLast, capitalize, for)
 import Foreign.Hoppy.Generator.Spec.Base
 import qualified Foreign.Hoppy.Generator.Language.Cpp as LC
 import qualified Foreign.Hoppy.Generator.Language.Haskell as LH
+import Foreign.Hoppy.Generator.Override (addOverrideMap, overriddenMapLookup, plainMap)
 import Foreign.Hoppy.Generator.Types (manualT)
 import Foreign.Hoppy.Generator.Util (splitIntoWords)
 import GHC.Stack (HasCallStack)
@@ -104,7 +107,7 @@ data CppEnum = CppEnum
     -- of the enum, plus an underscore.
     --
     -- See 'enumSetValuePrefix'.
-  , enumUnknownValueEntry :: Maybe [String]
+  , enumUnknownValueEntry :: Maybe EnumEntryWords
     -- ^ A name (a list of words, a la the fields in 'EnumValueMap') for an
     -- optional fallback enum "entry" in generated bindings for holding unknown
     -- values.  This defaults to
@@ -173,7 +176,7 @@ enumSetNumericType maybeType enum = enum { enumNumericType = maybeType }
 
 -- | The default value for 'enumUnknownValueEntry' that is prefixed to enums'
 -- external names.
-enumUnknownValueEntryDefaultPrefix :: [String]
+enumUnknownValueEntryDefaultPrefix :: EnumEntryWords
 enumUnknownValueEntryDefaultPrefix = ["Unknown"]
 
 -- | Creates a binding for a C++ enum.
@@ -186,7 +189,7 @@ makeEnum ::
   -> Maybe ExtName
   -- ^ An optional external name; will be automatically derived from
   -- the identifier if absent.
-  -> [(Integer, [String])]
+  -> [(Integer, EnumEntryWords)]
   -- ^ A list of (numeric value, symbolic name) pairs describing enum entries to
   -- generate bindings for.  Each symbolic name is a list of words, which will
   -- be combined into a single identifier of appropriate naming style for the
@@ -199,8 +202,10 @@ makeEnum identifier maybeExtName entries =
      identifier
      Nothing
      (let entries' = for entries $ \(num, words) -> (words, EnumValueManual num)
+          entryNames = map fst entries'
       in EnumValueMap
-         { enumValueMapNames = map fst entries'
+         { enumValueMapNames = entryNames
+         , enumValueMapForeignNames = plainMap $ M.fromList $ map (id &&& id) entryNames
          , enumValueMapValues = M.fromList entries'
          })
      mempty
@@ -241,8 +246,10 @@ makeAutoEnum identifier maybeExtName scoped entries =
             map (fmap (\name -> namespaceForValues `mappend` ident name) .
                  toAutoEnumValue)
             entries
+          entryNames = map fst entries'
        in EnumValueMap
-          { enumValueMapNames = map fst entries'
+          { enumValueMapNames = entryNames
+          , enumValueMapForeignNames = plainMap $ M.fromList $ map (id &&& id) entryNames
           , enumValueMapValues = M.map EnumValueAuto $ M.fromList entries'
           })
      mempty
@@ -253,7 +260,7 @@ makeAutoEnum identifier maybeExtName scoped entries =
 
 -- | Represents a mapping to an automatically evaluated C++ enum entry.
 --
--- The @([String], String)@ instance is the canonical one, with
+-- The @('EnumEntryWords', String)@ instance is the canonical one, with
 -- 'toAutoEnumValue' defined as @id@.  The string on the right is the C++ name
 -- of the entry, and the list of strings on the left are the words from which to
 -- generate foreign binding's entries.
@@ -261,13 +268,32 @@ makeAutoEnum identifier maybeExtName scoped entries =
 -- The @String@ instance takes the C++ name of the entry, and splits it into
 -- words via 'splitIntoWords'.
 class IsAutoEnumValue a where
-  toAutoEnumValue :: a -> ([String], String)
+  toAutoEnumValue :: a -> (EnumEntryWords, String)
 
-instance IsAutoEnumValue ([String], String) where
+instance IsAutoEnumValue (EnumEntryWords, String) where
   toAutoEnumValue = id
 
 instance IsAutoEnumValue String where
   toAutoEnumValue = splitIntoWords &&& id
+
+-- | Adds overrides for some of an enum's entry names, in a specific language.
+enumAddEntryNameOverrides :: IsAutoEnumValue v => ForeignLanguage -> [(v, v)] -> CppEnum -> CppEnum
+enumAddEntryNameOverrides lang nameOverrides enum = enum { enumValues = enumValues' }
+  where enumValues' =
+          (enumValues enum)
+          { enumValueMapForeignNames =
+            addOverrideMap lang overrideMap $ enumValueMapForeignNames $ enumValues enum }
+        overrideMap = M.fromList $ map (toEntryName *** toEntryName) nameOverrides
+        toEntryName = fst . toAutoEnumValue
+
+-- | Retrieves the name for an enum entry in a specific foreign language.
+enumGetOverriddenEntryName :: ForeignLanguage -> CppEnum -> EnumEntryWords -> EnumEntryWords
+enumGetOverriddenEntryName lang enum words =
+  case overriddenMapLookup lang words $ enumValueMapForeignNames $ enumValues enum of
+    Just words' -> words'
+    Nothing ->
+      error $ "enumGetOverriddenEntryName: Entry with name " ++ show words ++
+      " not found in " ++ show enum ++ "."
 
 -- | Sets the prefix applied to the names of enum values' identifiers in foreign
 -- languages.
@@ -285,9 +311,9 @@ enumSetUnknownValueEntry name enum =
   enum { enumUnknownValueEntry = fmap toEnumUnknownValueEntry name }
 
 class IsEnumUnknownValueEntry a where
-  toEnumUnknownValueEntry :: a -> [String]
+  toEnumUnknownValueEntry :: a -> EnumEntryWords
 
-instance IsEnumUnknownValueEntry [String] where
+instance IsEnumUnknownValueEntry EnumEntryWords where
   toEnumUnknownValueEntry = id
 
 instance IsEnumUnknownValueEntry String where
@@ -345,7 +371,8 @@ sayHsExport mode enum =
           Just value -> return (name, value)
           Nothing -> throwError $ "Couldn't find evaluated value for " ++ show name
       values :: [(Integer, String)] <- forM evaluatedValues $ \(entryName, value) -> do
-        ctorName <- toHsEnumCtorName enum entryName
+        let entryName' = enumGetOverriddenEntryName Haskell enum entryName
+        ctorName <- toHsEnumCtorName enum entryName'
         return (value, ctorName)
       maybeUnknownValueCtorName <- forM (enumUnknownValueEntry enum) $ toHsEnumCtorName enum
       LH.addImports $ mconcat [hsImport1 "Prelude" "(==)",
@@ -421,7 +448,11 @@ sayHsExport mode enum =
           fun1 "complement"
           fun1Int "shift"
           fun1Int "rotate"
-          LH.sayLn "bitSize = HoppyDB.bitSize . HoppyFHR.fromCppEnum"
+          LH.sayLn "bitSize x = case HoppyDB.bitSizeMaybe x of"
+          LH.indent $ do
+            LH.sayLn "  HoppyP.Just n -> n"
+            -- Same error message as the prelude here:
+            LH.sayLn "  HoppyP.Nothing -> HoppyP.error \"bitSize is undefined\""
           LH.sayLn "bitSizeMaybe = HoppyDB.bitSizeMaybe . HoppyFHR.fromCppEnum"
           LH.sayLn "isSigned = HoppyDB.isSigned . HoppyFHR.fromCppEnum"
           LH.sayLn "testBit x i = HoppyDB.testBit (HoppyFHR.fromCppEnum x) i"
@@ -470,12 +501,12 @@ toHsEnumTypeName' = LH.toHsTypeName' Nonconst . enumExtName
 -- unlike say Java, Haskell enum values aren't in a separate enum-specific
 -- namespace, so we prepend the enum name to the value name to get the data
 -- constructor name.  The value name is a list of words; see 'enumValueNames'.
-toHsEnumCtorName :: CppEnum -> [String] -> LH.Generator String
+toHsEnumCtorName :: CppEnum -> EnumEntryWords -> LH.Generator String
 toHsEnumCtorName enum words =
   LH.inFunction "toHsEnumCtorName" $
   LH.addExtNameModule (enumExtName enum) $ toHsEnumCtorName' enum words
 
 -- | Pure version of 'toHsEnumCtorName' that doesn't create a qualified name.
-toHsEnumCtorName' :: CppEnum -> [String] -> String
+toHsEnumCtorName' :: CppEnum -> EnumEntryWords -> String
 toHsEnumCtorName' enum words =
   concat $ enumValuePrefix enum : map capitalize words

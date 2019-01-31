@@ -18,9 +18,9 @@
 {-# LANGUAGE CPP, GeneralizedNewtypeDeriving #-}
 
 module Foreign.Hoppy.Generator.Spec.Base (
+  ErrorMsg,
   -- * Interfaces
   Interface,
-  ErrorMsg,
   InterfaceOptions (..),
   defaultInterfaceOptions,
   interface,
@@ -152,8 +152,13 @@ module Foreign.Hoppy.Generator.Spec.Base (
   addAddendumHaskell,
   -- * Enum support
   EnumInfo (..),
+  EnumEntryWords,
   EnumValueMap (..),
   EnumValue (..),
+  -- * Languages
+  ForeignLanguage (..),
+  WithForeignLanguageOverrides,
+  MapWithForeignLanguageOverrides,
   -- * Haskell imports
   HsModuleName, HsImportSet, HsImportKey (..), HsImportSpecs (..), HsImportName, HsImportVal (..),
   hsWholeModuleImport, hsQualifiedImport, hsImport1, hsImport1', hsImports, hsImports',
@@ -212,6 +217,7 @@ import Foreign.Hoppy.Generator.Compiler (Compiler, SomeCompiler (SomeCompiler), 
 import {-# SOURCE #-} Foreign.Hoppy.Generator.Hook (Hooks, defaultHooks)
 import {-# SOURCE #-} qualified Foreign.Hoppy.Generator.Language.Cpp as LC
 import {-# SOURCE #-} qualified Foreign.Hoppy.Generator.Language.Haskell as LH
+import Foreign.Hoppy.Generator.Override (MapWithOverrides, WithOverrides)
 import {-# SOURCE #-} Foreign.Hoppy.Generator.Spec.Class (Class, classExtName)
 import GHC.Stack (HasCallStack)
 import Language.Haskell.Syntax (HsName, HsQualType, HsType)
@@ -1592,17 +1598,26 @@ data EnumInfo = EnumInfo
     -- ^ The entries in the enum.
   }
 
+-- | A list of words that comprise the name of an enum entry.  Each string in
+-- this list is treated as a distinct word for the purpose of performing case
+-- conversion to create identifiers in foreign languages.  These values are most
+-- easily created from a C++ identifier using
+-- 'Foreign.Hoppy.Generator.Util.splitIntoWords'.
+type EnumEntryWords = [String]
+
 -- | Describes the entries in a C++ enum.
 --
 -- Equality is defined as having the same 'enumValueMapValues'.
 data EnumValueMap = EnumValueMap
-  { enumValueMapNames :: [[String]]
+  { enumValueMapNames :: [EnumEntryWords]
     -- ^ The names of all entries in the enum being generated, in the order
     -- specified by the enum definition.  These are the strings used to name
     -- generated bindings.  Each name is broken up into words.  How the words
     -- and get combined to make a name in a particular foreign language depends
     -- on the language.
-  , enumValueMapValues :: M.Map [String] EnumValue
+  , enumValueMapForeignNames :: MapWithForeignLanguageOverrides EnumEntryWords EnumEntryWords
+    -- ^ Per-language renames of enum value entries.
+  , enumValueMapValues :: M.Map EnumEntryWords EnumValue
     -- ^ A map specifying for each entry in 'enumValueMapNames', how to
     -- determine the entry's numeric value.
   }
@@ -1622,6 +1637,17 @@ data EnumValue =
     -- ^ A numeric enum value that will be determined when the generator is run,
     -- by means of compiling a C++ program.
   deriving (Eq, Show)
+
+-- | Languages that Hoppy supports binding to.  Currently this is only Haskell.
+data ForeignLanguage =
+  Haskell  -- ^ The Haskell language.
+  deriving (Eq, Ord, Show)
+
+-- | A value that may be overridden based on a 'ForeignLanguage'.
+type WithForeignLanguageOverrides = WithOverrides ForeignLanguage
+
+-- | A map whose values may be overridden based on a 'ForeignLanguage'.
+type MapWithForeignLanguageOverrides = MapWithOverrides ForeignLanguage
 
 -- | A collection of imports for a Haskell module.  This is a monoid: import
 -- Statements are merged to give the union of imported bindings.
