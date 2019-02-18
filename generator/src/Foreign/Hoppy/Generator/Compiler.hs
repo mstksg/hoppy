@@ -17,28 +17,31 @@
 
 -- | Data types for compilers and functions for invoking them.
 module Foreign.Hoppy.Generator.Compiler (
+  -- * Typeclass
   Compiler (..),
   SomeCompiler (..),
+  -- * Data types
   SimpleCompiler (..),
   prependArguments,
   appendArguments,
+  overrideCompilerFromEnvironment,
   CustomCompiler (..),
   -- * Standard compilers
-  gccCompiler,
+  defaultCompiler,
   gppCompiler,
   ) where
 
 import Control.Exception (IOException, try)
 import Data.Either (partitionEithers)
+import Data.Maybe (fromMaybe)
 import qualified Data.Map as M
-import Foreign.Hoppy.Generator.Common (strInterpolate)
+import Data.Text (pack, splitOn, unpack)
+import Foreign.Hoppy.Generator.Common (filterMaybe, strInterpolate)
+import System.Environment (lookupEnv)
 import System.Exit (ExitCode (ExitFailure, ExitSuccess))
 import System.IO (hPutStrLn, stderr)
+import System.IO.Unsafe (unsafePerformIO)
 import System.Process (createProcess_, proc, showCommandForUser, waitForProcess)
-
--- TODO The default compiler should use environment variables (CFLAGS, CC (is
--- there a different standard var for C++?)).  Rename gppCompiler to ccCompiler
--- or something.
 
 -- | A compiler that exists on the system for compiling C++ code.
 class Show a => Compiler a where
@@ -65,10 +68,11 @@ instance Compiler SomeCompiler where
 -- files, respectively.
 data SimpleCompiler = SimpleCompiler
   { scProgram :: FilePath
-    -- ^ The name of the compiler program to call.
+    -- ^ The name of the compiler program to call.  Lookup is subject to the
+    -- regular search path rules of your operating system.
   , scArguments :: [String]
     -- ^ Arguments to pass to the compiler.  Each string is passed as a separate
-    -- argument.
+    -- argument.  No further word splitting is done.
   }
 
 instance Show SimpleCompiler where
@@ -93,12 +97,28 @@ appendArguments :: [String] -> SimpleCompiler -> SimpleCompiler
 appendArguments args compiler =
   compiler { scArguments = scArguments compiler ++ args }
 
+-- | Modifies a 'SimpleCompiler' based on environment variables.
+--
+-- If @CXX@ is set and non-empty, it will override the compiler's 'scProgram'.
+--
+-- If @CXXFLAGS@ is set and non-empty, it will be split into words and each word
+-- will be prepended as an argument to 'scArguments'.  Quoting is not supported.
+overrideCompilerFromEnvironment :: SimpleCompiler -> IO SimpleCompiler
+overrideCompilerFromEnvironment compiler = do
+  envProgram <- filterMaybe "" <$> lookupEnv "CXX"
+  envArguments <- filter (/= "") . splitOnSpace . fromMaybe "" <$> lookupEnv "CXXFLAGS"
+  return compiler
+    { scProgram = fromMaybe (scProgram compiler) envProgram
+    , scArguments = envArguments ++ scArguments compiler
+    }
+  where splitOnSpace = map unpack . splitOn (pack " ") . pack
+
 -- | A 'Compiler' that allows plugging arbitary logic into the compilation
 -- process.
 data CustomCompiler = CustomCompiler
   { ccLabel :: String
     -- ^ A label to display when the compiler is 'show'n.  The string is
-    -- @"<CustomCompiler " ++ label ++ ">"@.
+    -- @\"\<CustomCompiler \" ++ label ++ \">\"@.
   , ccCompile :: FilePath -> FilePath -> IO Bool
     -- ^ Given a source file path and an output path, compiles the source file,
     -- producing a binary at the output path.  Returns true on success.  Logs to
@@ -111,14 +131,16 @@ instance Show CustomCompiler where
 instance Compiler CustomCompiler where
   compileProgram = ccCompile
 
--- | The GNU C compiler, invoked as @gcc -o {out} {in}@.
-gccCompiler =
-  SimpleCompiler
-  { scProgram = "gcc"
-  , scArguments = ["-o", "{out}", "{in}"]
-  }
+-- | The default compiler, used by an 'Foreign.Hoppy.Generator.Spec.Interface'
+-- that doesn't specify its own.  This is:
+--
+-- @'unsafePerformIO' $ 'overrideCompilerFromEnvironment' 'gppCompiler'@
+defaultCompiler :: SimpleCompiler
+{-# NOINLINE defaultCompiler #-}
+defaultCompiler = unsafePerformIO $ overrideCompilerFromEnvironment gppCompiler
 
 -- | The GNU C++ compiler, invoked as @g++ -o {out} {in}@.
+gppCompiler :: SimpleCompiler
 gppCompiler =
   SimpleCompiler
   { scProgram = "g++"

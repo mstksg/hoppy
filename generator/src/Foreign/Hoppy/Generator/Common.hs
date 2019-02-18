@@ -21,6 +21,7 @@
 --
 -- Unlike "Foreign.Hoppy.Generator.Util", these are private to the package.
 module Foreign.Hoppy.Generator.Common (
+  filterMaybe,
   fromMaybeM,
   fromEitherM,
   maybeFail,
@@ -52,6 +53,12 @@ import qualified Data.Map as M
 import Data.Map (Map)
 import System.Directory (doesFileExist)
 import System.IO (IOMode (ReadMode), hGetContents, withFile)
+
+-- | @filterMaybe bad@ converts a @Just bad@ into a @Nothing@, returning all
+-- other @Maybe@ values as is.
+filterMaybe :: Eq a => a -> Maybe a -> Maybe a
+filterMaybe bad (Just value) | value == bad = Nothing
+filterMaybe _ mayb = mayb
 
 -- | @fromMaybeM m x = maybe m return x@
 fromMaybeM :: Monad m => m a -> Maybe a -> m a

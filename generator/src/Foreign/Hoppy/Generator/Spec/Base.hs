@@ -207,7 +207,7 @@ import Data.Semigroup as Sem
 import qualified Data.Set as S
 import Data.Typeable (Typeable, cast)
 import Foreign.Hoppy.Generator.Common
-import Foreign.Hoppy.Generator.Compiler (Compiler, SomeCompiler (SomeCompiler), gppCompiler)
+import Foreign.Hoppy.Generator.Compiler (Compiler, SomeCompiler (SomeCompiler), defaultCompiler)
 import {-# SOURCE #-} Foreign.Hoppy.Generator.Hook (Hooks, defaultHooks)
 import {-# SOURCE #-} qualified Foreign.Hoppy.Generator.Language.Cpp as LC
 import {-# SOURCE #-} qualified Foreign.Hoppy.Generator.Language.Haskell as LH
@@ -255,7 +255,7 @@ data Interface = Interface
     -- be changed if necessary via 'interfaceSetSharedPtr'.
   , interfaceCompiler :: Maybe SomeCompiler
     -- ^ The compiler to use when building code for the interface.  This can be
-    -- overridden or disabled.  This defaults to 'gppCompiler'.
+    -- overridden or disabled.  This defaults to 'defaultCompiler'.
   , interfaceHooks :: Hooks
     -- ^ Hooks allowing the interface to execute code at various points during
     -- the code generator's execution.  This defaults to 'defaultHooks'.
@@ -351,7 +351,7 @@ interface' ifName modules options = do
     , interfaceExceptionNamesToIds = exceptionNamesToIds
     , interfaceExceptionSupportModule = Nothing
     , interfaceSharedPtr = (reqInclude $ includeStd "memory", "std::shared_ptr")
-    , interfaceCompiler = Just $ SomeCompiler gppCompiler
+    , interfaceCompiler = Just $ SomeCompiler defaultCompiler
     , interfaceHooks = defaultHooks
     , interfaceEvaluatedEnumData = Nothing
     , interfaceValidateEnumTypes = True
