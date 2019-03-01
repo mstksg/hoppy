@@ -455,7 +455,8 @@ sayLet bindings maybeBody = do
       sayLn "in"
       indent body
 
--- | TODO Docs.
+-- | Looks up the module that exports an external name.  Throws an error if the
+-- external name is not exported.
 getExtNameModule :: ExtName -> Generator Module
 getExtNameModule extName = inFunction "getExtNameModule" $ do
   iface <- askInterface

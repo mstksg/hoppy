@@ -157,6 +157,7 @@ makeConversion cb =
 
         implClass = callbackImplClassName cb
 
+-- | Constructs a type value for a callback.
 callbackT :: Callback -> Type
 callbackT = manualT . makeConversion
 
@@ -258,8 +259,21 @@ sayCppExport sayBody cb = do
       retCTypeMaybe <- LC.typeToCType retType
 
       LC.sayFunction (implClassName ++ "::operator()")
-                     (zipWith (\ctm -> if isJust ctm then LC.toArgNameAlt else LC.toArgName)
-                      paramCTypeMaybes [1..paramCount])
+                     (zipWith3 (\pt ctm ->
+                                  -- TManual needs special handling to determine whether a
+                                  -- conversion is necessary.  'typeToCType' doesn't suffice
+                                  -- because for TManual this check relies on the direction of
+                                  -- the call.  See the special case in 'sayCppArgRead' as
+                                  -- well.
+                                  let hasConversion = case pt of
+                                        Internal_TManual s ->
+                                          isJust $ conversionSpecCppConversionToCppExpr $
+                                          conversionSpecCpp s
+                                        _ -> isJust ctm
+                                  in if hasConversion then LC.toArgNameAlt else LC.toArgName)
+                               paramTypes
+                               paramCTypeMaybes
+                               [1..paramCount])
                      fnType $ Just $ do
         -- Convert arguments that aren't passed in directly.
         mapM_ (Function.sayCppArgRead Function.DoEncode) $

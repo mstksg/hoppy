@@ -72,6 +72,7 @@ module Foreign.Hoppy.Generator.Types (
 import {-# SOURCE #-} qualified Foreign.Hoppy.Generator.Language.Haskell as LH
 import {-# SOURCE #-} Foreign.Hoppy.Generator.Spec.Callback (callbackT)
 import {-# SOURCE #-} Foreign.Hoppy.Generator.Spec.Enum (enumT)
+import {-# SOURCE #-} Foreign.Hoppy.Generator.Spec.Function (fnT, fnT')
 import Foreign.Hoppy.Generator.Spec.Base
 import Language.Haskell.Syntax (
   HsName (HsIdent),
@@ -336,17 +337,6 @@ ptrT = Internal_TPtr
 
 -- | A reference to another type.
 refT = Internal_TRef
-
--- | A function taking parameters and returning a value (or 'voidT').  Function
--- pointers must wrap a 'fnT' in a 'ptrT'.
---
--- See also 'fnT'' which accepts parameter information.
-fnT :: [Type] -> Type -> Type
-fnT = Internal_TFn . map toParameter
-
--- | A version of 'fnT' that accepts additional information about parameters.
-fnT' :: [Parameter] -> Type -> Type
-fnT' = Internal_TFn
 
 -- | An instance of a class.  When used in a parameter or return type and not
 -- wrapped in a 'ptrT' or 'refT', this is a by-value object.

@@ -20,7 +20,7 @@
 -- | TODO Docs.
 module Foreign.Hoppy.Generator.Spec.Function (
   -- * Data type
-  Function,
+  Function, fnT, fnT',
   -- * Construction
   makeFn,
   -- * Properties
@@ -58,7 +58,7 @@ import qualified Foreign.Hoppy.Generator.Language.Cpp as LC
 import qualified Foreign.Hoppy.Generator.Language.Haskell as LH
 import {-# SOURCE #-} qualified Foreign.Hoppy.Generator.Spec.Class as Class
 import Foreign.Hoppy.Generator.Spec.Base
-import Foreign.Hoppy.Generator.Types (constT, fnT, intT, objT, objToHeapT, ptrT, refT, voidT)
+import Foreign.Hoppy.Generator.Types (constT, intT, objT, objToHeapT, ptrT, refT, voidT)
 import Language.Haskell.Syntax (
   HsContext,
   HsName (HsIdent),
@@ -133,6 +133,17 @@ makeFn cName maybeExtName purity paramTypes retType =
               (extNameOrFnIdentifier fnName maybeExtName)
               purity (toParameters paramTypes) retType mempty mempty mempty
 
+-- | A function taking parameters and returning a value (or 'voidT').  Function
+-- pointers must wrap a 'fnT' in a 'ptrT'.
+--
+-- See also 'fnT'' which accepts parameter information.
+fnT :: [Type] -> Type -> Type
+fnT = Internal_TFn . map toParameter
+
+-- | A version of 'fnT' that accepts additional information about parameters.
+fnT' :: [Parameter] -> Type -> Type
+fnT' = Internal_TFn
+
 sayCppExport :: Bool -> Function -> LC.Generator ()
 sayCppExport sayBody fn = when sayBody $ do
   LC.addReqsM $ fnReqs fn
@@ -180,8 +191,21 @@ sayCppExportFn extName callType maybeThisType params retType exceptionHandlers s
   LC.sayFunction (LC.externalNameToCpp extName)
                  (maybe id (const ("self":)) maybeThisType $
                   addExceptionParamNames $
-                  zipWith (\ctm -> if isJust ctm then LC.toArgNameAlt else LC.toArgName)
-                  paramCTypeMaybes [1..paramCount])
+                  zipWith3 (\pt ctm ->
+                              -- TManual needs special handling to determine whether a
+                              -- conversion is necessary.  'typeToCType' doesn't suffice
+                              -- because for TManual this check relies on the direction of
+                              -- the call.  See the special case in 'sayCppArgRead' as
+                              -- well.
+                              let hasConversion = case pt of
+                                    Internal_TManual s ->
+                                      isJust $ conversionSpecCppConversionToCppExpr $
+                                      conversionSpecCpp s
+                                    _ -> isJust ctm
+                              in if hasConversion then LC.toArgNameAlt else LC.toArgName)
+                           paramTypes
+                           paramCTypeMaybes
+                           [1..paramCount])
                  (fnT (addExceptionParamTypes $ maybe id (:) maybeThisType paramCTypes)
                       retCType) $
     if not sayBody
@@ -231,8 +255,26 @@ sayCppExportFn extName callType maybeThisType params retType exceptionHandlers s
           -- Writes the call, transforming the return value if necessary.
           -- These translations should be kept in sync with typeToCType.
           sayCallAndReturn retType' retCTypeMaybe' = case (retType', retCTypeMaybe') of
+            -- Void needs special handling because we don't want a return statement.
             (Internal_TVoid, Nothing) -> sayCall >> LC.say ";\n"
-            (_, Nothing) -> LC.say "return " >> sayCall >> LC.say ";\n"
+
+            -- Custom conversions.
+            (Internal_TManual s, _) -> do
+              -- The ConversionSpec s may or may not specify an intermediate
+              -- type to pass over the FFI boundary: the second value in the
+              -- pair (we check this before the (_, Nothing) case below).  We
+              -- don't actually care what it is though, because s already
+              -- specifies how to convert.
+              case conversionSpecCppConversionToCppExpr $ conversionSpecCpp s of
+                -- If there is a custom conversion expression defined, use it.
+                Just convFn -> LC.say "return " >> convFn sayCall Nothing >> LC.say ";\n"
+                -- Otherwise, assume we can just return the value directly.
+                Nothing -> sayCallAndReturnDirect
+
+            -- The case of a value for which no conversion is necessary.
+            (_, Nothing) -> sayCallAndReturnDirect
+
+            -- Object cases.
             (Internal_TRef cls, Just (Internal_TPtr cls')) | cls == cls' ->
               LC.say "return &(" >> sayCall >> LC.say ");\n"
             (Internal_TObj cls,
@@ -244,20 +286,11 @@ sayCppExportFn extName callType maybeThisType params retType exceptionHandlers s
              Just (Internal_TPtr (Internal_TObj cls'))) | cls == cls' ->
               sayReturnNew cls sayCall
             (Internal_TToGc retType'', _) -> sayCallAndReturn retType'' retCTypeMaybe'
-            (Internal_TManual s, _) -> do
-              -- The ConversionSpec s specifies an intermediate type to pass
-              -- over the FFI boundary: the second value in the pair.  We don't
-              -- actually care what it is though, because s already specifies
-              -- how to convert.
-              convFn <-
-                fromMaybeM
-                  (LC.abort $ "sayCppExportFn: Trying to return a " ++ show s ++ " into C++, " ++
-                   "but the ConversionSpec doesn't define a conversion from its intermediate " ++
-                   "type (using conversionSpecCppConversionToCppExpr).") $
-                conversionSpecCppConversionToCppExpr $ conversionSpecCpp s
-              LC.say "return " >> convFn sayCall Nothing >> LC.say ";\n"
+
             ts -> LC.abort $ concat ["sayCppExportFn: Unexpected return types ", show ts,
                                      " while generating binding for ", show extName, "."]
+
+          sayCallAndReturnDirect = LC.say "return " >> sayCall >> LC.say ";\n"
 
       sayCallAndReturn retType retCTypeMaybe
 
@@ -346,24 +379,15 @@ sayCppArgRead dir (n, stripConst . normalizeType -> cppType, maybeCType) = case 
       cType <- LC.typeToCType newCppType
       sayCppArgRead dir (n, newCppType, cType)
 
+  -- In case of a manual type, apply the custom conversion, if there is one.
   Internal_TManual s -> do
-    -- In addition to looking for a generator function for the specific
-    -- direction we're converting in, we also double-check that we have a
-    -- conversion (C) type, since sayCppExportFn performs checking on that
-    -- condition.
-    maybeCType <- conversionSpecCppConversionType $ conversionSpecCpp s
-    let maybeGenFn =
+    let maybeConvExpr =
           (case dir of
              DoDecode -> conversionSpecCppConversionToCppExpr
              DoEncode -> conversionSpecCppConversionFromCppExpr) $
           conversionSpecCpp s
-    case (maybeCType, maybeGenFn) of
-      (Nothing, _) -> return ()
-      (Just _, Just genFn) -> genFn (LC.say $ LC.toArgNameAlt n) (Just $ LC.say $ LC.toArgName n)
-      (Just _, Nothing) ->
-        error $ noManualConversionErrorMsg (Just "sayCppArgRead") s $ case dir of
-          DoDecode -> True
-          DoEncode -> False
+    forM_ maybeConvExpr $ \gen ->
+      gen (LC.say $ LC.toArgNameAlt n) (Just $ LC.say $ LC.toArgName n)
 
   _ -> convertDefault
 

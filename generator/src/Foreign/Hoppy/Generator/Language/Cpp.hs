@@ -316,6 +316,9 @@ sayFunction name paramNames t maybeBody = do
 
 -- | Returns a 'Type' iff there is a C type distinct from the given C++ type
 -- that should be used for conversion.
+--
+-- This returns @Nothing@ for 'Internal_TManual'.  TManual needs special
+-- handling.
 typeToCType :: Type -> Generator (Maybe Type)
 typeToCType t = case t of
   Internal_TRef t' -> return $ Just $ ptrT t'

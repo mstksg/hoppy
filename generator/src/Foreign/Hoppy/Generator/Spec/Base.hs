@@ -122,6 +122,7 @@ module Foreign.Hoppy.Generator.Spec.Base (
   ConversionSpec (conversionSpecName, conversionSpecCpp, conversionSpecHaskell),
   makeConversionSpec,
   ConversionSpecCpp (
+    ConversionSpecCpp,
     conversionSpecCppName,
     conversionSpecCppReqs,
     conversionSpecCppConversionType,
@@ -130,6 +131,7 @@ module Foreign.Hoppy.Generator.Spec.Base (
   ),
   makeConversionSpecCpp,
   ConversionSpecHaskell (
+    ConversionSpecHaskell,
     conversionSpecHaskellHsType,
     conversionSpecHaskellHsArgType,
     conversionSpecHaskellCType,
@@ -181,7 +183,6 @@ module Foreign.Hoppy.Generator.Spec.Base (
   objToHeapTWrongDirectionErrorMsg,
   tToGcInvalidFormErrorMessage,
   toGcTWrongDirectionErrorMsg,
-  noManualConversionErrorMsg,
   ) where
 
 #if !MIN_VERSION_base(4,8,0)
@@ -1231,13 +1232,12 @@ data ConversionMethod c =
 -- | The root data type for specifying how conversions happen between C++ and foreign
 -- values.
 --
--- The @Cpp@ component of this data structure specifies a C++ type, and a
--- conversion between it and something that can be marshalled over a C FFI
--- layer, if such a conversion is necessary (as it is for say object types that
--- have to be passed by pointer, but not for say primitive numeric types).
+-- The @Cpp@ component of this data structure specifies a C++ type, and
+-- conversions between it and something that can be marshalled over a C FFI
+-- layer, if such a conversion is possible in each direction.
 --
--- Each foreign language has its own component that must be specified for types
--- using this specification to be usable in that language.
+-- Each foreign language has its own component that must be specified in order
+-- for types using this specification to be usable in that language.
 data ConversionSpec = ConversionSpec
   { conversionSpecName :: String
   , conversionSpecCpp :: ConversionSpecCpp
@@ -1260,6 +1260,17 @@ makeConversionSpec name cppSpec =
   , conversionSpecHaskell = Nothing
   }
 
+-- | For a 'ConversionSpec', defines the C++ type and conversions to and from a
+-- C FFI layer.
+--
+-- Prefer 'makeConversionSpecCpp' to using this data constructor directly.
+--
+-- 'conversionSpecCppName' specifies the C++ type of the conversion.  This will
+-- be the type that is passed over the C FFI as well, unless
+-- 'conversionSpecCppConversionType' overrides it.
+-- 'conversionSpecCppConversionToCppExpr' and
+-- 'conversionSpecCppConversionFromCppExpr' may define custom code generation
+-- for passing values over the FFI.
 data ConversionSpecCpp = ConversionSpecCpp
   { conversionSpecCppName :: String
     -- ^ The name of the C++ type.  May identify a primitive C++ type such as
@@ -1272,39 +1283,62 @@ data ConversionSpecCpp = ConversionSpecCpp
     -- to the generator directly.
 
   , conversionSpecCppConversionType :: LC.Generator (Maybe Type)
-    -- ^ If absent (default), then the type named by 'conversionSpecCppName' is
-    -- also used for marshalling to foreign languages.  The other
-    -- @conversionSpecCppConversion*@ properties are ignored.
+    -- ^ Specifies the type that will be passed over the C FFI.
+    --
+    -- If absent (default), then the type named by 'conversionSpecCppName' is
+    -- also used for marshalling to foreign languages.
     --
     -- If present, this represents a type distinct from 'conversionSpecCppName'
-    -- that will be exchanged across the FFI boundary.  Marshalling on the C++
-    -- side should be configured with the other @conversionSpecCppConversion*@
-    -- properties.
-    --
-    -- At least one of 'conversionSpecCppConversionFromExpr' and
-    -- 'conversionSpecCppConversionToExpr' should be specified.
+    -- that will be exchanged across the FFI boundary.  In this case, you may
+    -- also want to define one or both of 'conversionSpecCppConversionToCppExpr'
+    -- and 'conversionSpecCppConversionFromCppExpr'.
     --
     -- This is a monadic value so that it has access to the generator's
-    -- environment.  The action should not add imports or exports or emit code.
+    -- environment.  The action should not add imports or emit code.
 
   , conversionSpecCppConversionToCppExpr ::
       Maybe (LC.Generator () -> Maybe (LC.Generator ()) -> LC.Generator ())
-  , conversionSpecCppConversionFromCppExpr ::
-      Maybe (LC.Generator () -> Maybe (LC.Generator ()) -> LC.Generator ())
-    -- ^ TODO Docs.  \fromVar maybeToVar -> ...
+    -- ^ This controls behaviour for receiving a value passed into C++ over the
+    -- FFI.  Specifically, this powers the @ConversionSpec@ being used as
+    -- 'Foreign.Hoppy.Generator.Spec.Function.Function' arguments and
+    -- 'Foreign.Hoppy.Generator.Spec.Callback.Callback' return values.
     --
-    -- If the second argument is present, then this should emit a variable
-    -- declaration for that name, created from the expression emitted by the
-    -- first argument.
+    -- When absent (default), generated code assumes that it can implicitly
+    -- convert a value passed over the FFI from the C FFI type (see
+    -- 'conversionSpecCppConversionType') to the C++ type
+    -- (i.e. 'conversionSpecCppName').  When the former is absent, this is
+    -- always fine.
     --
-    -- If the second argument is absent, then this should emit an expression
-    -- that converts the expression emitted by the first argument into the
-    -- appropriate type.
+    -- When present, this provides custom conversion behaviour for receiving a
+    -- value passed into C++ over the FFI.  The function should generate C++
+    -- code to convert a value from the type passed over the C FFI into the
+    -- actual C++ type.
+    --
+    -- This is a function of the form:
+    --
+    -- > \emitFromExpr maybeEmitToVar -> ...
+    --
+    -- If the function's second argument is present, then the function should
+    -- emit a variable declaration for that name, created from the expression
+    -- emitted by the first argument.
+    --
+    -- If the function's second argument is absent, then the function should
+    -- emit an expression that converts the expression emitted by the first
+    -- argument into the appropriate type.
     --
     -- In both cases, the first generator argument should only be evaluated once
-    -- by the resulting C++ expression.
+    -- by the resulting C++ expression; it is not guaranteed to be pure.
+
+  , conversionSpecCppConversionFromCppExpr ::
+      Maybe (LC.Generator () -> Maybe (LC.Generator ()) -> LC.Generator ())
+    -- ^ This is the opposite of 'conversionSpecCppConversionToCppExpr'.  This
+    -- being present enables custom conversion behaviour for passing a value
+    -- /out of/ C++ through the FFI.  This powers the @ConversionSpec@ being
+    -- used as 'Foreign.Hoppy.Generator.Spec.Function.Function' return values
+    -- and 'Foreign.Hoppy.Generator.Spec.Callback.Callback' arguments.
   }
 
+-- | Builds a 'ConversionSpecCpp' with a C++ type, with no conversions defined.
 makeConversionSpecCpp :: String -> LC.Generator Reqs -> ConversionSpecCpp
 makeConversionSpecCpp cppName cppReqs =
   ConversionSpecCpp
@@ -1317,6 +1351,8 @@ makeConversionSpecCpp cppName cppReqs =
 
 -- | Controls how conversions between C++ values and Haskell values happen in
 -- Haskell bindings.
+--
+-- Prefer 'makeConversionSpecHaskell' to using this data constructor directly.
 data ConversionSpecHaskell = ConversionSpecHaskell
   { conversionSpecHaskellHsType :: LH.Generator HsType
     -- ^ The type exposed to users of the Haskell side of a binding.  Functions
@@ -1383,6 +1419,7 @@ data ConversionSpecHaskell = ConversionSpecHaskell
     -- exports.
   }
 
+-- | Builds a 'ConversionSpecHaskell' with the mandatory parameters given.
 makeConversionSpecHaskell ::
   LH.Generator HsType  -- ^ 'conversionSpecHaskellHsType'
   -> Maybe (LH.Generator HsType)  -- ^ 'conversionSpecHaskellCType'
@@ -1729,13 +1766,4 @@ toGcTWrongDirectionErrorMsg :: Maybe String -> Type -> String
 toGcTWrongDirectionErrorMsg maybeCaller typeArg =
   concat [maybe "" (++ ": ") maybeCaller,
           "(", show (Internal_TToGc typeArg), ") cannot be passed into C++",
-          maybe "" (const ".") maybeCaller]
-
-noManualConversionErrorMsg :: Maybe String -> ConversionSpec -> Bool -> String
-noManualConversionErrorMsg maybeCaller spec callingIntoCpp =
-  concat [maybe "" (++ ": ") maybeCaller,
-          "No conversion defined for ", show spec,
-          if callingIntoCpp
-          then " to C++ from C type"
-          else " from C++ to C type",
           maybe "" (const ".") maybeCaller]

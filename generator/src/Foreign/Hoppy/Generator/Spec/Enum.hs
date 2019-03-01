@@ -320,6 +320,7 @@ makeConversion e =
                                         hsImportForRuntime]
                LH.sayLn "HoppyP.return . HoppyFHR.toCppEnum")
 
+-- | Constructs a type value for an enum.
 enumT :: CppEnum -> Type
 enumT = manualT . makeConversion
 
