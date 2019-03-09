@@ -1038,21 +1038,55 @@ ident5T a b c d e f ts =
   Identifier [IdPart a Nothing, IdPart b Nothing, IdPart c Nothing,
               IdPart d Nothing, IdPart e Nothing, IdPart f $ Just ts]
 
+-- | Instances of this typeclass are C++ entities that Hoppy can expose to
+-- foreign languages: functions, classes, global variables, etc.  'Interface's
+-- are largely composed of exports (grouped into modules).  Hoppy uses this
+-- interface to perform code generation for each entity.
 class (HasAddendum a, HasExtNames a, HasReqs a, Typeable a, Show a) => Exportable a where
+  -- | Wraps an exportable object in an existential data type.
+  --
+  -- The default instance is just @toExport = 'Export'@, which does not need to
+  -- be overridden in general.
   toExport :: a -> Export
   toExport = Export
 
+  -- | Attempts to cast an exportable object to a specific type, pulling off
+  -- 'Export' wrappers as necessary.
+  --
+  -- The default @castExport = 'cast'@ is fine.
   castExport :: (Typeable a, Exportable b, Typeable b) => a -> Maybe b
   castExport = cast
 
+  -- | Generates the C++ side of the binding for an entity.
+  --
   -- TODO Change this from a bool to SayHeader/SaySource or something:
   sayExportCpp :: Bool -> a -> LC.Generator ()
 
+  -- | Generates the Haskell side of the binding for an entity.
+  --
+  -- For an entity, Hoppy invokes this function once with
+  -- 'LH.SayExportForeignImports' when it is time to emit foreign imports, and
+  -- once with 'LH.SayExportDecls' when it is time to generate Haskell binding
+  -- code later in the module.  Hoppy may also call the function with
+  -- 'LH.SayExportBoot', if necessary.
+  --
+  -- See 'LH.SayExportMode'.
   sayExportHaskell :: LH.SayExportMode -> a -> LH.Generator ()
 
+  -- | If the export is backed by an C++ enum, then this returns known
+  -- structural information about the enum.  This provides information to the
+  -- \"evaluate enums\" hook so that Hoppy can determine enum values on its own.
+  --
+  -- By default, this returns @Nothing@.
+  --
+  -- See 'Hooks'.
   getExportEnumInfo :: a -> Maybe EnumInfo
   getExportEnumInfo _ = Nothing
 
+  -- | If the export is backed by a C++ class that is marked as supporting
+  -- exceptions, then this returns the class definition.
+  --
+  -- By default, this returns @Nothing@.
   getExportExceptionClass :: a -> Maybe Class
   getExportExceptionClass _ = Nothing
 
@@ -1536,13 +1570,26 @@ addAddendumHaskell :: HasAddendum a => LH.Generator () -> a -> a
 addAddendumHaskell gen = modifyAddendum $ \addendum ->
   addendum `mappend` mempty { addendumHaskell = gen }
 
--- | TODO Docs.
+-- | Structural information about a C++ enum.  This is used when Hoppy is
+-- evaluating enum data, see 'getExportEnumInfo'.
+--
+-- See 'Foreign.Hoppy.Generator.Spec.Enum.CppEnum'.
 data EnumInfo = EnumInfo
   { enumInfoExtName :: ExtName
+    -- ^ The external name of the enum.
   , enumInfoIdentifier :: Identifier
+    -- ^ The enum's identifier.
   , enumInfoNumericType :: Maybe Type
+    -- ^ The enum's numeric type, if explicitly known to the bindings.  This
+    -- does not need to be provided.  If absent, then Hoppy will calculate the
+    -- enum's numeric type on its own, using a C++ compiler.  If this is present
+    -- however, Hoppy will use it, and additionally validate it against what the
+    -- C++ compiler thinks, if validation is enabled (see
+    -- 'interfaceValidateEnumTypes').
   , enumInfoReqs :: Reqs
+    -- ^ Requirements for accessing the enum.
   , enumInfoValues :: EnumValueMap
+    -- ^ The entries in the enum.
   }
 
 -- | Describes the entries in a C++ enum.

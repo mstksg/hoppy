@@ -75,6 +75,8 @@ import Language.Haskell.Syntax (
   )
 
 -- | A C++ enum declaration.
+--
+-- See 'Foreign.Hoppy.Generator.Spec.EnumInfo'.
 data CppEnum = CppEnum
   { enumExtName :: ExtName
     -- ^ The enum's external name.
@@ -83,10 +85,12 @@ data CppEnum = CppEnum
   , enumNumericType :: Maybe Type
     -- ^ An optional, explicit numeric type provided for the enum's values, that
     -- matches what the C++ compiler uses.  Hoppy will use 'Hooks' to compute
-    -- this automatically, if not given manually.  If this is given and we are
-    -- ...
-    --
-    -- TODO Explain how this controls sizeof() evaluation and validation.
+    -- this automatically, if not given manually.  This does not need to be
+    -- provided.  If absent (default), then Hoppy will calculate the enum's
+    -- numeric type on its own, using a C++ compiler.  If this is present
+    -- however, Hoppy will use it, and additionally validate it against what the
+    -- C++ compiler thinks, if validation is enabled (see
+    -- 'interfaceValidateEnumTypes').
   , enumValues :: EnumValueMap
     -- ^ The numeric values and names of the enum entires.
   , enumReqs :: Reqs
