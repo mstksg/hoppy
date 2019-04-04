@@ -324,7 +324,9 @@ processArgs stateVar args =
             hPutStrLn stderr $
               "--dump-enums couldn't find module for enum " ++ show extName ++ "."
             exitFailure
-          let typeStr = Cpp.execChunkWriter (Cpp.sayType Nothing $ evaluatedEnumType evaluatedData)
+          let typeStr =
+                Cpp.chunkContents $ Cpp.execChunkWriter $
+                Cpp.sayType Nothing $ evaluatedEnumType evaluatedData
           putStrLn $ "enum name=" ++ fromExtName extName ++ " module=" ++ moduleName mod ++
             " type=" ++ typeStr
           forM_ (M.toList $ evaluatedEnumValueMap evaluatedData) $ \(words, number) ->

@@ -17,7 +17,6 @@
 
 module Foreign.Hoppy.Generator.Spec.Base (
   ErrorMsg,
-  Include,
   Reqs,
   ExtName,
   Identifier,
@@ -26,8 +25,6 @@ module Foreign.Hoppy.Generator.Spec.Base (
   ) where
 
 type ErrorMsg = String
-
-data Include
 
 data Reqs
 

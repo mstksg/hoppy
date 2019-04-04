@@ -36,6 +36,8 @@ module Foreign.Hoppy.Generator.Language.Cpp (
   exceptionRethrowFnName,
   -- * Token rendering
   Chunk (..),
+  codeChunk,
+  includesChunk,
   runChunkWriter,
   evalChunkWriter,
   execChunkWriter,
@@ -71,7 +73,7 @@ import {-# SOURCE #-} Foreign.Hoppy.Generator.Spec.Class (classIdentifier, class
 import Foreign.Hoppy.Generator.Types
 
 -- TODO Wow let's make this not a type synonym.
-type Generator = ReaderT Env (WriterT [Chunk] (WriterT (S.Set Include) (Either ErrorMsg)))
+type Generator = ReaderT Env (WriterT [Chunk] (Either ErrorMsg))
 
 data Env = Env
   { envInterface :: Interface
@@ -80,14 +82,10 @@ data Env = Env
 
 execGenerator :: Interface -> Module -> Maybe String -> Generator a -> Either ErrorMsg String
 execGenerator interface m maybeHeaderGuardName action = do
-  (contents, includes) <-
-    (runWriterT $
-     -- WriterT (S.Set Include) (Either String) String:
-     execChunkWriterT $
-     -- WriterT [Chunk] (WriterT (S.Set Include) (Either String)) a:
-     runReaderT action $ Env interface m)
-    :: Either String (String, S.Set Include)
-  return $ execChunkWriter $ do
+  chunk <- execChunkWriterT $ runReaderT action $ Env interface m
+  let contents = chunkContents chunk
+      includes = chunkIncludes chunk
+  return $ chunkContents $ execChunkWriter $ do
     say "////////// GENERATED FILE, EDITS WILL BE LOST //////////\n"
     forM_ maybeHeaderGuardName $ \x -> do
       says ["\n#ifndef ", x, "\n"]
@@ -101,15 +99,15 @@ execGenerator interface m maybeHeaderGuardName action = do
     forM_ maybeHeaderGuardName $ \x ->
       says ["\n#endif  // ifndef ", x, "\n"]
 
-addIncludes :: [Include] -> Generator ()
-addIncludes = lift . lift . tell . S.fromList
+addIncludes :: MonadWriter [Chunk] m => [Include] -> m ()
+addIncludes = tell . (:[]) . includesChunk . S.fromList
 
-addInclude :: Include -> Generator ()
+addInclude :: MonadWriter [Chunk] m => Include -> m ()
 addInclude = addIncludes . (:[])
 
 -- Have to call this addReqsM, addReqs is taken by HasReqs.
-addReqsM :: Reqs -> Generator ()
-addReqsM = lift . lift . tell . reqsIncludes
+addReqsM :: MonadWriter [Chunk] m => Reqs -> m ()
+addReqsM = tell . (:[]) . includesChunk . reqsIncludes
 
 askInterface :: MonadReader Env m => m Interface
 askInterface = fmap envInterface ask
@@ -119,7 +117,7 @@ askModule = fmap envModule ask
 
 -- | Halts generation and returns the given error message.
 abort :: ErrorMsg -> Generator a
-abort = lift . lift . lift . Left
+abort = lift . lift . Left
 
 cppNameSeparator :: String
 cppNameSeparator = "__"
@@ -173,15 +171,35 @@ isIdentifierChar = (`elem` identifierChars)
 identifierChars :: String
 identifierChars = ['A'..'Z'] ++ ['a'..'z'] ++ ['0'..'9'] ++ "_"
 
--- | A chunk is a string that contains an arbitrary portion of C++ code.  The
--- only requirement is that chunk boundaries are also C++ token boundaries,
--- because the generator monad automates the process of inserting whitespace
--- between chunk boundaries where necessary.
-newtype Chunk = Chunk { chunkContents :: String }
+-- | A chunk is a string that contains an arbitrary portion of C++ code,
+-- together with a set of includes.  The only requirement is that chunk's code
+-- boundaries are also C++ token boundaries, because the generator monad
+-- automates the process of inserting whitespace between chunk boundaries where
+-- necessary.
+data Chunk = Chunk
+  { chunkContents :: !String
+  , chunkIncludes :: !(S.Set Include)
+  }
+
+-- | Builds a 'Chunk' that contains the given code string.
+codeChunk :: String -> Chunk
+codeChunk code =
+  Chunk
+  { chunkContents = code
+  , chunkIncludes = S.empty
+  }
+
+-- | Builds a 'Chunk' that contains the given includes.
+includesChunk :: S.Set Include -> Chunk
+includesChunk includes =
+  Chunk
+  { chunkContents = ""
+  , chunkIncludes = includes
+  }
 
 -- | Runs a 'Chunk' writer, combining them with 'combineChunks' to form a single
 -- string.
-runChunkWriter :: Writer [Chunk] a -> (a, String)
+runChunkWriter :: Writer [Chunk] a -> (a, Chunk)
 runChunkWriter = fmap combineChunks . runWriter
 
 -- | Runs a 'Chunk' writer and returns the monad's value.
@@ -189,12 +207,12 @@ evalChunkWriter :: Writer [Chunk] a -> a
 evalChunkWriter = fst . runChunkWriter
 
 -- | Runs a 'Chunk' writer and returns the written log.
-execChunkWriter :: Writer [Chunk] a -> String
+execChunkWriter :: Writer [Chunk] a -> Chunk
 execChunkWriter = snd . runChunkWriter
 
 -- | Runs a 'Chunk' writer transformer, combining them with 'combineChunks' to
 -- form a single string.
-runChunkWriterT :: Monad m => WriterT [Chunk] m a -> m (a, String)
+runChunkWriterT :: Monad m => WriterT [Chunk] m a -> m (a, Chunk)
 runChunkWriterT = fmap (fmap combineChunks) . runWriterT
 
 -- | Runs a 'Chunk' writer transformer and returns the monad's value.
@@ -202,33 +220,38 @@ evalChunkWriterT :: Monad m => WriterT [Chunk] m a -> m a
 evalChunkWriterT = fmap fst . runChunkWriterT
 
 -- | Runs a 'Chunk' writer transformer and returns the written log.
-execChunkWriterT :: Monad m => WriterT [Chunk] m a -> m String
+execChunkWriterT :: Monad m => WriterT [Chunk] m a -> m Chunk
 execChunkWriterT = fmap snd . runChunkWriterT
 
--- | Flattens a list of chunks down into a single string.  Inserts spaces
+-- | Flattens a list of chunks down into a single chunk.  Inserts spaces
 -- between chunks where the ends of adjacent chunks would otherwise merge into a
--- single C++ token.
-combineChunks :: [Chunk] -> String
+-- single C++ token.  Combines include sets into a single include set.
+combineChunks :: [Chunk] -> Chunk
 combineChunks chunks =
   let strs = map chunkContents chunks
-  in concat $ for (zip ("":strs) strs) $ \(prev, cur) ->
-       let needsSpace =
-             not (null prev) && not (null cur) &&
-             (let a = last prev
-                  b = head cur
-              in -- "intconstx" should become "int const x"
-                 isIdentifierChar a && isIdentifierChar b ||
-                 -- Adjacent template parameter '>'s need spacing in old C++.
-                 a == '>' && b == '>')
-       in if needsSpace then ' ':cur else cur
+  in Chunk
+     { chunkContents =
+         concat $ for (zip ("":strs) strs) $ \(prev, cur) ->
+           let needsSpace =
+                 not (null prev) && not (null cur) &&
+                 (let a = last prev
+                      b = head cur
+                  in -- "intconstx" should become "int const x"
+                     isIdentifierChar a && isIdentifierChar b ||
+                     -- Adjacent template parameter '>'s need spacing in old C++.
+                     a == '>' && b == '>')
+           in if needsSpace then ' ':cur else cur
+
+     , chunkIncludes = S.unions $ map chunkIncludes chunks
+     }
 
 -- | Emits a single 'Chunk'.
 say :: MonadWriter [Chunk] m => String -> m ()
-say = tell . (:[]) . Chunk
+say = tell . (:[]) . codeChunk
 
 -- | Emits a 'Chunk' for each string in a list.
 says :: MonadWriter [Chunk] m => [String] -> m ()
-says = tell . map Chunk
+says = tell . map codeChunk
 
 -- | Emits an 'Identifier'.
 sayIdentifier :: MonadWriter [Chunk] m => Identifier -> m ()
@@ -245,7 +268,7 @@ sayIdentifier =
 
 -- | Renders an 'Identifier' to a string.
 renderIdentifier :: Identifier -> String
-renderIdentifier = execChunkWriter . sayIdentifier
+renderIdentifier = chunkContents . execChunkWriter . sayIdentifier
 
 -- | @sayVar name maybeParamNames t@ speaks a variable declaration of the form
 -- @\<type\> \<name\>@, where @\<name\>@ is the given name, and @\<type\>@ is
@@ -286,7 +309,7 @@ sayType' (normalizeType -> t) maybeParamNames outerPrec unwrappedOuter =
     Internal_TObjToHeap cls ->
       sayType' (refT $ constT $ objT cls) maybeParamNames outerPrec unwrappedOuter
     Internal_TToGc t' -> sayType' t' maybeParamNames outerPrec unwrappedOuter
-    Internal_TManual s -> say (conversionSpecCppName $ conversionSpecCpp s) >> outer  -- TODO Reqs!
+    Internal_TManual s -> say (conversionSpecCppName $ conversionSpecCpp s) >> outer
     Internal_TConst t' -> sayType' t' maybeParamNames outerPrec $ say "const" >> unwrappedOuter
                  -- TODO ^ Is using the outer stuff correctly here?
 

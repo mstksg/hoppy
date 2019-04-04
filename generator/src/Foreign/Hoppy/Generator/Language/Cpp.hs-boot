@@ -21,10 +21,9 @@ module Foreign.Hoppy.Generator.Language.Cpp (
 
 import Control.Monad.Reader (ReaderT)
 import Control.Monad.Writer (WriterT)
-import qualified Data.Set as S
-import {-# SOURCE #-} Foreign.Hoppy.Generator.Spec.Base (ErrorMsg, Include)
+import {-# SOURCE #-} Foreign.Hoppy.Generator.Spec.Base (ErrorMsg)
 
-type Generator = ReaderT Env (WriterT [Chunk] (WriterT (S.Set Include) (Either ErrorMsg)))
+type Generator = ReaderT Env (WriterT [Chunk] (Either ErrorMsg))
 
 data Env
 
