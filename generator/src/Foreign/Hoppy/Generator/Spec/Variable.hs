@@ -15,8 +15,22 @@
 -- You should have received a copy of the GNU Affero General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-module Foreign.Hoppy.Generator.Spec.Variable where
--- TODO Docs and export list.
+-- | Interface for defining bindings to C++ variables.
+module Foreign.Hoppy.Generator.Spec.Variable (
+  -- * Data type
+  Variable,
+  -- * Construction
+  makeVariable,
+  -- * Properties
+  varExtName,
+  varIdentifier,
+  varType,
+  varReqs,
+  varAddendum,
+  varIsConst,
+  varGetterExtName,
+  varSetterExtName,
+  ) where
 
 import Data.Function (on)
 import Foreign.Hoppy.Generator.Spec.Base

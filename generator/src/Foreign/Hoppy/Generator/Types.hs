@@ -296,14 +296,29 @@ ssizeT =
       return $ HsTyCon $ UnQual $ HsIdent "HoppySPT.CSsize")
   Nothing BinaryCompatible BinaryCompatible
 
--- | TODO Docs.
+-- | Builds a new numeric type definition.
+--
+-- For convenience, 'convertByCoercingIntegral' and 'convertByCoercingFloating'
+-- may be used as conversion methods, for both 'ConversionMethod' arguments this
+-- function takes.
 makeNumericType ::
-  String
+     String
+     -- ^ The name of the C++ type.
   -> Reqs
+     -- ^ Includes necessary to use the C++ type.
   -> LH.Generator HsType
+     -- ^ Generator for rendering the Haskell type to be used, along with any
+     -- required imports.  See 'conversionSpecHaskellHsType'.
   -> Maybe (LH.Generator HsType)
+     -- ^ If there is a Haskell type distinct from the previous argument to be
+     -- used for passing over the FFI boundary, then provide it here.  See
+     -- 'conversionSpecHaskellCType'.
   -> ConversionMethod (LH.Generator ())
+     -- ^ Method to use to convert a Haskell value to a value to be passed over
+     -- the FFI.  See 'conversionSpecHaskellToCppFn'.
   -> ConversionMethod (LH.Generator ())
+     -- ^ Method to use to convert a value received over the FFI into a Haskell
+     -- value.  See 'conversionSpecHaskellFromCppFn'.
   -> Type
 makeNumericType cppName cppReqs hsTypeGen hsCTypeGen convertToCpp convertFromCpp =
   Internal_TManual spec
@@ -317,7 +332,8 @@ makeNumericType cppName cppReqs hsTypeGen hsCTypeGen convertToCpp convertFromCpp
                 convertFromCpp
           }
 
--- | TODO Docs.
+-- | Conversion method for passing a numeric values to and from Haskell by using
+-- @Foreign.Hoppy.Runtime.coerceIntegral@.
 convertByCoercingIntegral :: ConversionMethod (LH.Generator ())
 convertByCoercingIntegral = CustomConversion $ do
   LH.addImports $ mconcat [hsImport1 "Prelude" "(.)",
@@ -325,7 +341,8 @@ convertByCoercingIntegral = CustomConversion $ do
                            hsImportForRuntime]
   LH.sayLn "HoppyP.return . HoppyFHR.coerceIntegral"
 
--- | TODO Docs.
+-- | Conversion method for passing a numeric values to and from Haskell by using
+-- 'realToFrac'.
 convertByCoercingFloating :: ConversionMethod (LH.Generator ())
 convertByCoercingFloating = CustomConversion $ do
   LH.addImports $ mconcat [hsImport1 "Prelude" "(.)",
@@ -365,7 +382,7 @@ objToHeapT = Internal_TObjToHeap
 -- - @'toGcT' ('ptrT' ('objT' cls))@
 toGcT = Internal_TToGc
 
--- | TODO Docs.
+-- | Constructs a type from a specification of how to convert values.
 manualT :: ConversionSpec -> Type
 manualT = Internal_TManual
 

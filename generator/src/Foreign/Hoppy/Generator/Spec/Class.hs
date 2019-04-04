@@ -15,7 +15,7 @@
 -- You should have received a copy of the GNU Affero General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
--- | TODO Docs.
+-- | Interface for defining bindings to C++ classes.
 module Foreign.Hoppy.Generator.Spec.Class (
   -- * Data type
   Class,

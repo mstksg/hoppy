@@ -17,7 +17,7 @@
 
 {-# LANGUAGE ViewPatterns #-}
 
--- | TODO Docs.
+-- | Interface for defining bindings to C++ functions.
 module Foreign.Hoppy.Generator.Spec.Function (
   -- * Data type
   Function, fnT, fnT',

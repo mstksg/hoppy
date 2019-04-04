@@ -17,7 +17,10 @@
 
 {-# LANGUAGE CPP #-}
 
--- | The primary data types for specifying C++ interfaces.
+-- | Conversions for C++ classes.
+--
+-- TODO Refactor this, 'cause the TManual conversion stuff is in Base.  (Not a
+-- high priority, this /is/ a private module.)
 --
 -- 'Show' instances in this module produce strings of the form @\"\<TypeOfObject
 -- nameOfObject otherInfo...\>\"@.  They can be used in error messages without
