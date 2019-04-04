@@ -144,18 +144,20 @@ fnT = Internal_TFn . map toParameter
 fnT' :: [Parameter] -> Type -> Type
 fnT' = Internal_TFn
 
-sayCppExport :: Bool -> Function -> LC.Generator ()
-sayCppExport sayBody fn = when sayBody $ do
-  LC.addReqsM $ fnReqs fn
-  sayCppExportFn (fnExtName fn)
-                 (case fnCName fn of
-                    FnName identifier -> CallFn $ LC.sayIdentifier identifier
-                    FnOp op -> CallOp op)
-                 Nothing
-                 (fnParams fn)
-                 (fnReturn fn)
-                 (fnExceptionHandlers fn)
-                 sayBody
+sayCppExport :: LC.SayExportMode -> Function -> LC.Generator ()
+sayCppExport mode fn = case mode of
+  LC.SayHeader -> return ()
+  LC.SaySource -> do
+    LC.addReqsM $ fnReqs fn
+    sayCppExportFn (fnExtName fn)
+                   (case fnCName fn of
+                      FnName identifier -> CallFn $ LC.sayIdentifier identifier
+                      FnOp op -> CallOp op)
+                   Nothing
+                   (fnParams fn)
+                   (fnReturn fn)
+                   (fnExceptionHandlers fn)
+                   True  -- Render the body.
 
 data CppCallType =
     CallOp Operator

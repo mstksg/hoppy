@@ -66,7 +66,7 @@ sayModuleHeader :: Generator ()
 sayModuleHeader = do
   m <- askModule
   addReqsM $ moduleReqs m
-  mapM_ (sayExportCpp False) $ M.elems $ moduleExports m
+  mapM_ (sayExportCpp SayHeader) $ M.elems $ moduleExports m
 
   iface <- askInterface
   when (interfaceExceptionSupportModule iface == Just m) $
@@ -76,7 +76,7 @@ sayModuleSource :: Generator ()
 sayModuleSource = do
   m <- askModule
   addInclude $ includeLocal $ moduleHppPath m
-  mapM_ (sayExportCpp True) $ M.elems $ moduleExports m
+  mapM_ (sayExportCpp SaySource) $ M.elems $ moduleExports m
 
   iface <- askInterface
   when (interfaceExceptionSupportModule iface == Just m) $

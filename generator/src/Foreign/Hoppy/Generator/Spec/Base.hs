@@ -1065,8 +1065,10 @@ class (HasAddendum a, HasExtNames a, HasReqs a, Typeable a, Show a) => Exportabl
 
   -- | Generates the C++ side of the binding for an entity.
   --
-  -- TODO Change this from a bool to SayHeader/SaySource or something:
-  sayExportCpp :: Bool -> a -> LC.Generator ()
+  -- For an entity, Hoppy invokes this function once with 'LC.SayHeader' when
+  -- generating the header file for a module, and once with 'LC.SaySource' when
+  -- generating the corresponding source file.
+  sayExportCpp :: LC.SayExportMode -> a -> LC.Generator ()
 
   -- | Generates the Haskell side of the binding for an entity.
   --

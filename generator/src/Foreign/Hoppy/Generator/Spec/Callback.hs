@@ -175,8 +175,8 @@ callbackImplClassName = (++ "_impl") . fromExtName . callbackExtName
 callbackFnName :: Callback -> String
 callbackFnName = LC.externalNameToCpp . callbackExtName
 
-sayCppExport :: Bool -> Callback -> LC.Generator ()
-sayCppExport sayBody cb = do
+sayCppExport :: LC.SayExportMode -> Callback -> LC.Generator ()
+sayCppExport mode cb = do
   throws <- cppGetEffectiveCallbackThrows cb
 
   let className = callbackClassName cb
@@ -202,8 +202,8 @@ sayCppExport sayBody cb = do
                     retCType
       fnPtrCType = ptrT fnCType
 
-  if not sayBody
-    then do
+  case mode of
+    LC.SayHeader -> do
       -- Render the class declarations into the header file.
       (sharedPtrReqs, sharedPtrStr) <- interfaceSharedPtr <$> LC.askInterface
       LC.addReqsM sharedPtrReqs
@@ -233,7 +233,7 @@ sayCppExport sayBody cb = do
       LC.says ["    ", sharedPtrStr, "<", implClassName, "> impl_;\n"]
       LC.say "};\n"
 
-    else do
+    LC.SaySource -> do
       -- Render the classes' methods into the source file.  First render the
       -- impl class's constructor.
       LC.says ["\n", implClassName, "::", implClassName, "("] >> LC.sayVar "f" Nothing fnPtrCType >>

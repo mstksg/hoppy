@@ -973,70 +973,72 @@ mkBoolHasProp_ name =
           , mkMethod_ setName [boolT] voidT
           ]
 
-sayCppExport :: Bool -> Class -> LC.Generator ()
-sayCppExport sayBody cls = when sayBody $ do
-  let clsPtr = ptrT $ objT cls
-      constClsPtr = ptrT $ constT $ objT cls
-  -- TODO Is this redundant for a completely empty class?  (No ctors or methods, private dtor.)
-  LC.addReqsM $ classReqs cls  -- This is needed at least for the delete function.
+sayCppExport :: LC.SayExportMode -> Class -> LC.Generator ()
+sayCppExport mode cls = case mode of
+  LC.SayHeader -> return ()
+  LC.SaySource -> do
+    let clsPtr = ptrT $ objT cls
+        constClsPtr = ptrT $ constT $ objT cls
+    -- TODO Is this redundant for a completely empty class?  (No ctors or methods, private dtor.)
+    LC.addReqsM $ classReqs cls  -- This is needed at least for the delete function.
 
-  -- Export each of the class's constructors.
-  forM_ (classCtors cls) $ \ctor ->
-    Function.sayCppExportFn
-      (classEntityExtName cls ctor)
-      (Function.CallFn $ LC.say "new" >> LC.sayIdentifier (classIdentifier cls))
-      Nothing
-      (ctorParams ctor)
-      clsPtr
-      (ctorExceptionHandlers ctor)
-      sayBody
+    -- Export each of the class's constructors.
+    forM_ (classCtors cls) $ \ctor ->
+      Function.sayCppExportFn
+        (classEntityExtName cls ctor)
+        (Function.CallFn $ LC.say "new" >> LC.sayIdentifier (classIdentifier cls))
+        Nothing
+        (ctorParams ctor)
+        clsPtr
+        (ctorExceptionHandlers ctor)
+        True  -- Render the body.
 
-  -- Export a delete function for the class.
-  when (classDtorIsPublic cls) $
-    LC.sayFunction (cppDeleteFnName cls)
-                   ["self"]
-                   (fnT [constClsPtr] voidT) $
-      Just $ LC.say "delete self;\n"
+    -- Export a delete function for the class.
+    when (classDtorIsPublic cls) $
+      LC.sayFunction (cppDeleteFnName cls)
+                     ["self"]
+                     (fnT [constClsPtr] voidT) $
+        Just $ LC.say "delete self;\n"
 
-  -- Export each of the class's variables.
-  forM_ (classVariables cls) $ sayCppExportClassVar cls
+    -- Export each of the class's variables.
+    forM_ (classVariables cls) $ sayCppExportClassVar cls
 
-  -- Export each of the class's methods.
-  forM_ (classMethods cls) $ \method -> do
-    let static = case methodStatic method of
-          Static -> True
-          Nonstatic -> False
-        thisType = case methodConst method of
-          Const -> constClsPtr
-          Nonconst -> clsPtr
-        nonMemberCall = static || case methodImpl method of
-          RealMethod {} -> False
-          FnMethod {} -> True
-    Function.sayCppExportFn
-      (classEntityExtName cls method)
-      (case methodImpl method of
-         RealMethod name -> case name of
-           FnName cName -> Function.CallFn $ do
-             when static $ do
-               LC.sayIdentifier (classIdentifier cls)
-               LC.say "::"
-             LC.say cName
-           FnOp op -> Function.CallOp op
-         FnMethod name -> case name of
-           FnName cName -> Function.CallFn $ LC.sayIdentifier cName
-           FnOp op -> Function.CallOp op)
-      (if nonMemberCall then Nothing else Just thisType)
-      (methodParams method)
-      (methodReturn method)
-      (methodExceptionHandlers method)
-      sayBody
+    -- Export each of the class's methods.
+    forM_ (classMethods cls) $ \method -> do
+      let static = case methodStatic method of
+            Static -> True
+            Nonstatic -> False
+          thisType = case methodConst method of
+            Const -> constClsPtr
+            Nonconst -> clsPtr
+          nonMemberCall = static || case methodImpl method of
+            RealMethod {} -> False
+            FnMethod {} -> True
+      Function.sayCppExportFn
+        (classEntityExtName cls method)
+        (case methodImpl method of
+           RealMethod name -> case name of
+             FnName cName -> Function.CallFn $ do
+               when static $ do
+                 LC.sayIdentifier (classIdentifier cls)
+                 LC.say "::"
+               LC.say cName
+             FnOp op -> Function.CallOp op
+           FnMethod name -> case name of
+             FnName cName -> Function.CallFn $ LC.sayIdentifier cName
+             FnOp op -> Function.CallOp op)
+        (if nonMemberCall then Nothing else Just thisType)
+        (methodParams method)
+        (methodReturn method)
+        (methodExceptionHandlers method)
+        True  -- Render the body.
 
-  -- Export upcast functions for the class to its direct superclasses.
-  forM_ (classSuperclasses cls) $ genUpcastFns cls
-  -- Export downcast functions from the class's direct and indirect
-  -- superclasses to it.
-  unless (classIsSubclassOfMonomorphic cls) $
-    forM_ (classSuperclasses cls) $ genDowncastFns cls
+    -- Export upcast functions for the class to its direct superclasses.
+    forM_ (classSuperclasses cls) $ genUpcastFns cls
+    -- Export downcast functions from the class's direct and indirect
+    -- superclasses to it.
+    unless (classIsSubclassOfMonomorphic cls) $
+      forM_ (classSuperclasses cls) $ genDowncastFns cls
 
   where genUpcastFns :: Class -> Class -> LC.Generator ()
         genUpcastFns cls ancestorCls = do

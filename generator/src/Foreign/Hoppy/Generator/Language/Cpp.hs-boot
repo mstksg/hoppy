@@ -17,6 +17,7 @@
 
 module Foreign.Hoppy.Generator.Language.Cpp (
   Generator,
+  SayExportMode,
   ) where
 
 import Control.Monad.Reader (ReaderT)
@@ -28,3 +29,5 @@ type Generator = ReaderT Env (WriterT [Chunk] (Either ErrorMsg))
 data Env
 
 newtype Chunk = Chunk { chunkContents :: String }
+
+data SayExportMode

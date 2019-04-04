@@ -45,6 +45,7 @@ module Foreign.Hoppy.Generator.Language.Cpp (
   evalChunkWriterT,
   execChunkWriterT,
   -- * High-level code generation
+  SayExportMode (..),
   say,
   says,
   sayIdentifier,
@@ -244,6 +245,19 @@ combineChunks chunks =
 
      , chunkIncludes = S.unions $ map chunkIncludes chunks
      }
+
+-- | The section of code that Hoppy is generating, for an export.
+data SayExportMode =
+    SaySource
+    -- ^ Hoppy is generating the C++ source file for a module.  The generator
+    -- should emit C++ definitions that will be imported over foreign language's
+    -- FFIs.  This is the main place for code generation in C++ bindings.
+  | SayHeader
+    -- ^ Hoppy is generating the C++ header file for a module.  The generator
+    -- should emit C++ declarations that can be @#include@d during the source
+    -- file generation of other exportable entities, in order to refer to the
+    -- current entity.  If it is not possible for other entities to refer to
+    -- this one, then nothing needs to be generated.
 
 -- | Emits a single 'Chunk'.
 say :: MonadWriter [Chunk] m => String -> m ()

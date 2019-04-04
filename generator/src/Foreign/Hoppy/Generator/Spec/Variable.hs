@@ -18,7 +18,6 @@
 module Foreign.Hoppy.Generator.Spec.Variable where
 -- TODO Docs and export list.
 
-import Control.Monad (when)
 import Data.Function (on)
 import Foreign.Hoppy.Generator.Spec.Base
 import qualified Foreign.Hoppy.Generator.Spec.Class as Class
@@ -85,15 +84,16 @@ varGetterExtName = toExtName . (++ "_get") . fromExtName . varExtName
 varSetterExtName :: Variable -> ExtName
 varSetterExtName = toExtName . (++ "_set") . fromExtName . varExtName
 
-sayCppExport :: Bool -> Variable -> LC.Generator ()
-sayCppExport sayBody v =
-  when sayBody $
-  Class.sayCppExportVar (varType v)
-                        Nothing
-                        True
-                        (varGetterExtName v)
-                        (varSetterExtName v)
-                        (LC.sayIdentifier $ varIdentifier v)
+sayCppExport :: LC.SayExportMode -> Variable -> LC.Generator ()
+sayCppExport mode v = case mode of
+  LC.SayHeader -> return ()
+  LC.SaySource ->
+    Class.sayCppExportVar (varType v)
+                          Nothing
+                          True
+                          (varGetterExtName v)
+                          (varSetterExtName v)
+                          (LC.sayIdentifier $ varIdentifier v)
 
 sayHsExport :: LH.SayExportMode -> Variable -> LH.Generator ()
 sayHsExport mode v = LH.withErrorContext ("generating variable " ++ show (varExtName v)) $ do
