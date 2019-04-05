@@ -64,8 +64,9 @@ import Foreign.Hoppy.Test.Basic.HsBox
 import Foreign.Marshal.Alloc (alloca)
 import Foreign.Ptr (Ptr, nullPtr)
 import Foreign.Storable (peek, poke, sizeOf)
+import GHC.Stack (HasCallStack)
 import System.Exit (exitFailure)
-import System.Mem (performGC)
+import System.Mem (performMajorGC)
 import System.Posix.Types (CSsize)
 import Test.HUnit (
   Assertion,
@@ -79,6 +80,7 @@ import Test.HUnit (
   failures,
   runTestTT,
   )
+import Test.HUnit.Lang (Result (Error, Failure, Success), performTestCase)
 
 main :: IO ()
 main = do
@@ -87,6 +89,21 @@ main = do
 
 assertBox :: Int -> IntBox -> Assertion
 assertBox value box = intBox_get box >>= (@?= value)
+
+-- | Runs an assertion, trying up to 10 times for it to succeed, performing a
+-- garbage collection before the assertion each time.
+gcThenExpect :: Assertion -> Assertion
+gcThenExpect action = go 9
+  where gcThenAction = performMajorGC >> foo >> action
+        foo = do x <- ptrCtr_getConstructionCount
+                 y <- ptrCtr_getDestructionCount
+                 print (x, y)
+
+        go 0 = gcThenAction
+        go n = performTestCase gcThenAction >>= \case
+          Success -> action
+          Failure {} -> go (n - 1)
+          Error {} -> go (n - 1)
 
 tests :: Test
 tests =
@@ -162,79 +179,71 @@ objectTests =
 objectGcTests :: Test
 objectGcTests =
   "object garbage collection" ~: TestList
-  [ "objects are not collected by default" ~: do
+  [ "objects are not collected by default" ~: withLifetimeTracking $ do
     ptrCtr_resetCounters
     withScopedPtr ptrCtr_new $ \p -> do
       ptrCtr_redButton p
-      performGC
-      readCounts >>= (@?= (1, 0))
+      gcThenExpect $ readCounts >>= (@?= (1, 0))
     readCounts >>= (@?= (1, 1))
 
-  , "toGc creates collectable pointers" ~: do
+  , "toGc creates collectable pointers" ~: withLifetimeTracking $ do
     ptrCtr_resetCounters
     p <- toGc =<< ptrCtr_new
     ptrCtr_redButton p
-    performGC
-    readCounts >>= (@?= (1, 1))
+    gcThenExpect $ readCounts >>= (@?= (1, 1))
 
-  , "(toGcT . objT) creates collectable pointers" ~: do
+  , "(toGcT . objT) creates collectable pointers" ~: withLifetimeTracking $ do
     ptrCtr_resetCounters
     p <- ptrCtr_newGcedObj
     ptrCtr_redButton p
-    performGC
-    (news, dels) <- readCounts
-    dels @?= news
+    gcThenExpect $ do
+      (news, dels) <- readCounts
+      dels @?= news
 
-  , "(toGcT . refT . constT . objT) creates collectable pointers" ~: do
+  , "(toGcT . refT . constT . objT) creates collectable pointers" ~: withLifetimeTracking $ do
     ptrCtr_resetCounters
     p <- ptrCtr_newGcedRefConst
     ptrCtr_redButton p
-    performGC
-    readCounts >>= (@?= (1, 1))
+    gcThenExpect $ readCounts >>= (@?= (1, 1))
 
-  , "(toGcT . refT . objT) creates collectable pointers" ~: do
+  , "(toGcT . refT . objT) creates collectable pointers" ~: withLifetimeTracking $ do
     ptrCtr_resetCounters
     p <- ptrCtr_newGcedRef
     ptrCtr_redButton p
-    performGC
-    readCounts >>= (@?= (1, 1))
+    gcThenExpect $ readCounts >>= (@?= (1, 1))
 
-  , "(toGcT . ptrT . constT . objT) creates collectable pointers" ~: do
+  , "(toGcT . ptrT . constT . objT) creates collectable pointers" ~: withLifetimeTracking $ do
     ptrCtr_resetCounters
     p <- ptrCtr_newGcedPtrConst
     ptrCtr_redButton p
-    performGC
-    readCounts >>= (@?= (1, 1))
+    gcThenExpect $ readCounts >>= (@?= (1, 1))
 
-  , "(toGcT . ptrT . objT) creates collectable pointers" ~: do
+  , "(toGcT . ptrT . objT) creates collectable pointers" ~: withLifetimeTracking $ do
     ptrCtr_resetCounters
     p <- ptrCtr_newGcedPtr
     ptrCtr_redButton p
-    performGC
-    readCounts >>= (@?= (1, 1))
+    gcThenExpect $ readCounts >>= (@?= (1, 1))
 
-  , "casted ForeignPtrs contribute to an object's lifetime" ~: do
+  , "casted ForeignPtrs contribute to an object's lifetime" ~: withLifetimeTracking $ do
     ptrCtr_resetCounters
     p <- ptrCtr_newGcedPtr
     case p of
       PtrCtrGc (castForeignPtr -> fptr :: ForeignPtr ()) _ -> do
-        withForeignPtr fptr $ \_ -> do
-          performGC
+        withForeignPtr fptr $ \_ ->
           -- p is collectable now, but fptr should be keeping the counter alive.
           -- If you replace "withForeignPtr" with "flip ($)", this read returns
           -- (1, 1) instead of (1, 0).
-          readCounts >>= (@?= (1, 0))
-        performGC
-        readCounts >>= (@?= (1, 1))
+          gcThenExpect $ readCounts >>= (@?= (1, 0))
+        gcThenExpect $ readCounts >>= (@?= (1, 1))
       _ -> assertFailure $
            concat ["Expected a managed pointer, not ", show p, "."]
 
-  , "managed and unmanaged pointers are equatable" ~: do
+  , "managed and unmanaged pointers are equatable" ~: withLifetimeTracking $ do
     unmanaged <- ptrCtr_new
     managed <- toGc unmanaged
     managed @?= unmanaged
 
-  , "managed and unmanaged pointers aren't ordered by state" ~: do
+  , "managed and unmanaged pointers aren't ordered by state" ~: withLifetimeTracking $ do
     unmanaged0 <- ptrCtr_new
     managed0 <- toGc unmanaged0
     unmanaged1 <- ptrCtr_new
@@ -245,6 +254,12 @@ objectGcTests =
     compare unmanaged1 managed0 @?= compare managed1 unmanaged0
   ]
   where readCounts = (,) <$> ptrCtr_getConstructionCount <*> ptrCtr_getDestructionCount
+
+        withLifetimeTracking action =
+          let waitForZeroAlive = gcThenExpect $ do
+                (c, d) <- readCounts
+                d @?= c
+          in waitForZeroAlive >> action >> waitForZeroAlive
 
 conversionTests :: Test
 conversionTests =
@@ -373,19 +388,24 @@ classConversionTests =
     delete p
     readCounts >>= assertNAlive 0
 
-  , "ClassConversionToGc" ~: do
+  , "ClassConversionToGc" ~: withLifetimeTracking $ withLifetimeTracking $ do
     ptrCtrWithToGcConversion_resetCounters
     p <- ptrCtrWithToGcConversion_newGcedObj
     readCounts >>= assertNAlive 1
-    performGC
     touchCppPtr p
-    performGC
-    readCounts >>= assertNAlive 0
+    gcThenExpect $ readCounts >>= assertNAlive 0
   ]
   where readCounts = (,) <$>
                      ptrCtrWithToGcConversion_getConstructionCount <*>
                      ptrCtrWithToGcConversion_getDestructionCount
 
+        withLifetimeTracking action =
+          let waitForZeroAlive = gcThenExpect $ do
+                (c, d) <- readCounts
+                d @?= c
+          in waitForZeroAlive >> action >> waitForZeroAlive
+
+        assertNAlive :: HasCallStack => Int -> (Int, Int) -> Assertion
         assertNAlive n calls@(ctorCalls, _) =
           calls @?= (ctorCalls, ctorCalls - n)
 
@@ -632,7 +652,7 @@ exceptionTests =
 
        , "throwing a GCed object" ~: do
          testThrowFromHaskellToCpp (toGc =<< baseException_new) 1
-         performGC  -- This should not crash.
+         performMajorGC  -- This should not crash.
 
        , "throwing and catching all in Haskell" ~: do
          okVar <- newIORef False
@@ -648,25 +668,23 @@ exceptionTests =
        ]
 
   , "exception lifecycle" ~: TestList
-    [ "a caught exception object is GCable" ~: do
+    [ "a caught exception object is GCable" ~: withLifetimeTracking $ do
       ptrCtr_resetCounters
       threw <- newIORef False
       catchCpp throwsPtrCtr $ \(e :: PtrCtr) -> do
         writeIORef threw True
-        performGC
+        performMajorGC
         readCounts >>= assertNAlive 1
         touchCppPtr e
-        performGC
-        readCounts >>= assertNAlive 0
+        gcThenExpect $ readCounts >>= assertNAlive 0
       readIORef threw >>= assertBool "Expected an exception to be thrown."
 
-    , "catching a SomeCppException as (...) deletes the object" ~: do
+    , "catching a SomeCppException as (...) deletes the object" ~: withLifetimeTracking $ do
       ptrCtr_resetCounters
       threw <- newIORef False
       catchCpp throwsPtrCtr $ \(e :: UnknownCppException) -> do
         writeIORef threw True
-        performGC
-        readCounts >>= assertNAlive 0
+        gcThenExpect $ readCounts >>= assertNAlive 0
         _ <- evaluate e
         return ()
       readIORef threw >>= assertBool "Expected an exception to be thrown."
@@ -718,6 +736,12 @@ exceptionTests =
         readCounts = (,) <$>
                      ptrCtrWithToGcConversion_getConstructionCount <*>
                      ptrCtrWithToGcConversion_getDestructionCount
+
+        withLifetimeTracking action =
+          let waitForZeroAlive = gcThenExpect $ do
+                (c, d) <- readCounts
+                d @?= c
+          in waitForZeroAlive >> action >> waitForZeroAlive
 
         assertNAlive n calls@(ctorCalls, _) =
           calls @?= (ctorCalls, ctorCalls - n)

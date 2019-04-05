@@ -26,7 +26,7 @@ module Foreign.Hoppy.Generator.Std.Set (
   toExports,
   ) where
 
-import Control.Monad (forM, when)
+import Control.Monad (when)
 #if !MIN_VERSION_base(4,8,0)
 import Data.Monoid (mconcat)
 #endif
@@ -146,14 +146,17 @@ instantiate' setName t tReqs opts =
 
         hsDataNameConst <- toHsDataTypeName Const set
         hsDataName <- toHsDataTypeName Nonconst set
-        [hsValueTypeConst, hsValueType] <- forM [Const, Nonconst] $ \cst ->
-            cppTypeToHsTypeAndUse HsHsSide $
-            (case conversion of
-               ConvertPtr -> ptrT
-               ConvertValue -> id) $
-            case cst of
-              Const -> constT t
-              Nonconst -> t
+
+        let computeValueType cst =
+              cppTypeToHsTypeAndUse HsHsSide $
+              (case conversion of
+                 ConvertPtr -> ptrT
+                 ConvertValue -> id) $
+              case cst of
+                Const -> constT t
+                Nonconst -> t
+        hsValueTypeConst <- computeValueType Const
+        hsValueType <- computeValueType Nonconst
 
         setConstCast <- toHsCastMethodName Const set
         setEmpty <- toHsClassEntityName set "empty"
