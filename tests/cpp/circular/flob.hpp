@@ -18,20 +18,18 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#include "flub.hpp"
-#include "flubm.hpp"
+#include <flub.hpp>
+#include <flubm.hpp>
 
 class FlobClass {
 public:
     void invokeCallback(FlubCallback) const {}
 };
 
-void takesFlubValues(FlubClass*, FlubEnum, int);
+void takesFlubValues(FlubClass*, FlubEnum);
 
 FlubClass* returnsFlubClass();
 
 FlubEnum returnsFlubEnum();
-
-int returnsFlubBitspace();
 
 #endif

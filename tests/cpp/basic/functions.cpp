@@ -15,12 +15,12 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#include "exceptions.hpp"
-#include "functions.hpp"
+#include <exceptions.hpp>
+#include <functions.hpp>
 
 #include <cstddef>
 #include <string>
-#include "constants.hpp"
+#include <constants.hpp>
 
 int piapprox() {
     return 4;
@@ -285,10 +285,6 @@ BetterBool betterBoolId(BetterBool x) {
 }
 
 BetterBool takesBetterBoolCallback(BetterBoolCallback callback, BetterBool value) {
-    return callback(value);
-}
-
-BetterBool takesBetterBoolsCallback(BetterBoolsCallback callback, BetterBool value) {
     return callback(value);
 }
 

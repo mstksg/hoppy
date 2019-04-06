@@ -100,6 +100,10 @@ foreign import ccall "wrapper" newFreeHaskellFunPtrFunPtr
   -> IO (FunPtr (FunPtr (IO ()) -> IO ()))
 
 -- | A numeric type representing a C++ boolean.
+--
+-- TODO base-4.10.0.0 (GHC 8.4.2, 2018-04-19) added a @Foreign.C.CBool@, we'll
+-- migrate to this once it's not quite so new.
+-- See: https://gitlab.com/khumba/hoppy/issues/39
 newtype CBool = CBool CUChar
   deriving (Eq, Integral, Num, Ord, Real, Show, Storable)
 

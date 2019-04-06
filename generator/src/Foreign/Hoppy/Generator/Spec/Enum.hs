@@ -45,7 +45,8 @@ module Foreign.Hoppy.Generator.Spec.Enum (
   enumAddEntryNameOverrides,
   enumGetOverriddenEntryName,
   IsEnumUnknownValueEntry (..),
-  enumUnknownValueEntry, enumSetUnknownValueEntry, enumUnknownValueEntryDefaultPrefix,
+  enumUnknownValueEntry, enumSetUnknownValueEntry, enumSetNoUnknownValueEntry,
+  enumUnknownValueEntryDefaultPrefix,
   enumHasBitOperations, enumSetHasBitOperations,
   -- * C++ generator
   cppGetEvaluatedEnumData,
@@ -303,10 +304,17 @@ enumSetValuePrefix prefix enum = enum { enumValuePrefix = prefix }
 -- | Sets the entry name (a list of words, a la the fields in 'EnumValueMap')
 -- for the fallback enum entry that holds unknown values.
 --
--- Set 'enumUnknownValueEntry'.
-enumSetUnknownValueEntry :: IsEnumUnknownValueEntry a => Maybe a -> CppEnum -> CppEnum
+-- Set 'enumUnknownValueEntry', 'enumSetNoUnknownValueEntry'.
+enumSetUnknownValueEntry :: IsEnumUnknownValueEntry a => a -> CppEnum -> CppEnum
 enumSetUnknownValueEntry name enum =
-  enum { enumUnknownValueEntry = fmap toEnumUnknownValueEntry name }
+  enum { enumUnknownValueEntry = Just $ toEnumUnknownValueEntry name }
+
+-- | Sets an enum to have no unknown value entry.
+--
+-- Set 'enumUnknownValueEntry', 'enumSetUnknownValueEntry'.
+enumSetNoUnknownValueEntry :: CppEnum -> CppEnum
+enumSetNoUnknownValueEntry enum =
+  enum { enumUnknownValueEntry = Nothing }
 
 class IsEnumUnknownValueEntry a where
   toEnumUnknownValueEntry :: a -> EnumEntryWords

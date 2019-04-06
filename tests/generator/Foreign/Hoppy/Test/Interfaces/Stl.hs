@@ -33,13 +33,15 @@ import qualified Foreign.Hoppy.Generator.Std.Set as Set
 import qualified Foreign.Hoppy.Generator.Std.UnorderedMap as UnorderedMap
 import qualified Foreign.Hoppy.Generator.Std.UnorderedSet as UnorderedSet
 import qualified Foreign.Hoppy.Generator.Std.Vector as Vector
+import Foreign.Hoppy.Test.Interfaces.Compiler (makeTestCompiler)
 
 {-# ANN module "HLint: ignore Use camelCase" #-}
 
 interfaceResult :: Either String Interface
 interfaceResult =
-  interfaceAddHaskellModuleBase ["Foreign", "Hoppy", "Test"] =<<
-  interface "stl" modules
+  interface "stl" modules >>=
+  pure . interfaceSetCompiler (makeTestCompiler "stl") >>=
+  interfaceAddHaskellModuleBase ["Foreign", "Hoppy", "Test"]
 
 modules :: [Module]
 modules = [mod_std, testModule]
@@ -49,9 +51,9 @@ testModule =
   moduleModify' (makeModule "stl" "stl.hpp" "stl.cpp") $
   moduleAddExports $
   concat
-  [ [ ExportClass c_IntBox
-    , ExportClass c_IntBoxComparable
-    , ExportClass c_IntBoxEquatable
+  [ [ toExport c_IntBox
+    , toExport c_IntBoxComparable
+    , toExport c_IntBoxEquatable
     ]
   , List.toExports listInt
   , List.toExports listIntBox
@@ -73,7 +75,7 @@ testModule =
   ]
 
 intBoxInclude :: Include
-intBoxInclude = includeLocal "intbox.hpp"
+intBoxInclude = includeStd "intbox.hpp"
 
 intBoxReqs :: Reqs
 intBoxReqs = reqInclude intBoxInclude
@@ -85,9 +87,9 @@ c_IntBox =
   addReqs intBoxReqs $
   classAddFeatures [Assignable, Copyable] $
   makeClass (ident "IntBox") Nothing []
-  [ mkCtor "new" []
+  [ mkCtor "new" np
   , mkCtor "newWithValue" [intT]
-  , mkConstMethod "get" [] intT
+  , mkConstMethod "get" np intT
   , mkMethod "set" [intT] voidT
   ]
 

@@ -104,7 +104,7 @@ data EnumEvaluatorResult = EnumEvaluatorResult
   , enumEvaluatorResultValues :: ![Integer]
     -- ^ The numeric value for each identifier in 'enumEvaluatorArgsEntryIdentifiers'.
     -- The lengths of these two lists must match.
-  }
+  } deriving (Show)
 
 -- | An 'EnumEvaluatorResult' without any data in it.
 emptyEnumEvaluatorResult :: EnumEvaluatorResult
@@ -138,7 +138,7 @@ evaluateEnumsWithCompiler compiler args =
     False -> do
       hPutStrLn stderr $
         "evaluateEnumsWithCompiler: Failed to build program " ++ show cppPath ++
-        "to evaluate enums with " ++ show compiler ++ "." ++ removeBuildFailuresNote
+        " to evaluate enums with " ++ show compiler ++ "." ++ removeBuildFailuresNote
       return Nothing
     True -> runAndGetOutput binPath
   let remove = isJust result || removeBuildFailures
@@ -323,25 +323,25 @@ internalEvaluateEnumsForInterface' iface keepBuildFailures = do
 
   -- Evaluate the identifiers we are curious about, using the hook provided by
   -- the interface.
-  evaluatorResult :: EnumEvaluatorResult <- case entryIdentifiersToEvaluate of
-    [] -> return emptyEnumEvaluatorResult
-    _ -> do
-      let hooks = interfaceHooks iface
-          args = EnumEvaluatorArgs
-                 { enumEvaluatorArgsInterface = iface
-                 , enumEvaluatorArgsReqs = sumReqs
-                 , enumEvaluatorArgsSizeofIdentifiers =
-                     map ordIdentifier sizeofIdentifiersToEvaluate
-                 , enumEvaluatorArgsEntryIdentifiers =
-                     map ordIdentifier entryIdentifiersToEvaluate
-                 , enumEvaluatorArgsKeepOutputsOnFailure = keepBuildFailures
-                 }
-      hookEvaluateEnums hooks args >>=
-        fromMaybeM
-        (do hPutStrLn stderr $
-              "internalEvaluateEnumsForInterface': Failed to build and run program.  Aborting."
-            exitFailure)
-
+  evaluatorResult :: EnumEvaluatorResult <-
+    case (sizeofIdentifiersToEvaluate, entryIdentifiersToEvaluate) of
+      ([], []) -> return emptyEnumEvaluatorResult
+      _ -> do
+        let hooks = interfaceHooks iface
+            args = EnumEvaluatorArgs
+                   { enumEvaluatorArgsInterface = iface
+                   , enumEvaluatorArgsReqs = sumReqs
+                   , enumEvaluatorArgsSizeofIdentifiers =
+                       map ordIdentifier sizeofIdentifiersToEvaluate
+                   , enumEvaluatorArgsEntryIdentifiers =
+                       map ordIdentifier entryIdentifiersToEvaluate
+                   , enumEvaluatorArgsKeepOutputsOnFailure = keepBuildFailures
+                   }
+        hookEvaluateEnums hooks args >>=
+          fromMaybeM
+          (do hPutStrLn stderr $
+                "internalEvaluateEnumsForInterface': Failed to build and run program.  Aborting."
+              exitFailure)
 
   let evaluatedIdentifierSizes :: M.Map OrdIdentifier Int
       evaluatedIdentifierSizes =

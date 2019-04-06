@@ -91,7 +91,7 @@ boolT =
   (do LH.addImports hsImportForPrelude
       return $ HsTyCon $ UnQual $ HsIdent "HoppyP.Bool")
   (Just $ do LH.addImports hsImportForForeignC
-             return $ HsTyCon $ UnQual $ HsIdent "HoppyFC.CBool")
+             return $ HsTyCon $ UnQual $ HsIdent "HoppyFHR.CBool")
   (CustomConversion $ do
      LH.addImports $ mconcat [hsImport1 "Prelude" "(.)",
                               hsImportForPrelude]
