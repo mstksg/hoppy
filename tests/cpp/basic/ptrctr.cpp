@@ -57,7 +57,7 @@ PtrCtr* PtrCtr::newGcedPtr() {
     return new PtrCtr();
 }
 
-int PtrCtr::resetCounters() {
+void PtrCtr::resetCounters() {
     constructions_ = 0;
     destructions_ = 0;
 }

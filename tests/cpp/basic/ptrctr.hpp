@@ -32,7 +32,7 @@ public:
     static PtrCtr& newGcedRef();
     static const PtrCtr* newGcedPtrConst();
     static PtrCtr* newGcedPtr();
-    static int resetCounters();
+    static void resetCounters();
     static int getConstructionCount();
     static int getDestructionCount();
 

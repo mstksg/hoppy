@@ -26,6 +26,7 @@ import Control.Exception (evaluate)
 import Control.Monad ((<=<), forM_, unless, void, when)
 import Data.IORef (newIORef, readIORef, writeIORef)
 import Foreign.C (
+  CBool,
   CChar,
   CDouble,
   CFloat,
@@ -38,7 +39,6 @@ import Foreign.C (
   )
 import Foreign.ForeignPtr (ForeignPtr, castForeignPtr, withForeignPtr)
 import Foreign.Hoppy.Runtime (
-  CBool,
   CppException,
   CppThrowable,
   UnknownCppException,
