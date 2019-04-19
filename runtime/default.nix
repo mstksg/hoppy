@@ -20,7 +20,7 @@
 }:
 mkDerivation ({
   pname = "hoppy-runtime";
-  version = "0.5.1";
+  version = "0.6.0";
   src = ./.;
   libraryHaskellDepends = [ base ];
   homepage = "http://khumba.net/projects/hoppy";

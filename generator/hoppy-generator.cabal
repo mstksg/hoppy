@@ -1,5 +1,5 @@
 name: hoppy-generator
-version: 0.5.2
+version: 0.6.0
 synopsis: C++ FFI generator - Code generator
 homepage: http://khumba.net/projects/hoppy
 license: AGPL-3

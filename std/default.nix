@@ -21,7 +21,7 @@
 }:
 mkDerivation ({
   pname = "hoppy-std";
-  version = "0.5.0";
+  version = "0.6.0";
   src = ./.;
   libraryHaskellDepends = [
     base filepath haskell-src hoppy-generator
