@@ -118,7 +118,6 @@ module Foreign.Hoppy.Generator.Spec.Base (
   np, (~:),
   -- * Conversions
   ConversionMethod (..),
-  HasConversionSpec (..),
   ConversionSpec (conversionSpecName, conversionSpecCpp, conversionSpecHaskell),
   makeConversionSpec,
   ConversionSpecCpp (
@@ -1243,17 +1242,6 @@ toParameters = map toParameter
 (~:) :: IsParameter a => String -> a -> Parameter
 (~:) name param = (toParameter param) { parameterName = Just name }
 
-class HasConversionSpec a where
-  {-# MINIMAL getConversionSpec, (setConversionSpec | modifyConversionSpec) #-}
-
-  getConversionSpec :: a -> ConversionSpec
-
-  setConversionSpec :: ConversionSpec -> a -> a
-  setConversionSpec = modifyConversionSpec . const
-
-  modifyConversionSpec :: (ConversionSpec -> ConversionSpec) -> a -> a
-  modifyConversionSpec f x = setConversionSpec (f $ getConversionSpec x) x
-
 -- | Defines the process for converting a value in one direction between C++ and
 -- a foreign language.  The type parameter varies depending on the actual
 -- conversion being defined.
@@ -1282,6 +1270,7 @@ data ConversionMethod c =
 -- for types using this specification to be usable in that language.
 data ConversionSpec = ConversionSpec
   { conversionSpecName :: String
+    -- ^ An identifying name, used for rendering in e.g. error messages.
   , conversionSpecCpp :: ConversionSpecCpp
     -- ^ Fundamental information about the C++ type.
   , conversionSpecHaskell :: Maybe ConversionSpecHaskell
@@ -1294,7 +1283,15 @@ instance Eq ConversionSpec where
 instance Show ConversionSpec where
   show x = "<ConversionSpec " ++ show (conversionSpecName x) ++ ">"
 
-makeConversionSpec :: String -> ConversionSpecCpp -> ConversionSpec
+-- | Creates a 'ConversionSpec' from an identifying name and a specification of
+-- the C++ conversion behaviour.  By default, no foreign language conversion
+-- behaviour is configured.  For Haskell, this should be done by using
+-- 'makeConversionSpecHaskell' to specify behaviour, then writing that to the
+-- 'conversionSpecHaskell' field of the 'ConversionSpec' returned here.
+makeConversionSpec ::
+     String  -- ^ 'conversionSpecName'
+  -> ConversionSpecCpp  -- ^ 'conversionSpecCpp'
+  -> ConversionSpec
 makeConversionSpec name cppSpec =
   ConversionSpec
   { conversionSpecName = name

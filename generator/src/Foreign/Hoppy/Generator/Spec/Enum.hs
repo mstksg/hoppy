@@ -316,7 +316,11 @@ enumSetNoUnknownValueEntry :: CppEnum -> CppEnum
 enumSetNoUnknownValueEntry enum =
   enum { enumUnknownValueEntry = Nothing }
 
+-- | Values that can be used as a name for an enum's unknown value entry.  See
+-- 'enumUnknownValueEntry'.
 class IsEnumUnknownValueEntry a where
+  -- | Converts a value to a list of words to use for an enum's unknown entry
+  -- name.
   toEnumUnknownValueEntry :: a -> EnumEntryWords
 
 instance IsEnumUnknownValueEntry EnumEntryWords where
@@ -358,6 +362,7 @@ makeConversion e =
 
 -- | Constructs a type value for an enum.
 enumT :: CppEnum -> Type
+-- (Keep docs in sync with hs-boot.)
 enumT = manualT . makeConversion
 
 sayHsExport :: LH.SayExportMode -> CppEnum -> LH.Generator ()
@@ -481,11 +486,14 @@ sayHsExport mode enum =
         LH.addImports hsImportForBits
         LH.saysLn ["instance HoppyDB.Bits ", hsTypeName]
 
+-- | Reads evaluated data for the named enum from the C++ generator environment.
 cppGetEvaluatedEnumData :: HasCallStack => ExtName -> LC.Generator EvaluatedEnumData
 cppGetEvaluatedEnumData extName = do
   iface <- LC.askInterface
   return $ interfaceGetEvaluatedEnumData iface extName
 
+-- | Reads evaluated data for the named enum from the Haskell generator
+-- environment.
 hsGetEvaluatedEnumData :: HasCallStack => ExtName -> LH.Generator EvaluatedEnumData
 hsGetEvaluatedEnumData extName = do
   iface <- LH.askInterface

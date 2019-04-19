@@ -19,6 +19,11 @@ module Foreign.Hoppy.Generator.Spec.Function (fnT, fnT') where
 
 import Foreign.Hoppy.Generator.Spec.Base (Type, Parameter)
 
+-- | A function taking parameters and returning a value (or 'voidT').  Function
+-- pointers must wrap a 'fnT' in a 'ptrT'.
+--
+-- See also 'fnT'' which accepts parameter information.
 fnT :: [Type] -> Type -> Type
 
+-- | A version of 'fnT' that accepts additional information about parameters.
 fnT' :: [Parameter] -> Type -> Type

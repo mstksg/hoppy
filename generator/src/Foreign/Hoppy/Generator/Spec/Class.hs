@@ -2015,13 +2015,27 @@ toHsClassEntityName' cls name =
     FnName name -> toExtName name
     FnOp op -> operatorPreferredExtName op
 
-sayCppExportVar :: Type
-                -> Maybe (Type, Type)
-                -> Bool
-                -> ExtName
-                -> ExtName
-                -> LC.Generator ()
-                -> LC.Generator ()
+-- | Generates C++ gateway functions (via 'Function.sayCppExportFn') for getting
+-- and setting a variable (possibly a class variable).
+sayCppExportVar ::
+     Type  -- ^ The type that the variable holds.
+  -> Maybe (Type, Type)
+     -- ^ @Nothing@ if the variable is not a class variable.  If it is, then the
+     -- first type is the generated getter's argument type for the object, and
+     -- the second is the generated setter's argument type.  For a class @cls@,
+     -- this can be:
+     --
+     -- > Just ('ptrT' $ 'constT' $ 'objT' cls, 'ptrT' $ 'objT' cls)
+  -> Bool
+     -- ^ Whether to generate a getter.  Passing false here is useful when a
+     -- variable's type can't be sensibly converted to a foreign language's
+     -- value.
+  -> ExtName
+     -- ^ An external name from which to generate a getter function name.
+  -> ExtName
+     -- ^ An external name from which to generate a setter function name.
+  -> LC.Generator ()  -- ^ A C++ generator that emits the variable name.
+  -> LC.Generator ()
 sayCppExportVar t maybeThisTypes gettable getterName setterName sayVarName = do
   let (isConst, deconstType) = case t of
         Internal_TConst t -> (True, t)
@@ -2047,15 +2061,27 @@ sayCppExportVar t maybeThisTypes gettable getterName setterName sayVarName = do
                             mempty
                             True
 
-sayHsExportVar :: LH.SayExportMode
-               -> Type
-               -> Maybe Class
-               -> Bool
-               -> ExtName
-               -> ExtName
-               -> ExtName
-               -> ExtName
-               -> LH.Generator ()
+-- | Generates Haskell gateway functions (via 'Function.sayHsExportFn') for
+-- getting and setting a variable (possibly a class variable).
+sayHsExportVar ::
+     LH.SayExportMode  -- ^ The phase of code generation.
+  -> Type  -- ^ The type that the variable holds.
+  -> Maybe Class
+     -- ^ The type of the class holding the variable, if generating code for a
+     -- class variable.
+  -> Bool
+     -- ^ Whether to generate a getter.  Passing false here is useful when a
+     -- variable's type can't be sensibly converted to a foreign language's
+     -- value.
+  -> ExtName
+     -- ^ An external name for the getter.
+  -> ExtName
+     -- ^ A foreign external name for the getter.  See 'Function.sayHsExportFn'.
+  -> ExtName
+     -- ^ An external name for the setter.
+  -> ExtName
+     -- ^ A foreign external name for the setter.  See 'Function.sayHsExportFn'.
+  -> LH.Generator ()
 sayHsExportVar mode
                t
                classIfNonstatic

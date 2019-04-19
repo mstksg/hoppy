@@ -629,6 +629,10 @@ cppTypeToHsTypeAndUse side t =
 getClassHaskellConversion :: Class -> ClassHaskellConversion
 getClassHaskellConversion = classHaskellConversion . classConversion
 
+-- | Combines the given exception handlers (from a particular exported entity)
+-- with the handlers from the current module and interface.  The given handlers
+-- have highest precedence, followed by module handlers, followed by interface
+-- handlers.
 getEffectiveExceptionHandlers :: ExceptionHandlers -> Generator ExceptionHandlers
 getEffectiveExceptionHandlers handlers = do
   ifaceHandlers <- interfaceExceptionHandlers <$> askInterface

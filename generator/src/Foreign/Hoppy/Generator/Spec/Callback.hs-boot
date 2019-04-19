@@ -23,4 +23,5 @@ import Foreign.Hoppy.Generator.Spec.Base (Type)
 
 data Callback
 
+-- | Constructs a type value for a callback.
 callbackT :: Callback -> Type

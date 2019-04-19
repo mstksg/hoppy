@@ -73,14 +73,19 @@ import Foreign.Hoppy.Generator.Spec.Base
 import {-# SOURCE #-} Foreign.Hoppy.Generator.Spec.Class (classIdentifier, classReqs)
 import Foreign.Hoppy.Generator.Types
 
--- TODO Wow let's make this not a type synonym.
+-- | A generator monad for C++ code.
+--
+-- TODO This should not simply be a type synonym.
 type Generator = ReaderT Env (WriterT [Chunk] (Either ErrorMsg))
 
+-- | Context information for generating C++ code.
 data Env = Env
   { envInterface :: Interface
   , envModule :: Module
   }
 
+-- | Runs a generator action and returns its output, or an error message if
+-- unsuccessful.
 execGenerator :: Interface -> Module -> Maybe String -> Generator a -> Either ErrorMsg String
 execGenerator interface m maybeHeaderGuardName action = do
   chunk <- execChunkWriterT $ runReaderT action $ Env interface m
@@ -100,19 +105,28 @@ execGenerator interface m maybeHeaderGuardName action = do
     forM_ maybeHeaderGuardName $ \x ->
       says ["\n#endif  // ifndef ", x, "\n"]
 
+-- | Adds @#include@ statements to the includes block generated at the top of
+-- the currently generating file.
 addIncludes :: MonadWriter [Chunk] m => [Include] -> m ()
 addIncludes = tell . (:[]) . includesChunk . S.fromList
 
+-- | Adds an @#include@ statement to the includes block generated at the top of
+-- the currently generating file.
 addInclude :: MonadWriter [Chunk] m => Include -> m ()
 addInclude = addIncludes . (:[])
 
--- Have to call this addReqsM, addReqs is taken by HasReqs.
+-- | Adds requirements ('Reqs' i.e. C++ includes) to the includes block
+-- generated at the top of the currently generating file.
+--
+-- Have to call this @addReqsM@, 'addReqs' is taken by 'HasReqs'.
 addReqsM :: MonadWriter [Chunk] m => Reqs -> m ()
 addReqsM = tell . (:[]) . includesChunk . reqsIncludes
 
+-- | Returns the currently generating interface.
 askInterface :: MonadReader Env m => m Interface
 askInterface = fmap envInterface ask
 
+-- | Returns the currently generating module.
 askModule :: MonadReader Env m => m Module
 askModule = fmap envModule ask
 
@@ -120,11 +134,10 @@ askModule = fmap envModule ask
 abort :: ErrorMsg -> Generator a
 abort = lift . lift . Left
 
-cppNameSeparator :: String
-cppNameSeparator = "__"
-
+-- | Constructs a C++ identifier by combining a list of strings with @__@.
 makeCppName :: [String] -> String
 makeCppName = intercalate cppNameSeparator
+  where cppNameSeparator = "__"
 
 -- | \"genpop\" is the prefix used for individually exported functions.
 externalNamePrefix :: String
@@ -337,7 +350,16 @@ typePrecedence t = case t of
   Internal_TRef {} -> 9
   _ -> 8
 
-sayFunction :: String -> [String] -> Type -> Maybe (Generator ()) -> Generator ()
+-- | Renders a C++ function.
+sayFunction ::
+     String  -- ^ Function name.
+  -> [String]  -- ^ Parameter names.
+  -> Type  -- ^ Function type.  This should use 'fnT' or 'fnT''.
+  -> Maybe (Generator ())
+     -- ^ If present, then the function is defined and the action here is used
+     -- to render its body.  If absent, then the function is only declared (no
+     -- function body).
+  -> Generator ()
 sayFunction name paramNames t maybeBody = do
   case t of
     Internal_TFn {} -> return ()
@@ -367,6 +389,9 @@ typeToCType t = case t of
   Internal_TManual s -> conversionSpecCppConversionType $ conversionSpecCpp s
   _ -> return Nothing
 
+-- | Returns the requirements to refer to a type from C++ code.  This is a
+-- monadic function so that it has access to the environment, but it does not
+-- emit any code.
 typeReqs :: Type -> Generator Reqs
 typeReqs t = case t of
   Internal_TVoid -> return mempty
@@ -381,12 +406,18 @@ typeReqs t = case t of
   Internal_TConst t' -> typeReqs t'
   Internal_TManual s -> conversionSpecCppReqs $ conversionSpecCpp s
 
+-- | Looks up the module exporting the given external name in the current
+-- interface.  'abort' is called if the external name is not found.
 findExportModule :: ExtName -> Generator Module
 findExportModule extName =
   fromMaybeM (abort $ concat
               ["findExportModule: Can't find module exporting ", fromExtName extName, "."]) =<<
   fmap (M.lookup extName . interfaceNamesToModules) askInterface
 
+-- | Combines the given exception handlers (from a particular exported entity)
+-- with the handlers from the current module and interface.  The given handlers
+-- have highest precedence, followed by module handlers, followed by interface
+-- handlers.
 getEffectiveExceptionHandlers :: ExceptionHandlers -> Generator ExceptionHandlers
 getEffectiveExceptionHandlers handlers = do
   ifaceHandlers <- interfaceExceptionHandlers <$> askInterface

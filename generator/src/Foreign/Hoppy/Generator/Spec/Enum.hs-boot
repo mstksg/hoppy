@@ -23,4 +23,5 @@ import Foreign.Hoppy.Generator.Spec.Base (Type)
 
 data CppEnum
 
+-- | Constructs a type value for an enum.
 enumT :: CppEnum -> Type

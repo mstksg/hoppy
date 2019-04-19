@@ -159,6 +159,7 @@ makeConversion cb =
 
 -- | Constructs a type value for a callback.
 callbackT :: Callback -> Type
+-- (Keep docs in sync with hs-boot.)
 callbackT = manualT . makeConversion
 
 -- | Returns the name of the outer, copyable C++ class for a callback.
@@ -276,7 +277,7 @@ sayCppExport mode cb = do
                                [1..paramCount])
                      fnType $ Just $ do
         -- Convert arguments that aren't passed in directly.
-        mapM_ (Function.sayCppArgRead Function.DoEncode) $
+        mapM_ (Function.sayCppArgRead Function.FromCpp) $
           zip3 [1..] paramTypes paramCTypeMaybes
 
         when throws $ do

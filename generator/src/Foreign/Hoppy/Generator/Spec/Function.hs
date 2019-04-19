@@ -32,9 +32,10 @@ module Foreign.Hoppy.Generator.Spec.Function (
   fnReqs,
   fnAddendum,
   fnExceptionHandlers,
-  -- * C++ generator
+  -- * Code generators
+  CallDirection (..),
+  -- ** C++ generator
   CppCallType (..),
-  CoderDirection (..),
   sayCppArgRead,
   sayCppArgNames,
   -- * Internal
@@ -42,7 +43,6 @@ module Foreign.Hoppy.Generator.Spec.Function (
   sayCppExportFn,
   -- ** Haskell generator
   sayHsExportFn,
-  CallDirection (..),
   sayHsArgProcessing,
   sayHsCallAndProcessReturn,
   fnToHsTypeAndUse,
@@ -138,10 +138,12 @@ makeFn cName maybeExtName purity paramTypes retType =
 --
 -- See also 'fnT'' which accepts parameter information.
 fnT :: [Type] -> Type -> Type
+-- (Keep docs in sync with hs-boot.)
 fnT = Internal_TFn . map toParameter
 
 -- | A version of 'fnT' that accepts additional information about parameters.
 fnT' :: [Parameter] -> Type -> Type
+-- (Keep docs in sync with hs-boot.)
 fnT' = Internal_TFn
 
 sayCppExport :: LC.SayExportMode -> Function -> LC.Generator ()
@@ -159,20 +161,45 @@ sayCppExport mode fn = case mode of
                    (fnExceptionHandlers fn)
                    True  -- Render the body.
 
+-- | The direction between languages in which a value is being passed.
+data CallDirection =
+  ToCpp  -- ^ Haskell code is calling out to C++.
+  | FromCpp  -- ^ C++ is invoking a callback.
+  deriving (Show)
+
+-- | The name of a function to call.
 data CppCallType =
     CallOp Operator
+    -- ^ A call to the given operator, for example @x++@, @x * y@, @a[i]@.
   | CallFn (LC.Generator ())
+    -- ^ A call to the function whose name is emitted by the given action.
   | VarRead (LC.Generator ())
+    -- ^ Not a function call, but a read from a variable whose name is emitted
+    -- by the given action.
   | VarWrite (LC.Generator ())
+    -- ^ Not a function call, but a write to a variable whose name is emitted by
+    -- the given action.
 
+-- | Generates a C++ wrapper function for calling a C++ function (or method, or
+-- reading from or writing to a variable).  The generated function handles
+-- C++-side marshalling of values and propagating exceptions as requested.
+--
+-- See also 'sayHsExportFn'.
 sayCppExportFn ::
-     ExtName
-  -> CppCallType
+     ExtName  -- ^ The external name of the function.
+  -> CppCallType  -- ^ The C++ name at which the function can be invoked.
   -> Maybe Type
-  -> [Parameter]
-  -> Type
+     -- ^ If present, then we are wrapping a method within some class, and the
+     -- type is that of the class.
+  -> [Parameter]  -- ^ Info about the function's parameters.
+  -> Type  -- ^ The function's return type.
   -> ExceptionHandlers
+     -- ^ Exception handlers configured on the function itself.  No need to call
+     -- 'LC.getEffectiveExceptionHandlers' to combine the function's handlers
+     -- with those from the module and interface; this function does that already.
   -> Bool
+     -- ^ Whether to generate the function definition.  If false, only the
+     -- declaration is generated (no function body).
   -> LC.Generator ()
 sayCppExportFn extName callType maybeThisType params retType exceptionHandlers sayBody = do
   handlerList <- exceptionHandlersList <$> LC.getEffectiveExceptionHandlers exceptionHandlers
@@ -218,7 +245,7 @@ sayCppExportFn extName callType maybeThisType params retType exceptionHandlers s
         LC.says ["*", LC.exceptionIdArgName, " = 0;\n"]
 
       -- Convert arguments that aren't passed in directly.
-      mapM_ (sayCppArgRead DoDecode) $ zip3 [1..] paramTypes paramCTypeMaybes
+      mapM_ (sayCppArgRead ToCpp) $ zip3 [1..] paramTypes paramCTypeMaybes
 
       let -- Determines how to call the exported function or method.
           sayCall = case callType of
@@ -333,13 +360,11 @@ sayCppExportFn extName callType maybeThisType params retType exceptionHandlers s
           LC.say "return new" >> LC.sayIdentifier (Class.classIdentifier cls) >> LC.say "(" >>
           sayCall >> LC.say ");\n"
 
-data CoderDirection = DoDecode | DoEncode
-                    deriving (Eq, Show)
-
--- | If @dir@ is 'DoDecode', then we are a C++ function reading an argument from
--- foreign code.  If @dir@ is 'DoEncode', then we are invoking a foreign
--- callback.
-sayCppArgRead :: CoderDirection -> (Int, Type, Maybe Type) -> LC.Generator ()
+-- | Generates code to marshal a value between a C++ type and the intermediate
+-- type to be used over the FFI.  If @dir@ is 'ToCpp', then we are a C++
+-- function reading an argument from foreign code.  If @dir@ is 'FromCpp', then
+-- we are invoking a foreign callback.
+sayCppArgRead :: CallDirection -> (Int, Type, Maybe Type) -> LC.Generator ()
 sayCppArgRead dir (n, stripConst . normalizeType -> cppType, maybeCType) = case cppType of
   t@(Internal_TPtr (Internal_TFn params retType)) -> do
     -- Assert that all types referred to in a function pointer type are all
@@ -363,16 +388,16 @@ sayCppArgRead dir (n, stripConst . normalizeType -> cppType, maybeCType) = case 
   Internal_TObj _ -> convertObj $ constT cppType
 
   Internal_TObjToHeap cls -> case dir of
-    DoDecode -> error $ objToHeapTWrongDirectionErrorMsg (Just "sayCppArgRead") cls
-    DoEncode -> do
+    ToCpp -> error $ objToHeapTWrongDirectionErrorMsg (Just "sayCppArgRead") cls
+    FromCpp -> do
       LC.sayIdentifier $ Class.classIdentifier cls
       LC.says ["* ", LC.toArgName n, " = new "]
       LC.sayIdentifier $ Class.classIdentifier cls
       LC.says ["(", LC.toArgNameAlt n, ");\n"]
 
   Internal_TToGc t' -> case dir of
-    DoDecode -> error $ toGcTWrongDirectionErrorMsg (Just "sayCppArgRead") t'
-    DoEncode -> do
+    ToCpp -> error $ toGcTWrongDirectionErrorMsg (Just "sayCppArgRead") t'
+    FromCpp -> do
       let newCppType = case t' of
             -- In the case of (TToGc (TObj _)), we copy the temporary object to
             -- the heap and let the foreign language manage that value.
@@ -385,8 +410,8 @@ sayCppArgRead dir (n, stripConst . normalizeType -> cppType, maybeCType) = case 
   Internal_TManual s -> do
     let maybeConvExpr =
           (case dir of
-             DoDecode -> conversionSpecCppConversionToCppExpr
-             DoEncode -> conversionSpecCppConversionFromCppExpr) $
+             ToCpp -> conversionSpecCppConversionToCppExpr
+             FromCpp -> conversionSpecCppConversionFromCppExpr) $
           conversionSpecCpp s
     forM_ maybeConvExpr $ \gen ->
       gen (LC.say $ LC.toArgNameAlt n) (Just $ LC.say $ LC.toArgName n)
@@ -400,17 +425,19 @@ sayCppArgRead dir (n, stripConst . normalizeType -> cppType, maybeCType) = case 
         -- TODO Do we need to handle TConst?
         convertDefault = forM_ maybeCType $ \cType ->
           LC.abort $ concat
-          ["sayCppArgRead: Don't know how to ", show dir, " between C-type ", show cType,
+          ["sayCppArgRead: Don't know how to convert ", show dir, " between C-type ", show cType,
            " and C++-type ", show cppType, "."]
 
         convertObj cppType' = case dir of
-          DoDecode -> do
+          ToCpp -> do
             LC.sayVar (LC.toArgName n) Nothing $ refT cppType'
             LC.says [" = *", LC.toArgNameAlt n, ";\n"]
-          DoEncode -> do
+          FromCpp -> do
             LC.sayVar (LC.toArgName n) Nothing $ ptrT cppType'
             LC.says [" = &", LC.toArgNameAlt n, ";\n"]
 
+-- | Prints a comma-separated list of the argument names used for C++ gateway
+-- functions.  The number specifies how many names to print.
 sayCppArgNames :: Int -> LC.Generator ()
 sayCppArgNames count =
   LC.says $ intersperse ", " $ map LC.toArgName [1..count]
@@ -420,14 +447,28 @@ sayHsExport mode fn =
   (sayHsExportFn mode <$> fnExtName <*> fnExtName <*> fnPurity <*>
    fnParams <*> fnReturn <*> fnExceptionHandlers) fn
 
-sayHsExportFn :: LH.SayExportMode
-              -> ExtName
-              -> ExtName
-              -> Purity
-              -> [Parameter]
-              -> Type
-              -> ExceptionHandlers
-              -> LH.Generator ()
+-- | Generates a Haskell wrapper function for calling a C++ function (or method,
+-- or reading from or writing to a variable, as with 'sayCppExportFn').  The
+-- generated function handles Haskell-side marshalling of values and propagating
+-- exceptions as requested.
+sayHsExportFn ::
+     LH.SayExportMode  -- ^ The phase of code generation.
+  -> ExtName
+     -- ^ The external name for the entity we're generating.  For class
+     -- entities, this will include the class's external name as a prefix.
+  -> ExtName
+     -- ^ An alternate external name to use to generate Haskell function names.
+     -- For non-class entities, this can be just the regular external name.  For
+     -- class entities, in order to strip off the class name that was added so
+     -- that the entity's external name is unique, this can just be the name of
+     -- the function, variable, etc.
+  -> Purity  -- ^ Whether or not the function is pure (free of side effects).
+  -> [Parameter]  -- ^ Parameter info.
+  -> Type  -- ^ The return type.
+  -> ExceptionHandlers
+     -- ^ Any exception handlers to apply to the binding, in addition to what
+     -- its module and interface provide.
+  -> LH.Generator ()
 sayHsExportFn mode extName foreignName purity params retType exceptionHandlers = do
   effectiveHandlers <- LH.getEffectiveExceptionHandlers exceptionHandlers
   let handlerList = exceptionHandlersList effectiveHandlers
@@ -499,11 +540,25 @@ sayHsExportFn mode extName foreignName purity params retType exceptionHandlers =
       -- If this changes, revisit the comment on hsFnName above.
       return ()
 
-data CallDirection =
-  ToCpp  -- ^ Haskell code is calling out to C++.
-  | FromCpp  -- ^ C++ is invoking a callback.
-
-sayHsArgProcessing :: CallDirection -> Type -> String -> String -> LH.Generator ()
+-- | Generates Haskell code to perform marshalling of a function's argument in a
+-- specified direction.
+--
+-- This function either generates a line or lines such that subsequent lines can
+-- refer to the output binding.  The final line is either terminated with
+--
+-- > ... $ \value ->
+--
+-- or
+--
+-- > let ... in
+--
+-- so that precedence is not an issue.
+sayHsArgProcessing ::
+     CallDirection  -- ^ The direction of the FFI call.
+  -> Type  -- ^ The type of the value to be marshalled.
+  -> String  -- ^ The name of the binding holding the input value.
+  -> String  -- ^ The name of the binding to create for the output value.
+  -> LH.Generator ()
 sayHsArgProcessing dir t fromVar toVar =
   LH.withErrorContext ("processing argument of type " ++ show t) $
   case t of
