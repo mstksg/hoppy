@@ -26,36 +26,31 @@ import Foreign.Hoppy.Test.Interfaces.Circular.Flub
 
 flobModule :: Module
 flobModule =
-  addReqIncludes [includeLocal "flob.hpp"] $
+  addReqIncludes [includeStd "flob.hpp"] $
   moduleModify' (makeModule "flob" "flobm.hpp" "flobm.cpp") $
   moduleAddExports
-  [ ExportClass c_FlobClass
-  , ExportFn f_takesFlubValues
-  , ExportFn f_returnsFlubClass
-  , ExportFn f_returnsFlubEnum
-  , ExportFn f_returnsFlubBitspace
+  [ toExport c_FlobClass
+  , toExport f_takesFlubValues
+  , toExport f_returnsFlubClass
+  , toExport f_returnsFlubEnum
   ]
 
 c_FlobClass :: Class
 c_FlobClass =
   makeClass (ident "FlobClass") Nothing []
-  [ mkCtor "new" []
+  [ mkCtor "new" np
   , mkConstMethod "invokeCallback" [callbackT cb_FlubCallback] voidT
   ]
 
 f_takesFlubValues :: Function
 f_takesFlubValues =
   makeFn (ident "takesFlubValues") Nothing Nonpure
-  [ptrT $ objT c_FlubClass, enumT e_FlubEnum, bitspaceT bs_FlubBitspace] voidT
+  [ptrT $ objT c_FlubClass, enumT e_FlubEnum] voidT
 
 f_returnsFlubClass :: Function
 f_returnsFlubClass =
-  makeFn (ident "returnsFlubClass") Nothing Nonpure [] $ ptrT $ objT c_FlubClass
+  makeFn (ident "returnsFlubClass") Nothing Nonpure np $ ptrT $ objT c_FlubClass
 
 f_returnsFlubEnum :: Function
 f_returnsFlubEnum =
-  makeFn (ident "returnsFlubEnum") Nothing Nonpure [] $ enumT e_FlubEnum
-
-f_returnsFlubBitspace :: Function
-f_returnsFlubBitspace =
-  makeFn (ident "returnsFlubBitspace") Nothing Nonpure [] $ bitspaceT bs_FlubBitspace
+  makeFn (ident "returnsFlubEnum") Nothing Nonpure np $ enumT e_FlubEnum

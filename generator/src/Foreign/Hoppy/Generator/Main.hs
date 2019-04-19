@@ -49,7 +49,9 @@ import Data.List (intercalate)
 import qualified Data.Map as M
 import Data.Map (Map)
 import Data.Maybe (fromMaybe)
-import Foreign.Hoppy.Generator.Common (writeFileIfDifferent)
+import Foreign.Hoppy.Generator.Common (fromMaybeM, writeFileIfDifferent)
+import Foreign.Hoppy.Generator.Hook (internalEvaluateEnumsForInterface)
+import qualified Foreign.Hoppy.Generator.Language.Cpp as Cpp
 import qualified Foreign.Hoppy.Generator.Language.Cpp.Internal as Cpp
 import qualified Foreign.Hoppy.Generator.Language.Haskell.Internal as Haskell
 import Foreign.Hoppy.Generator.Spec
@@ -73,44 +75,80 @@ data Action =
     -- ^ Generates C++ wrappers for an interface in the given location.
   | GenHaskell FilePath
     -- ^ Generates Haskell bindings for an interface in the given location.
+  | KeepTempOutputsOnFailure
+    -- ^ Instructs the generator to keep on disk any temporary programs or files
+    -- created, in case of failure.
+  | DumpExtNames
+    -- ^ Dumps to stdout information about all external names in the current
+    -- interface.
+  | DumpEnums
+    -- ^ Dumps to stdout information about all enums in the current interface.
 
 data AppState = AppState
   { appInterfaces :: Map String Interface
-  , appCurrentInterface :: Interface
+  , appCurrentInterfaceName :: String
   , appCaches :: Caches
+  , appKeepTempOutputsOnFailure :: Bool
   }
+
+appCurrentInterface :: AppState -> Interface
+appCurrentInterface state =
+  let name = appCurrentInterfaceName state
+  in case M.lookup name $ appInterfaces state of
+       Just iface -> iface
+       Nothing ->
+         error $
+         "Main.appCurrentInterface: Internal error, couldn't find current interface " ++
+         show name ++ "."
 
 initialAppState :: [Interface] -> AppState
 initialAppState ifaces = AppState
   { appInterfaces = M.fromList $ map (interfaceName &&& id) ifaces
-  , appCurrentInterface = head ifaces
+  , appCurrentInterfaceName = interfaceName $ head ifaces
   , appCaches = M.empty
+  , appKeepTempOutputsOnFailure = False
   }
 
 type Caches = Map String InterfaceCache
 
 data InterfaceCache = InterfaceCache
-  { cacheInterface :: Interface
-  , generatedCpp :: Maybe Cpp.Generation
+  { generatedCpp :: Maybe Cpp.Generation
   , generatedHaskell :: Maybe Haskell.Generation
   }
 
-emptyCache :: Interface -> InterfaceCache
-emptyCache iface = InterfaceCache iface Nothing Nothing
+emptyCache :: InterfaceCache
+emptyCache = InterfaceCache Nothing Nothing
 
-getGeneratedCpp :: InterfaceCache -> IO (InterfaceCache, Either String Cpp.Generation)
-getGeneratedCpp cache = case generatedCpp cache of
-  Just gen -> return (cache, Right gen)
-  _ -> case Cpp.generate $ cacheInterface cache of
-    l@(Left _) -> return (cache, l)
-    r@(Right gen) -> return (cache { generatedCpp = Just gen }, r)
+getGeneratedCpp ::
+  AppState
+  -> Interface
+  -> InterfaceCache
+  -> IO (Interface, InterfaceCache, Either String Cpp.Generation)
+getGeneratedCpp state iface cache = case generatedCpp cache of
+  Just gen -> return (iface, cache, Right gen)
+  _ -> do
+    iface' <- evaluateEnums state iface
+    case Cpp.generate iface' of
+      l@(Left _) -> return (iface', cache, l)
+      r@(Right gen) -> return (iface', cache { generatedCpp = Just gen }, r)
 
-getGeneratedHaskell :: InterfaceCache -> IO (InterfaceCache, Either String Haskell.Generation)
-getGeneratedHaskell cache = case generatedHaskell cache of
-  Just gen -> return (cache, Right gen)
-  _ -> case Haskell.generate $ cacheInterface cache of
-    l@(Left _) -> return (cache, l)
-    r@(Right gen) -> return (cache { generatedHaskell = Just gen }, r)
+getGeneratedHaskell ::
+  AppState
+  -> Interface
+  -> InterfaceCache
+  -> IO (Interface, InterfaceCache, Either String Haskell.Generation)
+getGeneratedHaskell state iface cache = case generatedHaskell cache of
+  Just gen -> return (iface, cache, Right gen)
+  _ -> do
+    iface' <- evaluateEnums state iface
+    case Haskell.generate iface' of
+      l@(Left _) -> return (iface', cache, l)
+      r@(Right gen) -> return (iface', cache { generatedHaskell = Just gen }, r)
+
+evaluateEnums :: AppState -> Interface -> IO Interface
+evaluateEnums state iface =
+  internalEvaluateEnumsForInterface iface $
+  appKeepTempOutputsOnFailure state
 
 -- | This provides a simple @main@ function for a generator.  Define your @main@
 -- as:
@@ -183,6 +221,13 @@ usage stateVar = do
     , "  --gen-cpp <outdir>          Generate C++ bindings in a directory."
     , "  --gen-hs <outdir>           Generate Haskell bindings under the given"
     , "                              top-level source directory."
+    , "  --keep-temp-outputs-on-failure"
+    , "                              Keeps on disk any temporary programs that fail"
+    , "                              to build.  Pass this before --gen-* commands."
+    , "  --dump-ext-names            Lists the current interface's external names."
+    , "  --dump-enums                Lists the current interface's enum data."
+    , ""
+    , "Arguments are processed in the order seen."
     ]
 
 processArgs :: MVar AppState -> [String] -> IO [Action]
@@ -198,7 +243,7 @@ processArgs stateVar args =
               "--interface: Interface '" ++ name ++ "' doesn't exist in this generator."
             _ <- exitFailure
             return state
-          Just iface -> return state { appCurrentInterface = iface }
+          Just _ -> return state { appCurrentInterfaceName = name }
       (SelectInterface name:) <$> processArgs stateVar rest
 
     "--list-interfaces":rest -> do
@@ -259,6 +304,40 @@ processArgs stateVar args =
             uncurry $ writeGeneratedFile baseDir
           (GenHaskell baseDir:) <$> processArgs stateVar rest
 
+    "--dump-ext-names":rest -> do
+      withCurrentCache stateVar $ \_ iface cache -> do
+        forM_ (interfaceModules iface) $ \mod ->
+          forM_ (moduleExports mod) $ \export ->
+          forM_ (getAllExtNames export) $ \extName ->
+          putStrLn $ "extname module=" ++ moduleName mod ++ " name=" ++ fromExtName extName
+        return (iface, cache, ())
+      (DumpExtNames:) <$> processArgs stateVar rest
+
+    "--dump-enums":rest -> do
+      withCurrentCache stateVar $ \state iface cache -> do
+        iface' <- evaluateEnums state iface
+        allEvaluatedData <- flip fromMaybeM (interfaceEvaluatedEnumData iface') $ do
+          hPutStrLn stderr $ "--dump-enums expected to have evaluated enum data, but doesn't."
+          exitFailure
+        forM_ (M.toList allEvaluatedData) $ \(extName, evaluatedData) -> do
+          mod <- flip fromMaybeM (M.lookup extName $ interfaceNamesToModules iface) $ do
+            hPutStrLn stderr $
+              "--dump-enums couldn't find module for enum " ++ show extName ++ "."
+            exitFailure
+          let typeStr =
+                Cpp.chunkContents $ Cpp.execChunkWriter $
+                Cpp.sayType Nothing $ evaluatedEnumType evaluatedData
+          putStrLn $ "enum name=" ++ fromExtName extName ++ " module=" ++ moduleName mod ++
+            " type=" ++ typeStr
+          forM_ (M.toList $ evaluatedEnumValueMap evaluatedData) $ \(words, number) ->
+            putStrLn $ "entry value=" ++ show number ++ " name=" ++ show words
+        return (iface', cache, ())
+      (DumpEnums:) <$> processArgs stateVar rest
+
+    "--keep-temp-outputs-on-failure":rest -> do
+      modifyMVar_ stateVar $ \state -> return $ state { appKeepTempOutputsOnFailure = True }
+      (KeepTempOutputsOnFailure:) <$> processArgs stateVar rest
+
     arg:_ -> do
       hPutStrLn stderr $ "Invalid option or missing argument for '" ++ arg ++ "'."
       exitFailure
@@ -269,15 +348,20 @@ writeGeneratedFile baseDir subpath contents = do
   createDirectoryIfMissing True $ takeDirectory path
   writeFileIfDifferent path contents
 
-withCurrentCache :: MVar AppState -> (InterfaceCache -> IO (InterfaceCache, a)) -> IO a
+withCurrentCache ::
+  MVar AppState
+  -> (AppState -> Interface -> InterfaceCache -> IO (Interface, InterfaceCache, a))
+  -> IO a
 withCurrentCache stateVar fn = modifyMVar stateVar $ \state -> do
-  let currentInterface = appCurrentInterface state
-      name = interfaceName currentInterface
-  (cache, result) <- fn $
-                     fromMaybe (emptyCache currentInterface) $
-                     M.lookup name $
-                     appCaches state
-  return (state { appCaches = M.insert name cache $ appCaches state }, result)
+  let iface = appCurrentInterface state
+      name = interfaceName iface
+  let cache = fromMaybe emptyCache $ M.lookup name $ appCaches state
+  (iface', cache', result) <- fn state iface cache
+  return ( state { appInterfaces = M.insert name iface' $ appInterfaces state
+                 , appCaches = M.insert name cache' $ appCaches state
+                 }
+         , result
+         )
 
 listInterfaces :: MVar AppState -> IO ()
 listInterfaces = mapM_ (putStrLn . interfaceName) <=< getInterfaces

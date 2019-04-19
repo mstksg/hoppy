@@ -24,6 +24,16 @@ import Data.Monoid (mconcat)
 #endif
 import Foreign.Hoppy.Generator.Language.Haskell (addExport, addImports, indent, sayLn)
 import Foreign.Hoppy.Generator.Spec
+import Foreign.Hoppy.Generator.Spec.Class (
+  Class,
+  ClassHaskellConversion (..),
+  classSetHaskellConversion,
+  makeClass,
+  mkCtor,
+  mkConstMethod,
+  mkConstMethod',
+  mkMethod',
+  )
 import Foreign.Hoppy.Generator.Types
 import Language.Haskell.Syntax (
   HsName (HsIdent),
@@ -57,14 +67,14 @@ c_string =
           sayLn "HoppyFC.peekCStringLen (p, HoppyP.fromIntegral n) <* HoppyFHR.touchCppPtr s"
       } $
   makeClass (ident1 "std" "string") (Just $ toExtName "StdString") []
-  [ mkCtor "new" []
+  [ mkCtor "new" np
   , mkCtor "newFromCString" [ptrT $ constT charT]
   , mkCtor "newFromCStringLen_raw" [ptrT $ constT charT, sizeT]
   , mkMethod' "at" "at" [intT] $ refT charT
   , mkConstMethod' "at" "get" [intT] charT
-  , mkConstMethod "c_str" [] $ ptrT $ constT charT
-  , mkConstMethod "data" [] $ ptrT $ constT charT
-  , mkConstMethod "size" [] sizeT
+  , mkConstMethod "c_str" np $ ptrT $ constT charT
+  , mkConstMethod "data" np $ ptrT $ constT charT
+  , mkConstMethod "size" np sizeT
   ]
   where
     addendum = do

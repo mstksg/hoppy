@@ -39,11 +39,22 @@ import Foreign.Hoppy.Generator.Language.Haskell (
   prettyPrint,
   sayLn,
   saysLn,
+  )
+import Foreign.Hoppy.Generator.Spec
+import Foreign.Hoppy.Generator.Spec.Class (
+  Class,
+  MethodApplicability (MNormal),
+  makeClass,
+  makeFnMethod,
+  mkConstMethod,
+  mkConstMethod',
+  mkCtor,
+  mkMethod,
+  mkMethod',
   toHsCastMethodName,
   toHsDataTypeName,
   toHsClassEntityName,
   )
-import Foreign.Hoppy.Generator.Spec
 import Foreign.Hoppy.Generator.Std (ValueConversion (ConvertPtr, ConvertValue))
 import Foreign.Hoppy.Generator.Std.Internal (includeHelper)
 import Foreign.Hoppy.Generator.Std.Iterator
@@ -94,15 +105,15 @@ instantiate' setName t tReqs opts =
         addReqs reqs $
         classAddFeatures (Assignable : Copyable : optUnorderedSetClassFeatures opts) $
         makeClass (ident1T "std" "unordered_set" [t]) (Just $ toExtName setName) []
-        [ mkCtor "new" []
-        , mkMethod' "begin" "begin" [] $ toGcT $ objT iterator
-        , mkConstMethod' "begin" "beginConst" [] $ toGcT $ objT constIterator
-        , mkMethod "clear" [] voidT
+        [ mkCtor "new" np
+        , mkMethod' "begin" "begin" np $ toGcT $ objT iterator
+        , mkConstMethod' "begin" "beginConst" np $ toGcT $ objT constIterator
+        , mkMethod "clear" np voidT
         , mkConstMethod "count" [t] sizeT
           -- TODO count
-        , mkConstMethod "empty" [] boolT
-        , mkMethod' "end" "end" [] $ toGcT $ objT iterator
-        , mkConstMethod' "end" "endConst" [] $ toGcT $ objT constIterator
+        , mkConstMethod "empty" np boolT
+        , mkMethod' "end" "end" np $ toGcT $ objT iterator
+        , mkConstMethod' "end" "endConst" np $ toGcT $ objT constIterator
           -- equalRange: find is good enough.
         , mkMethod' "erase" "erase" [objT iterator] voidT
         , mkMethod' "erase" "eraseRange" [objT iterator, objT iterator] voidT
@@ -113,8 +124,8 @@ instantiate' setName t tReqs opts =
         , makeFnMethod (ident2 "hoppy" "unordered_set" "insertAndGetIterator")
           "insertAndGetIterator" MNormal Nonpure [refT $ objT set, t] $ toGcT $ objT iterator
           -- lower_bound: find is good enough.
-        , mkConstMethod' "max_size" "maxSize" [] sizeT
-        , mkConstMethod "size" [] sizeT
+        , mkConstMethod' "max_size" "maxSize" np sizeT
+        , mkConstMethod "size" np sizeT
         , mkMethod "swap" [refT $ objT set] voidT
           -- upper_bound: find is good enough.
         ]
@@ -224,4 +235,4 @@ instantiate' setName t tReqs opts =
 -- | Converts an instantiation into a list of exports to be included in a
 -- module.
 toExports :: Contents -> [Export]
-toExports m = map (ExportClass . ($ m)) [c_set, c_iterator, c_constIterator]
+toExports m = map (Export . ($ m)) [c_set, c_iterator, c_constIterator]

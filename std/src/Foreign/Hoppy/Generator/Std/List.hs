@@ -39,10 +39,21 @@ import Foreign.Hoppy.Generator.Language.Haskell (
   prettyPrint,
   sayLn,
   saysLn,
+  )
+import Foreign.Hoppy.Generator.Spec
+import Foreign.Hoppy.Generator.Spec.Class (
+  Class,
+  MethodApplicability (MConst),
+  makeClass,
+  makeFnMethod,
+  mkConstMethod,
+  mkConstMethod',
+  mkCtor,
+  mkMethod,
+  mkMethod',
   toHsDataTypeName,
   toHsClassEntityName,
   )
-import Foreign.Hoppy.Generator.Spec
 import Foreign.Hoppy.Generator.Std (ValueConversion (ConvertPtr, ConvertValue))
 import Foreign.Hoppy.Generator.Std.Iterator
 import Foreign.Hoppy.Generator.Types
@@ -92,34 +103,34 @@ instantiate' listName t tReqs opts =
         classAddFeatures features $
         makeClass (ident1T "std" "list" [t]) (Just $ toExtName listName) [] $
         collect
-        [ just $ mkCtor "new" []
-        , just $ mkMethod' "back" "back" [] $ refT t
-        , just $ mkConstMethod' "back" "backConst" [] $ refT $ constT t
-        , just $ mkMethod' "begin" "begin" [] $ toGcT $ objT iterator
-        , just $ mkConstMethod' "begin" "beginConst" [] $ toGcT $ objT constIterator
-        , just $ mkMethod "clear" [] voidT
-        , just $ mkConstMethod "empty" [] boolT
-        , just $ mkMethod' "end" "end" [] $ toGcT $ objT iterator
-        , just $ mkConstMethod' "end" "endConst" [] $ toGcT $ objT constIterator
+        [ just $ mkCtor "new" np
+        , just $ mkMethod' "back" "back" np $ refT t
+        , just $ mkConstMethod' "back" "backConst" np $ refT $ constT t
+        , just $ mkMethod' "begin" "begin" np $ toGcT $ objT iterator
+        , just $ mkConstMethod' "begin" "beginConst" np $ toGcT $ objT constIterator
+        , just $ mkMethod "clear" np voidT
+        , just $ mkConstMethod "empty" np boolT
+        , just $ mkMethod' "end" "end" np $ toGcT $ objT iterator
+        , just $ mkConstMethod' "end" "endConst" np $ toGcT $ objT constIterator
         , just $ mkMethod' "erase" "erase" [objT iterator] voidT
         , just $ mkMethod' "erase" "eraseRange" [objT iterator, objT iterator] voidT
-        , just $ mkMethod' "front" "front" [] $ refT t
-        , just $ mkConstMethod' "front" "frontConst" [] $ refT $ constT t
+        , just $ mkMethod' "front" "front" np $ refT t
+        , just $ mkConstMethod' "front" "frontConst" np $ refT $ constT t
         , just $ mkMethod "insert" [objT iterator, t] $ toGcT $ objT iterator
-        , just $ mkConstMethod' "max_size" "maxSize" [] sizeT
-        , test (Comparable `elem` features) $ mkMethod "merge" [refT $ objT list] voidT
+        , just $ mkConstMethod' "max_size" "maxSize" np sizeT
+        , test (elem Comparable features) $ mkMethod "merge" [refT $ objT list] voidT
           -- TODO merge(list&, Comparator)
-        , just $ mkMethod' "pop_back" "popBack" [] voidT
-        , just $ mkMethod' "pop_front" "popFront" [] voidT
+        , just $ mkMethod' "pop_back" "popBack" np voidT
+        , just $ mkMethod' "pop_front" "popFront" np voidT
         , just $ mkMethod' "push_back" "pushBack" [t] voidT
         , just $ mkMethod' "push_front" "pushFront" [t] voidT
         , test (Equatable `elem` features) $ mkMethod "remove" [t] voidT
           -- TODO remove_if(UnaryPredicate)
         , just $ mkMethod' "resize" "resize" [sizeT] voidT
         , just $ mkMethod' "resize" "resizeWith" [sizeT, t] voidT
-        , just $ mkMethod "reverse" [] voidT
-        , just $ mkConstMethod "size" [] sizeT
-        , test (Comparable `elem` features) $ mkMethod "sort" [] voidT
+        , just $ mkMethod "reverse" np voidT
+        , just $ mkConstMethod "size" np sizeT
+        , test (elem Comparable features) $ mkMethod "sort" np voidT
           -- TODO sort(Comparator)
         , just $ mkMethod' "splice" "spliceAll" [objT iterator, refT $ objT list] voidT
         , just $ mkMethod' "splice" "spliceOne"
@@ -127,7 +138,7 @@ instantiate' listName t tReqs opts =
         , just $ mkMethod' "splice" "spliceRange"
           [objT iterator, refT $ objT list, objT iterator, objT iterator] voidT
         , just $ mkMethod "swap" [refT $ objT list] voidT
-        , test (Equatable `elem` features) $ mkMethod "unique" [] voidT
+        , test (Equatable `elem` features) $ mkMethod "unique" np voidT
           -- TODO unique(BinaryPredicate)
         ]
 
@@ -235,4 +246,4 @@ instantiate' listName t tReqs opts =
 -- | Converts an instantiation into a list of exports to be included in a
 -- module.
 toExports :: Contents -> [Export]
-toExports m = map (ExportClass . ($ m)) [c_list, c_iterator, c_constIterator]
+toExports m = map (Export . ($ m)) [c_list, c_iterator, c_constIterator]

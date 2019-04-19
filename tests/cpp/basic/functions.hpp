@@ -18,10 +18,10 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#include "basic.hpp"
-#include "enum.hpp"
-#include "intbox.hpp"
-#include "ptrctr.hpp"
+#include <basic.hpp>
+#include <enum.hpp>
+#include <intbox.hpp>
+#include <ptrctr.hpp>
 
 // Calculates pi (approximately).
 int piapprox();
@@ -112,10 +112,9 @@ void doubleIntPtr(int*);
 void doubleIntPtrPtr(int**);
 void doubleIntRef(int&);
 
-// Enum and bitspace tests.
+// Enum tests.
 BetterBool betterBoolId(BetterBool);
 BetterBool takesBetterBoolCallback(BetterBoolCallback callback, BetterBool value);
-BetterBool takesBetterBoolsCallback(BetterBoolsCallback callback, BetterBool value);
 
 // Exception tests.
 void throwsBaseException();

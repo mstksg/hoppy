@@ -18,7 +18,6 @@
 module Foreign.Hoppy.Test.Interfaces.Circular.Flub (
   flubModule,
   e_FlubEnum,
-  bs_FlubBitspace,
   c_FlubClass,
   cb_FlubCallback,
   ) where
@@ -29,16 +28,15 @@ import {-# SOURCE #-} Foreign.Hoppy.Test.Interfaces.Circular.Flob
 
 flubModule :: Module
 flubModule =
-  addReqIncludes [includeLocal "flub.hpp"] $
+  addReqIncludes [includeStd "flub.hpp"] $
   moduleModify' (makeModule "flub" "flubm.hpp" "flubm.cpp") $
   moduleAddExports
-  [ ExportVariable v_FlubVar
-  , ExportVariable v_FlubVarConst
-  , ExportEnum e_FlubEnum
-  , ExportBitspace bs_FlubBitspace
-  , ExportClass c_FlubClass
-  , ExportFn f_takesFlobValues
-  , ExportCallback cb_FlubCallback
+  [ toExport v_FlubVar
+  , toExport v_FlubVarConst
+  , toExport e_FlubEnum
+  , toExport c_FlubClass
+  , toExport f_takesFlobValues
+  , toExport cb_FlubCallback
   ]
 
 v_FlubVar :: Variable
@@ -48,15 +46,9 @@ v_FlubVarConst :: Variable
 v_FlubVarConst = makeVariable (ident "flubVarConst") Nothing $ constT charT
 
 e_FlubEnum :: CppEnum
-e_FlubEnum = makeEnum (ident "FlubEnum") Nothing enumValues
-
-bs_FlubBitspace :: Bitspace
-bs_FlubBitspace =
-  bitspaceAddEnum e_FlubEnum $
-  makeBitspace (toExtName "FlubBitspace") intT enumValues
-
-enumValues :: [(Int, [String])]
-enumValues =
+e_FlubEnum =
+  addReqIncludes [includeStd "flub.hpp"] $
+  makeEnum (ident "FlubEnum") Nothing
   [ (0x1, ["option", "a"])
   , (0x2, ["option", "b"])
   , (0x4, ["option", "c"])
@@ -65,7 +57,7 @@ enumValues =
 c_FlubClass :: Class
 c_FlubClass =
   makeClass (ident "FlubClass") Nothing []
-  [ mkCtor "new" []
+  [ mkCtor "new" np
   , mkClassVariable "flubClassVar" intT
   , mkStaticClassVariable "flubStaticClassVar" intT
   , mkStaticClassVariable "flubStaticConstClassVar" $ constT intT

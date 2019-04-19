@@ -31,6 +31,7 @@ module Foreign.Hoppy.Generator.Language.Haskell (
   evalGenerator,
   execGenerator,
   renderPartial,
+  Env (..),
   askInterface,
   askModule,
   askModuleName,
@@ -47,65 +48,24 @@ module Foreign.Hoppy.Generator.Language.Haskell (
   -- * Language extensions
   addExtension,
   -- * Code generation
+  SayExportMode (..),
   sayLn,
   saysLn,
   ln,
   indent,
   indentSpaces,
   sayLet,
-  toHsEnumTypeName,
-  toHsEnumTypeName',
-  toHsEnumCtorName,
-  toHsEnumCtorName',
-  toHsBitspaceTypeName,
-  toHsBitspaceTypeName',
-  toHsBitspaceValueName,
-  toHsBitspaceValueName',
-  toHsBitspaceToNumName,
-  toHsBitspaceToNumName',
-  toHsBitspaceClassName,
-  toHsBitspaceClassName',
-  toHsBitspaceFromValueName,
-  toHsBitspaceFromValueName',
-  toHsValueClassName,
-  toHsValueClassName',
-  toHsWithValuePtrName,
-  toHsWithValuePtrName',
-  toHsPtrClassName,
-  toHsPtrClassName',
-  toHsCastMethodName,
-  toHsCastMethodName',
-  toHsDownCastClassName,
-  toHsDownCastClassName',
-  toHsDownCastMethodName,
-  toHsDownCastMethodName',
-  toHsCastPrimitiveName,
-  toHsCastPrimitiveName',
-  toHsConstCastFnName,
-  toHsConstCastFnName',
-  toHsDataTypeName,
-  toHsDataTypeName',
-  toHsDataCtorName,
-  toHsDataCtorName',
-  toHsClassDeleteFnName',
-  toHsClassDeleteFnPtrName',
-  toHsCtorName,
-  toHsCtorName',
-  toHsMethodName,
-  toHsMethodName',
-  toHsClassEntityName,
-  toHsClassEntityName',
-  toHsCallbackCtorName,
-  toHsCallbackCtorName',
-  toHsCallbackNewFunPtrFnName,
-  toHsCallbackNewFunPtrFnName',
+  getExtNameModule,
+  addExtNameModule,
+  toHsTypeName,
+  toHsTypeName',
   toHsFnName,
   toHsFnName',
   toArgName,
   HsTypeSide (..),
   cppTypeToHsTypeAndUse,
   getClassHaskellConversion,
-  callbackToTFn,
+  getEffectiveExceptionHandlers,
   prettyPrint,
   ) where
 
@@ -113,17 +73,12 @@ module Foreign.Hoppy.Generator.Language.Haskell (
 import Control.Applicative ((<$>))
 #endif
 import Control.Arrow (first)
-#if MIN_VERSION_mtl(2,2,1)
 import Control.Monad.Except (Except, catchError, runExcept, throwError)
-#else
-import Control.Monad.Error (catchError, throwError)
-#endif
 import Control.Monad.Reader (ReaderT, asks, runReaderT)
 import Control.Monad.Writer (WriterT, censor, runWriterT, tell)
 import Data.Char (toUpper)
 import Data.Foldable (forM_)
 import Data.Function (on)
-import Data.Functor (($>))
 import Data.List (intercalate, intersperse)
 import qualified Data.Map as M
 import Data.Maybe (fromMaybe, isJust)
@@ -135,7 +90,15 @@ import qualified Data.Set as S
 import Data.Tuple (swap)
 import Foreign.Hoppy.Generator.Common
 import Foreign.Hoppy.Generator.Spec.Base
-import Foreign.Hoppy.Generator.Types
+import {-# SOURCE #-} Foreign.Hoppy.Generator.Spec.Class (
+  Class,
+  ClassHaskellConversion,
+  classConversion,
+  classExtName,
+  classHaskellConversion,
+  classHaskellConversionType,
+  )
+import Foreign.Hoppy.Generator.Types (constT, objT, ptrT)
 import qualified Language.Haskell.Pretty as P
 import Language.Haskell.Syntax (
   HsName (HsIdent),
@@ -274,11 +237,7 @@ renderImports = map renderModuleImport . M.assocs . getHsImportSet
 -- not end with punctuation.  If there is a suggestion, include it in
 -- parentheses at the end of the message.  'withErrorContext' and 'inFunction'
 -- add context information, and should be given clauses, without punctuation.
-#if MIN_VERSION_mtl(2,2,1)
 type Generator = ReaderT Env (WriterT Output (Except ErrorMsg))
-#else
-type Generator = ReaderT Env (WriterT Output (Either ErrorMsg))
-#endif
 
 -- | Context information for generating Haskell code.
 data Env = Env
@@ -362,9 +321,7 @@ runGenerator :: Interface -> Module -> Generator a -> Either ErrorMsg (Partial, 
 runGenerator iface mod generator =
   let modName = getModuleName iface mod
   in fmap (first (Partial modName) . swap) $
-#if MIN_VERSION_mtl(2,2,1)
      runExcept $
-#endif
      flip catchError (\msg -> throwError $ msg ++ ".") $
      runWriterT $ runReaderT generator $ Env iface mod modName
 
@@ -441,6 +398,33 @@ addExtension :: String -> Generator ()
 addExtension extensionName =
   tell $ mempty { outputExtensions = S.singleton extensionName }
 
+-- | The section of code that Hoppy is generating, for an export.
+data SayExportMode =
+    SayExportForeignImports
+    -- ^ Hoppy is generating @foreign import@ statements for an export.  This is
+    -- separate from the main 'SayExportDecls' phase because foreign import
+    -- statements are emitted directly by a 'Generator', and these need to
+    -- appear earlier in the code.
+  | SayExportDecls
+    -- ^ Hoppy is generating Haskell code to bind to the export.  This is the
+    -- main step of Haskell code generation for an export.
+    --
+    -- Here, imports of Haskell modules should be added with 'LH.addImports'
+    -- rather than emitting an @import@ statement yourself in the foreign import
+    -- step.  'LH.addExtNameModule' may be used to import and reference the
+    -- Haskell module of another export.
+  | SayExportBoot
+    -- ^ If Hoppy needs to generate @hs-boot@ files to break circular
+    -- dependences between generated modules, then for each export in each
+    -- module involved in a cycle, it will call the generator in this mode to
+    -- produce @hs-boot@ code.  This code should provide a minimal declaration
+    -- of Haskell entities generated by 'SayExportDecls', without providing any
+    -- implementation.
+    --
+    -- For information on the special format of @hs-boot@ files, see the
+    -- <https://downloads.haskell.org/~ghc/latest/docs/html/users_guide/separate_compilation.html#how-to-compile-mutually-recursive-modules GHC User's Guide>.
+  deriving (Eq, Show)
+
 -- | Outputs a line of Haskell code.  A newline will be added on the end of the
 -- input.  Newline characters must not be given to this function.
 sayLn :: String -> Generator ()
@@ -493,6 +477,8 @@ sayLet bindings maybeBody = do
       sayLn "in"
       indent body
 
+-- | Looks up the module that exports an external name.  Throws an error if the
+-- external name is not exported.
 getExtNameModule :: ExtName -> Generator Module
 getExtNameModule extName = inFunction "getExtNameModule" $ do
   iface <- askInterface
@@ -538,9 +524,9 @@ addExtNameModule extName hsEntity = do
     Nothing -> hsEntity  -- Same module.
     Just importName -> concat [importName, ".", hsEntity]  -- Different module.
 
--- | Internal helper function for constructing Haskell names from external
--- names.  Returns a name that is a suitable Haskell type name for the external
--- name, and if given 'Const', then with @\"Const\"@ appended.
+-- | Constructs Haskell names from external names.  Returns a name that is a
+-- suitable Haskell type name for the external name, and if given 'Const', then
+-- with @\"Const\"@ appended.
 toHsTypeName :: Constness -> ExtName -> Generator String
 toHsTypeName cst extName =
   inFunction "toHsTypeName" $
@@ -555,299 +541,6 @@ toHsTypeName' cst extName =
   case fromExtName extName of
     x:xs -> toUpper x:xs
     [] -> []
-
--- | Returns the Haskell name for an enum.
-toHsEnumTypeName :: CppEnum -> Generator String
-toHsEnumTypeName enum =
-  inFunction "toHsEnumTypeName" $
-  addExtNameModule (enumExtName enum) $ toHsEnumTypeName' enum
-
--- | Pure version of 'toHsEnumTypeName' that doesn't create a qualified name.
-toHsEnumTypeName' :: CppEnum -> String
-toHsEnumTypeName' = toHsTypeName' Nonconst . enumExtName
-
--- | Constructs the data constructor name for a value in an enum.  Like C++ and
--- unlike say Java, Haskell enum values aren't in a separate enum-specific
--- namespace, so we prepend the enum name to the value name to get the data
--- constructor name.  The value name is a list of words; see 'enumValueNames'.
-toHsEnumCtorName :: CppEnum -> [String] -> Generator String
-toHsEnumCtorName enum words =
-  inFunction "toHsEnumCtorName" $
-  addExtNameModule (enumExtName enum) $ toHsEnumCtorName' enum words
-
--- | Pure version of 'toHsEnumCtorName' that doesn't create a qualified name.
-toHsEnumCtorName' :: CppEnum -> [String] -> String
-toHsEnumCtorName' enum words =
-  concat $ enumValuePrefix enum : map capitalize words
-
--- | Returns the Haskell name for a bitspace.  See 'toHsEnumTypeName'.
-toHsBitspaceTypeName :: Bitspace -> Generator String
-toHsBitspaceTypeName bitspace =
-  inFunction "toHsBitspaceTypeName" $
-  addExtNameModule (bitspaceExtName bitspace) $ toHsBitspaceTypeName' bitspace
-
--- | Pure version of 'toHsBitspaceTypeName' that doesn't create a qualified name.
-toHsBitspaceTypeName' :: Bitspace -> String
-toHsBitspaceTypeName' = toHsTypeName' Nonconst . bitspaceExtName
-
--- | Constructs the data constructor name for a value in a bitspace.  See
--- 'toHsEnumCtorName'.
-toHsBitspaceValueName :: Bitspace -> [String] -> Generator String
-toHsBitspaceValueName bitspace words =
-  inFunction "toHsBitspaceValueName" $
-  addExtNameModule (bitspaceExtName bitspace) $
-  toHsBitspaceValueName' bitspace words
-
--- | Pure version of 'toHsBitspaceValueName' that doesn't create a qualified name.
-toHsBitspaceValueName' :: Bitspace -> [String] -> String
-toHsBitspaceValueName' bitspace words =
-  lowerFirst $ concat $ bitspaceValuePrefix bitspace : map capitalize words
-
--- | Returns the name of the function that will convert a bitspace value into a
--- raw numeric value.
-toHsBitspaceToNumName :: Bitspace -> Generator String
-toHsBitspaceToNumName bitspace =
-  inFunction "toHsBitspaceToNumName" $
-  addExtNameModule (bitspaceExtName bitspace) $ toHsBitspaceToNumName' bitspace
-
--- | Pure version of 'toHsBitspaceToNumName' that doesn't create a qualified name.
-toHsBitspaceToNumName' :: Bitspace -> String
-toHsBitspaceToNumName' = ("from" ++) . toHsBitspaceTypeName'
-
--- | The name of the Haskell typeclass that contains a method for converting to
--- a bitspace value.
-toHsBitspaceClassName :: Bitspace -> Generator String
-toHsBitspaceClassName bitspace =
-  inFunction "toHsBitspaceClassName" $
-  addExtNameModule (bitspaceExtName bitspace) $ toHsBitspaceClassName' bitspace
-
--- | Pure version of 'toHsBitspaceClassName' that doesn't create a qualified name.
-toHsBitspaceClassName' :: Bitspace -> String
-toHsBitspaceClassName' bitspace = 'I':'s':toHsBitspaceTypeName' bitspace
-
--- | The name of the method in the 'toHsBitspaceClassName' typeclass that
--- constructs bitspace values.
-toHsBitspaceFromValueName :: Bitspace -> Generator String
-toHsBitspaceFromValueName bitspace =
-  inFunction "toHsBitspaceFromValueName" $
-  addExtNameModule (bitspaceExtName bitspace) $ toHsBitspaceFromValueName' bitspace
-
--- | Pure version of 'toHsBitspaceFromValueName' that doesn't create a qualified name.
-toHsBitspaceFromValueName' :: Bitspace -> String
-toHsBitspaceFromValueName' = ("to" ++) . toHsBitspaceTypeName'
-
--- | The name for the typeclass of types that can be represented as values of
--- the given C++ class.
-toHsValueClassName :: Class -> Generator String
-toHsValueClassName cls =
-  inFunction "toHsValueClassName" $
-  addExtNameModule (classExtName cls) $ toHsValueClassName' cls
-
--- | Pure version of 'toHsValueClassName' that doesn't create a qualified name.
-toHsValueClassName' :: Class -> String
-toHsValueClassName' cls = toHsDataTypeName' Nonconst cls ++ "Value"
-
--- | The name of the method within the 'toHsValueClassName' typeclass for
--- accessing an object of the type as a pointer.
-toHsWithValuePtrName :: Class -> Generator String
-toHsWithValuePtrName cls =
-  inFunction "toHsWithValuePtrName" $
-  addExtNameModule (classExtName cls) $ toHsWithValuePtrName' cls
-
--- | Pure version of 'toHsWithValuePtrName' that doesn't create a qualified name.
-toHsWithValuePtrName' :: Class -> String
-toHsWithValuePtrName' cls = concat ["with", toHsDataTypeName' Nonconst cls, "Ptr"]
-
--- | The name for the typeclass of types that are (possibly const) pointers to
--- objects of the given C++ class, or subclasses.
-toHsPtrClassName :: Constness -> Class -> Generator String
-toHsPtrClassName cst cls =
-  inFunction "toHsPtrClassName" $
-  addExtNameModule (classExtName cls) $ toHsPtrClassName' cst cls
-
--- | Pure version of 'toHsPtrClassName' that doesn't create a qualified name.
-toHsPtrClassName' :: Constness -> Class -> String
-toHsPtrClassName' cst cls = toHsDataTypeName' cst cls ++ "Ptr"
-
--- | The name of the function that upcasts pointers to the specific class type
--- and constness.
-toHsCastMethodName :: Constness -> Class -> Generator String
-toHsCastMethodName cst cls =
-  inFunction "toHsCastMethodName" $
-  addExtNameModule (classExtName cls) $ toHsCastMethodName' cst cls
-
--- | Pure version of 'toHsCastMethodName' that doesn't create a qualified name.
-toHsCastMethodName' :: Constness -> Class -> String
-toHsCastMethodName' cst cls = "to" ++ toHsDataTypeName' cst cls
-
--- | The name of the typeclass that provides a method to downcast to a specific
--- class type.  See 'toHsDownCastMethodName'.
-toHsDownCastClassName :: Constness -> Class -> Generator String
-toHsDownCastClassName cst cls =
-  inFunction "toHsDownCastClassName" $
-  addExtNameModule (classExtName cls) $ toHsDownCastClassName' cst cls
-
--- | Pure version of 'toHsDownCastClassName' that doesn't create a qualified
--- name.
-toHsDownCastClassName' :: Constness -> Class -> String
-toHsDownCastClassName' cst cls =
-  concat [toHsDataTypeName' Nonconst cls,
-          "Super",
-          case cst of
-            Const -> "Const"
-            Nonconst -> ""]
-
--- | The name of the function that downcasts pointers to the specific class type
--- and constness.
-toHsDownCastMethodName :: Constness -> Class -> Generator String
-toHsDownCastMethodName cst cls =
-  inFunction "toHsDownCastMethodName" $
-  addExtNameModule (classExtName cls) $ toHsDownCastMethodName' cst cls
-
--- | Pure version of 'toHsDownCastMethodName' that doesn't create a qualified
--- name.
-toHsDownCastMethodName' :: Constness -> Class -> String
-toHsDownCastMethodName' cst cls = "downTo" ++ toHsDataTypeName' cst cls
-
--- | The import name for the foreign function that casts between two specific
--- pointer types.  Used for upcasting and downcasting.
---
--- We need to know which module the cast function resides in, and while we could
--- look this up, the caller always knows, so we just have them pass it in.
-toHsCastPrimitiveName :: Class -> Class -> Class -> Generator String
-toHsCastPrimitiveName descendentClass from to =
-  inFunction "toHsCastPrimitiveName" $
-  addExtNameModule (classExtName descendentClass) $ toHsCastPrimitiveName' from to
-
--- | Pure version of 'toHsCastPrimitiveName' that doesn't create a qualified
--- name.
-toHsCastPrimitiveName' :: Class -> Class -> String
-toHsCastPrimitiveName' from to =
-  concat ["cast", toHsDataTypeName' Nonconst from, "To", toHsDataTypeName' Nonconst to]
-
--- | The name of one of the functions that add/remove const to/from a class's
--- pointer type.  Given 'Const', it will return the function that adds const,
--- and given 'Nonconst', it will return the function that removes const.
-toHsConstCastFnName :: Constness -> Class -> Generator String
-toHsConstCastFnName cst cls =
-  inFunction "toHsConstCastFnName" $
-  addExtNameModule (classExtName cls) $ toHsConstCastFnName' cst cls
-
--- | Pure version of 'toHsConstCastFnName' that doesn't create a qualified name.
-toHsConstCastFnName' :: Constness -> Class -> String
-toHsConstCastFnName' cst cls =
-  concat ["cast", toHsDataTypeName' Nonconst cls,
-          case cst of
-            Const -> "ToConst"
-            Nonconst -> "ToNonconst"]
-
--- | The name of the data type that represents a pointer to an object of the
--- given class and constness.
-toHsDataTypeName :: Constness -> Class -> Generator String
-toHsDataTypeName cst cls =
-  inFunction "toHsDataTypeName" $
-  addExtNameModule (classExtName cls) $ toHsDataTypeName' cst cls
-
--- | Pure version of 'toHsDataTypeName' that doesn't create a qualified name.
-toHsDataTypeName' :: Constness -> Class -> String
-toHsDataTypeName' cst cls = toHsTypeName' cst $ classExtName cls
-
--- | The name of a data constructor for one of the object pointer types.
-toHsDataCtorName :: Managed -> Constness -> Class -> Generator String
-toHsDataCtorName m cst cls =
-  inFunction "toHsDataCtorName" $
-  addExtNameModule (classExtName cls) $ toHsDataCtorName' m cst cls
-
--- | Pure version of 'toHsDataCtorName' that doesn't create a qualified name.
-toHsDataCtorName' :: Managed -> Constness -> Class -> String
-toHsDataCtorName' m cst cls = case m of
-  Unmanaged -> base
-  Managed -> base ++ "Gc"
-  where base = toHsDataTypeName' cst cls
-
--- | The name of the foreign function import wrapping @delete@ for the given
--- class type.  This is in internal to the binding; normal users should use
--- 'Foreign.Hoppy.Runtime.delete'.
---
--- This is internal to a generated Haskell module, so it does not have a public
--- (qualified) form.
-toHsClassDeleteFnName' :: Class -> String
-toHsClassDeleteFnName' cls = 'd':'e':'l':'e':'t':'e':'\'':toHsDataTypeName' Nonconst cls
-
--- | The name of the foreign import that imports the same function as
--- 'toHsClassDeleteFnName', but as a 'Foreign.Ptr.FunPtr' rather than an actual
--- function.
---
--- This is internal to a generated Haskell module, so it does not have a public
--- (qualified) form.
-toHsClassDeleteFnPtrName' :: Class -> String
-toHsClassDeleteFnPtrName' cls =
-  'd':'e':'l':'e':'t':'e':'P':'t':'r':'\'':toHsDataTypeName' Nonconst cls
-
--- | Returns the name of the Haskell function that invokes the given
--- constructor.
-toHsCtorName :: Class -> Ctor -> Generator String
-toHsCtorName cls ctor =
-  inFunction "toHsCtorName" $
-  toHsClassEntityName cls $ fromExtName $ ctorExtName ctor
-
--- | Pure version of 'toHsCtorName' that doesn't create a qualified name.
-toHsCtorName' :: Class -> Ctor -> String
-toHsCtorName' cls ctor =
-  toHsClassEntityName' cls $ fromExtName $ ctorExtName ctor
-
--- | Returns the name of the Haskell function that invokes the given method.
-toHsMethodName :: Class -> Method -> Generator String
-toHsMethodName cls method =
-  inFunction "toHsMethodName" $
-  toHsClassEntityName cls $ fromExtName $ methodExtName method
-
--- | Pure version of 'toHsMethodName' that doesn't create a qualified name.
-toHsMethodName' :: Class -> Method -> String
-toHsMethodName' cls method =
-  toHsClassEntityName' cls $ fromExtName $ methodExtName method
-
--- | Returns the name of the Haskell function for an entity in a class.
-toHsClassEntityName :: IsFnName String name => Class -> name -> Generator String
-toHsClassEntityName cls name =
-  addExtNameModule (classExtName cls) $ toHsClassEntityName' cls name
-
--- | Pure version of 'toHsClassEntityName' that doesn't create a qualified name.
-toHsClassEntityName' :: IsFnName String name => Class -> name -> String
-toHsClassEntityName' cls name =
-  lowerFirst $ fromExtName $
-  classEntityForeignName' cls $
-  case toFnName name of
-    FnName name -> toExtName name
-    FnOp op -> operatorPreferredExtName op
-
--- | The name of the function that takes a Haskell function and wraps it in a
--- callback object.  This is internal to the binding; normal users can pass
--- Haskell functions to be used as callbacks inplicitly.
-toHsCallbackCtorName :: Callback -> Generator String
-toHsCallbackCtorName callback =
-  inFunction "toHsCallbackCtorName" $
-  addExtNameModule (callbackExtName callback) $ toHsCallbackCtorName' callback
-
--- | Pure version of 'toHsCallbackCtorName' that doesn't create a qualified
--- name.
-toHsCallbackCtorName' :: Callback -> String
-toHsCallbackCtorName' callback =
-  toHsFnName' $ toExtName $ fromExtName (callbackExtName callback) ++ "_new"
-
--- | The name of the function that takes a Haskell function with Haskell-side
--- types and wraps it in a 'Foreign.Ptr.FunPtr' that does appropriate
--- conversions to and from C-side types.
-toHsCallbackNewFunPtrFnName :: Callback -> Generator String
-toHsCallbackNewFunPtrFnName callback =
-  inFunction "toHsCallbackNewFunPtrFnName" $
-  addExtNameModule (callbackExtName callback) $ toHsCallbackNewFunPtrFnName' callback
-
--- | Pure version of 'toHsCallbackNewFunPtrFnName' that doesn't create a qualified
--- name.
-toHsCallbackNewFunPtrFnName' :: Callback -> String
-toHsCallbackNewFunPtrFnName' callback =
-  toHsFnName' $ toExtName $ fromExtName (callbackExtName callback) ++ "_newFunPtr"
 
 -- | Converts an external name into a name suitable for a Haskell function or
 -- variable.
@@ -879,49 +572,6 @@ cppTypeToHsTypeAndUse side t =
   withErrorContext (concat ["converting ", show t, " to ", show side, " type"]) $
   case t of
     Internal_TVoid -> return $ HsTyCon $ Special HsUnitCon
-    -- C++ has sizeof(bool) == 1, whereas Haskell can > 1, so we have to convert.
-    Internal_TBool -> case side of
-      HsCSide -> addImports hsImportForRuntime $> HsTyCon (UnQual $ HsIdent "HoppyFHR.CBool")
-      HsHsSide -> addImports hsImportForPrelude $> HsTyCon (UnQual $ HsIdent "HoppyP.Bool")
-    Internal_TChar -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CChar")
-    Internal_TUChar -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CUChar")
-    Internal_TShort -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CShort")
-    Internal_TUShort ->
-      addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CUShort")
-    Internal_TInt -> case side of
-      HsCSide -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CInt")
-      HsHsSide -> addImports hsImportForPrelude $> HsTyCon (UnQual $ HsIdent "HoppyP.Int")
-    Internal_TUInt -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CUInt")
-    Internal_TLong -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CLong")
-    Internal_TULong -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CULong")
-    Internal_TLLong -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CLLong")
-    Internal_TULLong ->
-      addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CULLong")
-    Internal_TFloat -> case side of
-      HsCSide -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CFloat")
-      HsHsSide -> addImports hsImportForPrelude $> HsTyCon (UnQual $ HsIdent "HoppyP.Float")
-    Internal_TDouble -> case side of
-      HsCSide -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CDouble")
-      HsHsSide -> addImports hsImportForPrelude $> HsTyCon (UnQual $ HsIdent "HoppyP.Double")
-    Internal_TInt8 -> addImports hsImportForInt $> HsTyCon (UnQual $ HsIdent "HoppyDI.Int8")
-    Internal_TInt16 -> addImports hsImportForInt $> HsTyCon (UnQual $ HsIdent "HoppyDI.Int16")
-    Internal_TInt32 -> addImports hsImportForInt $> HsTyCon (UnQual $ HsIdent "HoppyDI.Int32")
-    Internal_TInt64 -> addImports hsImportForInt $> HsTyCon (UnQual $ HsIdent "HoppyDI.Int64")
-    Internal_TWord8 -> addImports hsImportForWord $> HsTyCon (UnQual $ HsIdent "HoppyDW.Word8")
-    Internal_TWord16 -> addImports hsImportForWord $> HsTyCon (UnQual $ HsIdent "HoppyDW.Word16")
-    Internal_TWord32 -> addImports hsImportForWord $> HsTyCon (UnQual $ HsIdent "HoppyDW.Word32")
-    Internal_TWord64 -> addImports hsImportForWord $> HsTyCon (UnQual $ HsIdent "HoppyDW.Word64")
-    Internal_TPtrdiff ->
-      addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CPtrdiff")
-    Internal_TSize -> addImports hsImportForForeignC $> HsTyCon (UnQual $ HsIdent "HoppyFC.CSize")
-    Internal_TSSize ->
-      addImports hsImportForSystemPosixTypes $> HsTyCon (UnQual $ HsIdent "HoppySPT.CSsize")
-    Internal_TEnum e -> HsTyCon . UnQual . HsIdent <$> case side of
-      HsCSide -> addImports hsImportForForeignC $> "HoppyFC.CInt"
-      HsHsSide -> toHsEnumTypeName e
-    Internal_TBitspace b -> case side of
-      HsCSide -> cppTypeToHsTypeAndUse side $ bitspaceType b
-      HsHsSide -> HsTyCon . UnQual . HsIdent <$> toHsBitspaceTypeName b
     Internal_TPtr (Internal_TObj cls) -> do
       -- Same as TPtr (TConst (TObj cls)), but nonconst.
       typeName <- toHsTypeName Nonconst $ classExtName cls
@@ -949,19 +599,12 @@ cppTypeToHsTypeAndUse side t =
       -- to use the C-side type of the pointer target here.
       HsTyApp (HsTyCon $ UnQual $ HsIdent "HoppyF.Ptr") <$> cppTypeToHsTypeAndUse HsCSide t'
     Internal_TRef t' -> cppTypeToHsTypeAndUse side $ ptrT t'
-    Internal_TFn paramTypes retType -> do
-      paramHsTypes <- mapM (cppTypeToHsTypeAndUse side) paramTypes
+    Internal_TFn params retType -> do
+      paramHsTypes <- mapM (cppTypeToHsTypeAndUse side . parameterType) params
       retHsType <- cppTypeToHsTypeAndUse side retType
       addImports hsImportForPrelude
       return $
         foldr HsTyFun (HsTyApp (HsTyCon $ UnQual $ HsIdent "HoppyP.IO") retHsType) paramHsTypes
-    Internal_TCallback cb -> do
-      hsType <- cppTypeToHsTypeAndUse side =<< callbackToTFn side cb
-      case side of
-        HsHsSide -> return hsType
-        HsCSide -> do
-          addImports hsImportForRuntime
-          return $ HsTyApp (HsTyCon $ UnQual $ HsIdent "HoppyFHR.CCallback") hsType
     Internal_TObj cls -> case side of
       HsCSide -> cppTypeToHsTypeAndUse side $ ptrT $ constT t
       HsHsSide -> case classHaskellConversionType $ getClassHaskellConversion cls of
@@ -975,31 +618,29 @@ cppTypeToHsTypeAndUse side t =
       Internal_TPtr _ -> cppTypeToHsTypeAndUse side t'
       Internal_TObj cls -> cppTypeToHsTypeAndUse side $ ptrT $ objT cls
       _ -> throwError $ tToGcInvalidFormErrorMessage Nothing t'
+    Internal_TManual s -> case conversionSpecHaskell s of
+      Just h -> case side of
+        HsHsSide -> conversionSpecHaskellHsType h
+        HsCSide -> fromMaybe (conversionSpecHaskellHsType h) $
+                   conversionSpecHaskellCType h
+      Nothing -> throwError $ show s ++ " defines no Haskell conversion"
     Internal_TConst t' -> cppTypeToHsTypeAndUse side t'
 
 -- | Returns the 'ClassHaskellConversion' of a class.
 getClassHaskellConversion :: Class -> ClassHaskellConversion
 getClassHaskellConversion = classHaskellConversion . classConversion
 
--- | Constructs the function type for a callback.  For Haskell, the type depends
--- on the side; the C++ side has additional parameters.
---
--- Keep this in sync with the C++ generator's version.
-callbackToTFn :: HsTypeSide -> Callback -> Generator Type
-callbackToTFn side cb = do
-  needsExcParams <- case side of
-    HsCSide -> mayThrow
-    HsHsSide -> return False
-  return $ Internal_TFn ((if needsExcParams then addExcParams else id) $ callbackParams cb)
-                        (callbackReturn cb)
-
-  where mayThrow = case callbackThrows cb of
-          Just t -> return t
-          Nothing -> moduleCallbacksThrow <$> askModule >>= \case
-            Just t -> return t
-            Nothing -> interfaceCallbacksThrow <$> askInterface
-
-        addExcParams = (++ [ptrT intT, ptrT $ ptrT voidT])
+-- | Combines the given exception handlers (from a particular exported entity)
+-- with the handlers from the current module and interface.  The given handlers
+-- have highest precedence, followed by module handlers, followed by interface
+-- handlers.
+getEffectiveExceptionHandlers :: ExceptionHandlers -> Generator ExceptionHandlers
+getEffectiveExceptionHandlers handlers = do
+  ifaceHandlers <- interfaceExceptionHandlers <$> askInterface
+  moduleHandlers <- getExceptionHandlers <$> askModule
+  -- Exception handlers declared lower in the hierarchy take precedence over
+  -- those higher in the hierarchy; ExceptionHandlers is a left-biased monoid.
+  return $ mconcat [handlers, moduleHandlers, ifaceHandlers]
 
 -- | Prints a value like 'P.prettyPrint', but removes newlines so that they
 -- don't cause problems with this module's textual generation.  Should be mainly

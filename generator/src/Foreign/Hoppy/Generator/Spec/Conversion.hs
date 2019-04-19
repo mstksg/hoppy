@@ -17,7 +17,10 @@
 
 {-# LANGUAGE CPP #-}
 
--- | The primary data types for specifying C++ interfaces.
+-- | Conversions for C++ classes.
+--
+-- TODO Refactor this, 'cause the TManual conversion stuff is in Base.  (Not a
+-- high priority, this /is/ a private module.)
 --
 -- 'Show' instances in this module produce strings of the form @\"\<TypeOfObject
 -- nameOfObject otherInfo...\>\"@.  They can be used in error messages without
@@ -34,10 +37,15 @@ import Data.Monoid (mconcat)
 #endif
 import Foreign.Hoppy.Generator.Language.Haskell
 import Foreign.Hoppy.Generator.Spec.Base
+import Foreign.Hoppy.Generator.Spec.Class
 import Foreign.Hoppy.Generator.Types
 
 -- | Modifies a class's 'ClassConversion' structure by setting all languages
--- to use 'ClassConversionToHeap'.
+-- to copy objects to the heap when being passed out of C++.  Lifetimes of the
+-- resulting objects must be managed by code in the foreign language.
+--
+-- Calling this on a class makes 'objT' behave like 'objToHeapT' for values
+-- being passed out of C++.
 classSetConversionToHeap :: Class -> Class
 classSetConversionToHeap cls = case classFindCopyCtor cls of
   Just _ ->
@@ -47,7 +55,12 @@ classSetConversionToHeap cls = case classFindCopyCtor cls of
   Nothing -> error $ "classSetConversionToHeap: " ++ show cls ++ " must be copyable."
 
 -- | Modifies a class's 'ClassConversion' structure by setting all languages
--- that support garbage collection to use 'ClassConversionToGc'.
+-- that support garbage collection to copy objects to the heap when being passed
+-- out of C++, and put those objects under the care of the foreign language's
+-- garbage collector.
+--
+-- Calling this on a class makes 'objT' behave like 'toGcT' for values being
+-- passed out of C++.
 classSetConversionToGc :: Class -> Class
 classSetConversionToGc cls = case classFindCopyCtor cls of
   Just _ ->

@@ -85,9 +85,6 @@ module Foreign.Hoppy.Documentation.UsersGuide (
   -- **** Enum exports
   -- $generators-hs-module-structure-enums
 
-  -- **** Bitspace exports
-  -- $generators-hs-module-structure-bitspaces
-
   -- **** Function exports
   -- $generators-hs-module-structure-functions
 
@@ -316,7 +313,6 @@ naming convention for entities is:
 - @f_@ for functions ('Function').
 - @c_@ for classes ('Class').
 - @e_@ for enums ('CppEnum').
-- @bs_@ for bitspaces ('Bitspace').
 - @cb_@ for callbacks ('Callback').
 - @mod_@ for modules ('Module').
 
@@ -386,9 +382,6 @@ types; Haskell uses built-in foreign data types.  See
 
 - 'enumT': C++ uses the enum type.  C uses @int@.  Haskell uses a generated data
 type for the enum.
-
-- 'bitspaceT': C++ and C use a specified type, usually @int@.  Haskell uses a
-generated data type for the bitspace.
 
 - 'ptrT': C++ and C use the raw pointer type.  The Haskell type depends on the
 pointed-to type.  If it's an object pointer, then Haskell uses the generated
@@ -1075,46 +1068,6 @@ data Alignment =
 @
 
 with instances for 'Bounded', 'Enum', 'Eq', 'Ord', and 'Show'.
-
--}
-{- $generators-hs-module-structure-bitspaces
-
-'Bitspace's, unlike enums, materialize in Haskell using a single data
-constructor and bindings for values, rather than multiple data constructors.  A
-bitspace declaration such as
-
-@
-formatFlags :: 'Bitspace'
-formatFlags =
-  'makeBitspace' ('toExtName' \"Format\") 'intT'
-  [ (1, [\"format\", \"letter\"])
-  , (2, [\"format\", \"jpeg\"])
-  , (4, [\"format\", \"c\"])
-  ]
-@
-
-will generate the following:
-
-@
-newtype Format
-
-instance 'Bits' Format
-instance 'Bounded' Format
-instance 'Eq' Format
-instance 'Ord' Format
-instance 'Show' Format
-
-fromFormat :: Format -> 'CInt'
-
-class IsFormat a where
-  toFormat :: a -> Format
-
-instance IsFormat 'CInt'
-
-format_FormatLetter :: Format
-format_FormatJpeg :: Format
-format_FormatC :: Format
-@
 
 -}
 {- $generators-hs-module-structure-functions

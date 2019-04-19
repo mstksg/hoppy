@@ -19,44 +19,125 @@
 
 -- | Shared portion of the C++ code generator.  Usable by binding definitions.
 module Foreign.Hoppy.Generator.Language.Cpp (
+  -- * Code generation monad
+  Generator,
+  Env,
+  execGenerator,
+  addIncludes, addInclude, addReqsM,
+  askInterface, askModule, abort,
+  -- * Names
+  makeCppName,
   externalNameToCpp,
-  classDeleteFnCppName,
-  classCastFnCppName,
-  callbackClassName,
-  callbackImplClassName,
-  callbackFnName,
   toArgName,
   toArgNameAlt,
   exceptionIdArgName,
   exceptionPtrArgName,
   exceptionVarName,
   exceptionRethrowFnName,
+  -- * Token rendering
   Chunk (..),
+  codeChunk,
+  includesChunk,
   runChunkWriter,
   evalChunkWriter,
   execChunkWriter,
   runChunkWriterT,
   evalChunkWriterT,
   execChunkWriterT,
+  -- * High-level code generation
+  SayExportMode (..),
   say,
   says,
   sayIdentifier,
+  renderIdentifier,
   sayVar,
   sayType,
+  sayFunction,
+  -- * Auxiliary functions
+  typeToCType,
+  typeReqs,
+  findExportModule,
+  getEffectiveExceptionHandlers,
   ) where
 
+import Control.Monad (unless)
+import Control.Monad.Reader (MonadReader, ReaderT, ask, runReaderT)
 import Control.Monad.Writer (MonadWriter, Writer, WriterT, runWriter, runWriterT, tell)
+import Control.Monad.Trans (lift)
 import Data.Foldable (forM_)
 import Data.List (intercalate, intersperse)
+import qualified Data.Map as M
+import qualified Data.Set as S
 import Foreign.Hoppy.Generator.Common
-import Foreign.Hoppy.Generator.Spec
+import Foreign.Hoppy.Generator.Spec.Base
+import {-# SOURCE #-} Foreign.Hoppy.Generator.Spec.Class (classIdentifier, classReqs)
 import Foreign.Hoppy.Generator.Types
 
-cppNameSeparator :: String
-cppNameSeparator = "__"
+-- | A generator monad for C++ code.
+--
+-- TODO This should not simply be a type synonym.
+type Generator = ReaderT Env (WriterT [Chunk] (Either ErrorMsg))
 
+-- | Context information for generating C++ code.
+data Env = Env
+  { envInterface :: Interface
+  , envModule :: Module
+  }
+
+-- | Runs a generator action and returns its output, or an error message if
+-- unsuccessful.
+execGenerator :: Interface -> Module -> Maybe String -> Generator a -> Either ErrorMsg String
+execGenerator interface m maybeHeaderGuardName action = do
+  chunk <- execChunkWriterT $ runReaderT action $ Env interface m
+  let contents = chunkContents chunk
+      includes = chunkIncludes chunk
+  return $ chunkContents $ execChunkWriter $ do
+    say "////////// GENERATED FILE, EDITS WILL BE LOST //////////\n"
+    forM_ maybeHeaderGuardName $ \x -> do
+      says ["\n#ifndef ", x, "\n"]
+      says ["#define ", x, "\n"]
+    unless (S.null includes) $ do
+      say "\n"
+      forM_ includes $ say . includeToString
+    say "\nextern \"C\" {\n"
+    say contents
+    say "\n}  // extern \"C\"\n"
+    forM_ maybeHeaderGuardName $ \x ->
+      says ["\n#endif  // ifndef ", x, "\n"]
+
+-- | Adds @#include@ statements to the includes block generated at the top of
+-- the currently generating file.
+addIncludes :: MonadWriter [Chunk] m => [Include] -> m ()
+addIncludes = tell . (:[]) . includesChunk . S.fromList
+
+-- | Adds an @#include@ statement to the includes block generated at the top of
+-- the currently generating file.
+addInclude :: MonadWriter [Chunk] m => Include -> m ()
+addInclude = addIncludes . (:[])
+
+-- | Adds requirements ('Reqs' i.e. C++ includes) to the includes block
+-- generated at the top of the currently generating file.
+--
+-- Have to call this @addReqsM@, 'addReqs' is taken by 'HasReqs'.
+addReqsM :: MonadWriter [Chunk] m => Reqs -> m ()
+addReqsM = tell . (:[]) . includesChunk . reqsIncludes
+
+-- | Returns the currently generating interface.
+askInterface :: MonadReader Env m => m Interface
+askInterface = fmap envInterface ask
+
+-- | Returns the currently generating module.
+askModule :: MonadReader Env m => m Module
+askModule = fmap envModule ask
+
+-- | Halts generation and returns the given error message.
+abort :: ErrorMsg -> Generator a
+abort = lift . lift . Left
+
+-- | Constructs a C++ identifier by combining a list of strings with @__@.
 makeCppName :: [String] -> String
 makeCppName = intercalate cppNameSeparator
+  where cppNameSeparator = "__"
 
 -- | \"genpop\" is the prefix used for individually exported functions.
 externalNamePrefix :: String
@@ -66,42 +147,6 @@ externalNamePrefix = "genpop"
 externalNameToCpp :: ExtName -> String
 externalNameToCpp extName =
   makeCppName [externalNamePrefix, fromExtName extName]
-
-makeClassCppName :: String -> Class -> String
-makeClassCppName prefix cls = makeCppName [prefix, fromExtName $ classExtName cls]
-
--- | \"gendel\" is the prefix used for wrappers for @delete@ calls.
-classDeleteFnPrefix :: String
-classDeleteFnPrefix = "gendel"
-
--- | Returns the C++ binding function name of the wrapper for the delete method
--- for a class.
-classDeleteFnCppName :: Class -> String
-classDeleteFnCppName = makeClassCppName classDeleteFnPrefix
-
--- | @classCastFnCppName fromCls toCls@ returns the name of the generated C++
--- function that casts a pointer from @fromCls@ to @toCls@.
-classCastFnCppName :: Class -> Class -> String
-classCastFnCppName from to =
-  concat [ "gencast__"
-         , fromExtName $ classExtName from
-         , "__"
-         , fromExtName $ classExtName to
-         ]
-
--- | Returns the name of the outer, copyable class for a callback.
-callbackClassName :: Callback -> String
-callbackClassName = fromExtName . callbackExtName
-
--- | Returns the name of the internal, non-copyable implementation class for a
--- callback.
-callbackImplClassName :: Callback -> String
-callbackImplClassName = (++ "_impl") . fromExtName . callbackExtName
-
--- | Returns the name of the C++ binding function that creates a C++ callback
--- wrapper object from a function pointer to foreign code.
-callbackFnName :: Callback -> String
-callbackFnName = externalNameToCpp . callbackExtName
 
 -- | Returns a distinct argument variable name for each nonnegative number.
 toArgName :: Int -> String
@@ -140,15 +185,35 @@ isIdentifierChar = (`elem` identifierChars)
 identifierChars :: String
 identifierChars = ['A'..'Z'] ++ ['a'..'z'] ++ ['0'..'9'] ++ "_"
 
--- | A chunk is a string that contains an arbitrary portion of C++ code.  The
--- only requirement is that chunk boundaries are also C++ token boundaries,
--- because the generator monad automates the process of inserting whitespace
--- between chunk boundaries where necessary.
-newtype Chunk = Chunk { chunkContents :: String }
+-- | A chunk is a string that contains an arbitrary portion of C++ code,
+-- together with a set of includes.  The only requirement is that chunk's code
+-- boundaries are also C++ token boundaries, because the generator monad
+-- automates the process of inserting whitespace between chunk boundaries where
+-- necessary.
+data Chunk = Chunk
+  { chunkContents :: !String
+  , chunkIncludes :: !(S.Set Include)
+  }
+
+-- | Builds a 'Chunk' that contains the given code string.
+codeChunk :: String -> Chunk
+codeChunk code =
+  Chunk
+  { chunkContents = code
+  , chunkIncludes = S.empty
+  }
+
+-- | Builds a 'Chunk' that contains the given includes.
+includesChunk :: S.Set Include -> Chunk
+includesChunk includes =
+  Chunk
+  { chunkContents = ""
+  , chunkIncludes = includes
+  }
 
 -- | Runs a 'Chunk' writer, combining them with 'combineChunks' to form a single
 -- string.
-runChunkWriter :: Writer [Chunk] a -> (a, String)
+runChunkWriter :: Writer [Chunk] a -> (a, Chunk)
 runChunkWriter = fmap combineChunks . runWriter
 
 -- | Runs a 'Chunk' writer and returns the monad's value.
@@ -156,12 +221,12 @@ evalChunkWriter :: Writer [Chunk] a -> a
 evalChunkWriter = fst . runChunkWriter
 
 -- | Runs a 'Chunk' writer and returns the written log.
-execChunkWriter :: Writer [Chunk] a -> String
+execChunkWriter :: Writer [Chunk] a -> Chunk
 execChunkWriter = snd . runChunkWriter
 
 -- | Runs a 'Chunk' writer transformer, combining them with 'combineChunks' to
 -- form a single string.
-runChunkWriterT :: Monad m => WriterT [Chunk] m a -> m (a, String)
+runChunkWriterT :: Monad m => WriterT [Chunk] m a -> m (a, Chunk)
 runChunkWriterT = fmap (fmap combineChunks) . runWriterT
 
 -- | Runs a 'Chunk' writer transformer and returns the monad's value.
@@ -169,33 +234,51 @@ evalChunkWriterT :: Monad m => WriterT [Chunk] m a -> m a
 evalChunkWriterT = fmap fst . runChunkWriterT
 
 -- | Runs a 'Chunk' writer transformer and returns the written log.
-execChunkWriterT :: Monad m => WriterT [Chunk] m a -> m String
+execChunkWriterT :: Monad m => WriterT [Chunk] m a -> m Chunk
 execChunkWriterT = fmap snd . runChunkWriterT
 
--- | Flattens a list of chunks down into a single string.  Inserts spaces
+-- | Flattens a list of chunks down into a single chunk.  Inserts spaces
 -- between chunks where the ends of adjacent chunks would otherwise merge into a
--- single C++ token.
-combineChunks :: [Chunk] -> String
+-- single C++ token.  Combines include sets into a single include set.
+combineChunks :: [Chunk] -> Chunk
 combineChunks chunks =
   let strs = map chunkContents chunks
-  in concat $ for (zip ("":strs) strs) $ \(prev, cur) ->
-       let needsSpace =
-             not (null prev) && not (null cur) &&
-             (let a = last prev
-                  b = head cur
-              in -- "intconstx" should become "int const x"
-                 isIdentifierChar a && isIdentifierChar b ||
-                 -- Adjacent template parameter '>'s need spacing in old C++.
-                 a == '>' && b == '>')
-       in if needsSpace then ' ':cur else cur
+  in Chunk
+     { chunkContents =
+         concat $ for (zip ("":strs) strs) $ \(prev, cur) ->
+           let needsSpace =
+                 not (null prev) && not (null cur) &&
+                 (let a = last prev
+                      b = head cur
+                  in -- "intconstx" should become "int const x"
+                     isIdentifierChar a && isIdentifierChar b ||
+                     -- Adjacent template parameter '>'s need spacing in old C++.
+                     a == '>' && b == '>')
+           in if needsSpace then ' ':cur else cur
+
+     , chunkIncludes = S.unions $ map chunkIncludes chunks
+     }
+
+-- | The section of code that Hoppy is generating, for an export.
+data SayExportMode =
+    SaySource
+    -- ^ Hoppy is generating the C++ source file for a module.  The generator
+    -- should emit C++ definitions that will be imported over foreign language's
+    -- FFIs.  This is the main place for code generation in C++ bindings.
+  | SayHeader
+    -- ^ Hoppy is generating the C++ header file for a module.  The generator
+    -- should emit C++ declarations that can be @#include@d during the source
+    -- file generation of other exportable entities, in order to refer to the
+    -- current entity.  If it is not possible for other entities to refer to
+    -- this one, then nothing needs to be generated.
 
 -- | Emits a single 'Chunk'.
 say :: MonadWriter [Chunk] m => String -> m ()
-say = tell . (:[]) . Chunk
+say = tell . (:[]) . codeChunk
 
 -- | Emits a 'Chunk' for each string in a list.
 says :: MonadWriter [Chunk] m => [String] -> m ()
-says = tell . map Chunk
+says = tell . map codeChunk
 
 -- | Emits an 'Identifier'.
 sayIdentifier :: MonadWriter [Chunk] m => Identifier -> m ()
@@ -209,6 +292,10 @@ sayIdentifier =
               say "<"
               sequence_ $ intersperse (say ", ") $ map (sayType Nothing) args
               say ">"
+
+-- | Renders an 'Identifier' to a string.
+renderIdentifier :: Identifier -> String
+renderIdentifier = chunkContents . execChunkWriter . sayIdentifier
 
 -- | @sayVar name maybeParamNames t@ speaks a variable declaration of the form
 -- @\<type\> \<name\>@, where @\<name\>@ is the given name, and @\<type\>@ is
@@ -235,49 +322,21 @@ sayType' (normalizeType -> t) maybeParamNames outerPrec unwrappedOuter =
               else say "(" >> unwrappedOuter >> say ")"
   in case t of
     Internal_TVoid -> say "void" >> outer
-    Internal_TBool -> say "bool" >> outer
-    Internal_TChar -> say "char" >> outer
-    Internal_TUChar -> say "unsigned char" >> outer
-    Internal_TShort -> say "short" >> outer
-    Internal_TUShort -> say "unsigned short" >> outer
-    Internal_TInt -> say "int" >> outer
-    Internal_TUInt -> say "unsigned int" >> outer
-    Internal_TLong -> say "long" >> outer
-    Internal_TULong -> say "unsigned long" >> outer
-    Internal_TLLong -> say "long long" >> outer
-    Internal_TULLong -> say "unsigned long long" >> outer
-    Internal_TFloat -> say "float" >> outer
-    Internal_TDouble -> say "double" >> outer
-    Internal_TInt8 -> say "int8_t" >> outer
-    Internal_TInt16 -> say "int16_t" >> outer
-    Internal_TInt32 -> say "int32_t" >> outer
-    Internal_TInt64 -> say "int64_t" >> outer
-    Internal_TWord8 -> say "uint8_t" >> outer
-    Internal_TWord16 -> say "uint16_t" >> outer
-    Internal_TWord32 -> say "uint32_t" >> outer
-    Internal_TWord64 -> say "uint64_t" >> outer
-    Internal_TPtrdiff -> say "ptrdiff_t" >> outer
-    Internal_TSize -> say "size_t" >> outer
-    Internal_TSSize -> say "ssize_t" >> outer
-    Internal_TEnum e -> sayIdentifier (enumIdentifier e) >> outer
-    Internal_TBitspace b -> case bitspaceCppTypeIdentifier b of
-      Just identifier -> sayIdentifier identifier >> outer
-      Nothing -> sayType' (bitspaceType b) maybeParamNames outerPrec unwrappedOuter
     Internal_TPtr t' -> sayType' t' Nothing prec $ say "*" >> outer
     Internal_TRef t' -> sayType' t' Nothing prec $ say "&" >> outer
-    Internal_TFn paramTypes retType -> sayType' retType Nothing prec $ do
+    Internal_TFn params retType -> sayType' retType Nothing prec $ do
       outer
       say "("
       sequence_ $ intersperse (say ", ") $
-        for (zip paramTypes $ maybe (repeat Nothing) (map Just) maybeParamNames) $
-        \(ptype, pname) ->
-        sayType' ptype Nothing topPrecedence $ forM_ pname say
+        for (zip params $ maybe (repeat Nothing) (map Just) $ maybeParamNames) $
+        \(param, pname) ->
+        sayType' (parameterType param) Nothing topPrecedence $ forM_ pname say
       say ")"
-    Internal_TCallback cb -> says [callbackImplClassName cb, "*"] >> outer
     Internal_TObj cls -> sayIdentifier (classIdentifier cls) >> outer
     Internal_TObjToHeap cls ->
       sayType' (refT $ constT $ objT cls) maybeParamNames outerPrec unwrappedOuter
     Internal_TToGc t' -> sayType' t' maybeParamNames outerPrec unwrappedOuter
+    Internal_TManual s -> say (conversionSpecCppName $ conversionSpecCpp s) >> outer
     Internal_TConst t' -> sayType' t' maybeParamNames outerPrec $ say "const" >> unwrappedOuter
                  -- TODO ^ Is using the outer stuff correctly here?
 
@@ -290,3 +349,79 @@ typePrecedence t = case t of
   Internal_TPtr {} -> 9
   Internal_TRef {} -> 9
   _ -> 8
+
+-- | Renders a C++ function.
+sayFunction ::
+     String  -- ^ Function name.
+  -> [String]  -- ^ Parameter names.
+  -> Type  -- ^ Function type.  This should use 'fnT' or 'fnT''.
+  -> Maybe (Generator ())
+     -- ^ If present, then the function is defined and the action here is used
+     -- to render its body.  If absent, then the function is only declared (no
+     -- function body).
+  -> Generator ()
+sayFunction name paramNames t maybeBody = do
+  case t of
+    Internal_TFn {} -> return ()
+    _ -> abort $ concat ["sayFunction: A function type is required, given ", show t, "."]
+  say "\n"  -- New top-level structure, leave a blank line.
+  sayVar name (Just paramNames) t
+  case maybeBody of
+    Nothing -> say ";\n"
+    Just body -> do
+      say " {\n"
+      body  -- TODO Indent.
+      say "}\n"
+
+-- | Returns a 'Type' iff there is a C type distinct from the given C++ type
+-- that should be used for conversion.
+--
+-- This returns @Nothing@ for 'Internal_TManual'.  TManual needs special
+-- handling.
+typeToCType :: Type -> Generator (Maybe Type)
+typeToCType t = case t of
+  Internal_TRef t' -> return $ Just $ ptrT t'
+  Internal_TObj _ -> return $ Just $ ptrT $ constT t
+  Internal_TObjToHeap cls -> return $ Just $ ptrT $ objT cls
+  Internal_TToGc t'@(Internal_TObj _) -> return $ Just $ ptrT t'
+  Internal_TToGc t' -> typeToCType t'
+  Internal_TConst t' -> typeToCType t'
+  Internal_TManual s -> conversionSpecCppConversionType $ conversionSpecCpp s
+  _ -> return Nothing
+
+-- | Returns the requirements to refer to a type from C++ code.  This is a
+-- monadic function so that it has access to the environment, but it does not
+-- emit any code.
+typeReqs :: Type -> Generator Reqs
+typeReqs t = case t of
+  Internal_TVoid -> return mempty
+  Internal_TPtr t' -> typeReqs t'
+  Internal_TRef t' -> typeReqs t'
+  Internal_TFn params retType ->
+    -- TODO Is the right 'ReqsType' being used recursively here?
+    mconcat <$> mapM typeReqs (retType : map parameterType params)
+  Internal_TObj cls -> return $ classReqs cls
+  Internal_TObjToHeap cls -> return $ classReqs cls
+  Internal_TToGc t' -> typeReqs t'
+  Internal_TConst t' -> typeReqs t'
+  Internal_TManual s -> conversionSpecCppReqs $ conversionSpecCpp s
+
+-- | Looks up the module exporting the given external name in the current
+-- interface.  'abort' is called if the external name is not found.
+findExportModule :: ExtName -> Generator Module
+findExportModule extName =
+  fromMaybeM (abort $ concat
+              ["findExportModule: Can't find module exporting ", fromExtName extName, "."]) =<<
+  fmap (M.lookup extName . interfaceNamesToModules) askInterface
+
+-- | Combines the given exception handlers (from a particular exported entity)
+-- with the handlers from the current module and interface.  The given handlers
+-- have highest precedence, followed by module handlers, followed by interface
+-- handlers.
+getEffectiveExceptionHandlers :: ExceptionHandlers -> Generator ExceptionHandlers
+getEffectiveExceptionHandlers handlers = do
+  ifaceHandlers <- interfaceExceptionHandlers <$> askInterface
+  moduleHandlers <- getExceptionHandlers <$> askModule
+  -- Exception handlers declared lower in the hierarchy take precedence over
+  -- those higher in the hierarchy; ExceptionHandlers is a left-biased monoid.
+  return $ mconcat [handlers, moduleHandlers, ifaceHandlers]

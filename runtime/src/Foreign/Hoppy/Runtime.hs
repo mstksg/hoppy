@@ -17,11 +17,9 @@
 -- | Runtime support for generated Haskell bindings.
 module Foreign.Hoppy.Runtime (
   -- * Primitive types
-  CBool (..),
-  -- CBool is a newtype for CUChar, so GHC 7.10 (at least) requires reexporting
-  -- the CUChar data constructor for CBool to be marshalled in foreign imports.
-  CUChar (CUChar),
   coerceIntegral,
+  -- * Enumerations
+  CppEnum (..),
   -- * Objects
   CppPtr (..),
   Deletable (..),
@@ -73,6 +71,7 @@ import Foreign (
   touchForeignPtr,
   )
 import Foreign.C (
+  CBool,
   CChar,
   CDouble,
   CFloat,
@@ -82,12 +81,13 @@ import Foreign.C (
   CPtrdiff,
   CShort,
   CSize,
-  CUChar (CUChar),
+  CUChar,
   CUInt,
   CULLong,
   CULong,
   CUShort,
   )
+import GHC.Stack (HasCallStack)
 import System.IO.Unsafe (unsafePerformIO)
 import System.Posix.Types (CSsize)
 import Unsafe.Coerce (unsafeCoerce)
@@ -95,22 +95,6 @@ import Unsafe.Coerce (unsafeCoerce)
 foreign import ccall "wrapper" newFreeHaskellFunPtrFunPtr
   :: (FunPtr (IO ()) -> IO ())
   -> IO (FunPtr (FunPtr (IO ()) -> IO ()))
-
--- | A numeric type representing a C++ boolean.
-newtype CBool = CBool CUChar
-  deriving (Eq, Integral, Num, Ord, Real, Show, Storable)
-
-instance Bounded CBool where
-  minBound = 0
-  maxBound = 1
-
-instance Enum CBool where
-  fromEnum (CBool n) = fromIntegral n
-
-  toEnum n =
-    if n == 0 || n == 1
-    then CBool $ fromIntegral n
-    else error $ concat ["CBool.toEnum: Invalid value ", show n, "."]
 
 -- | Converts between integral types by going from @a@ to @b@, and also
 -- round-tripping the @b@ value back to an @a@ value.  If the two @a@ values
@@ -123,6 +107,19 @@ coerceIntegral a =
      then b
      else error $ "Conversion from " ++ show (typeOf a) ++ " to " ++
           show (typeOf b) ++ " does not preserve the value " ++ show a ++ "."
+
+-- | An instance @e@ of this class represents a value belonging to a C++
+-- enumeration with numeric type @n@.
+class CppEnum n e | e -> n where
+  -- | Converts a number into an enum value.
+  --
+  -- If the Hoppy binding didn't request that the enum support arbitrary unknown
+  -- values, then given an entry not explicitly supported by the enum, this
+  -- throws an exception.
+  toCppEnum :: HasCallStack => n -> e
+
+  -- | Extracts the number that an enum value represents.
+  fromCppEnum :: e -> n
 
 -- | An instance of this class represents a handle (a pointer) to a C++ object.
 -- All C++ classes bound by Hoppy have instances of @CppPtr@.  The lifetime of

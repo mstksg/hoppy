@@ -18,9 +18,9 @@
 {-# LANGUAGE CPP, GeneralizedNewtypeDeriving #-}
 
 module Foreign.Hoppy.Generator.Spec.Base (
+  ErrorMsg,
   -- * Interfaces
   Interface,
-  ErrorMsg,
   InterfaceOptions (..),
   defaultInterfaceOptions,
   interface,
@@ -39,6 +39,14 @@ module Foreign.Hoppy.Generator.Spec.Base (
   interfaceExceptionSupportModule,
   interfaceSetExceptionSupportModule,
   interfaceSetSharedPtr,
+  interfaceCompiler,
+  interfaceSetCompiler,
+  interfaceSetCompiler',
+  interfaceSetNoCompiler,
+  interfaceValidateEnumTypes,
+  interfaceSetValidateEnumTypes,
+  interfaceHooks,
+  interfaceModifyHooks,
   -- * C++ includes
   Include,
   includeStd,
@@ -70,9 +78,12 @@ module Foreign.Hoppy.Generator.Spec.Base (
   HasReqs (..),
   addReqs,
   addReqIncludes,
-  -- * Names and exports
+  -- * Names
   ExtName,
   toExtName,
+  extNameOrIdentifier,
+  extNameOrFnIdentifier,
+  extNameOrString,
   isValidExtName,
   fromExtName,
   HasExtNames (..),
@@ -84,100 +95,81 @@ module Foreign.Hoppy.Generator.Spec.Base (
   operatorPreferredExtName,
   operatorPreferredExtName',
   operatorType,
-  Export (..),
-  exportAddendum,
   Identifier,
+  makeIdentifier,
   identifierParts,
   IdPart,
+  makeIdPart,
   idPartBase,
   idPartArgs,
   ident, ident', ident1, ident2, ident3, ident4, ident5,
   identT, identT', ident1T, ident2T, ident3T, ident4T, ident5T,
+  -- * Exports
+  Exportable (..),
+  Export (..),
   -- * Basic types
   Type (..),
   normalizeType,
   stripConst,
-  -- ** Variables
-  Variable, makeVariable, varIdentifier, varExtName, varType, varReqs,
-  varIsConst, varGetterExtName, varSetterExtName,
-  -- ** Enums
-  CppEnum, makeEnum, enumIdentifier, enumExtName, enumValueNames, enumReqs,
-  enumValuePrefix, enumSetValuePrefix,
-  -- ** Bitspaces
-  Bitspace, makeBitspace, bitspaceExtName, bitspaceType, bitspaceValueNames, bitspaceEnum,
-  bitspaceAddEnum, bitspaceCppTypeIdentifier, bitspaceFromCppValueFn, bitspaceToCppValueFn,
-  bitspaceAddCppType, bitspaceReqs,
-  bitspaceValuePrefix, bitspaceSetValuePrefix,
-  -- ** Functions
+  -- * Functions and parameters
+  Constness (..), constNegate,
   Purity (..),
-  Function, makeFn, fnCName, fnExtName, fnPurity, fnParams, fnReturn, fnReqs, fnExceptionHandlers,
-  -- ** Classes
-  Class, makeClass, classIdentifier, classExtName, classSuperclasses,
-  classEntities, classAddEntities, classVariables, classCtors, classMethods,
-  classDtorIsPublic, classSetDtorPrivate,
-  classConversion, classReqs, classEntityPrefix, classSetEntityPrefix,
-  classIsMonomorphicSuperclass, classSetMonomorphicSuperclass,
-  classIsSubclassOfMonomorphic, classSetSubclassOfMonomorphic,
-  classIsException, classMakeException,
-  ClassEntity (..),
-  IsClassEntity (..), classEntityExtName, classEntityForeignName, classEntityForeignName',
-  ClassVariable,
-  makeClassVariable, makeClassVariable_,
-  mkClassVariable, mkClassVariable_,
-  mkStaticClassVariable, mkStaticClassVariable_,
-  classVarCName, classVarExtName, classVarType, classVarStatic, classVarGettable,
-  classVarGetterExtName, classVarGetterForeignName,
-  classVarSetterExtName, classVarSetterForeignName,
-  Ctor, makeCtor, makeCtor_, mkCtor, mkCtor_, ctorExtName, ctorParams, ctorExceptionHandlers,
-  Method,
-  MethodImpl (..),
-  MethodApplicability (..),
-  Constness (..),
-  constNegate,
-  Staticness (..),
-  makeMethod, makeMethod_,
-  makeFnMethod, makeFnMethod_,
-  mkMethod, mkMethod_, mkMethod', mkMethod'_,
-  mkConstMethod, mkConstMethod_, mkConstMethod', mkConstMethod'_,
-  mkStaticMethod, mkStaticMethod_, mkStaticMethod', mkStaticMethod'_,
-  Prop,  -- The data constructor is private.
-  mkProp, mkProp_,
-  mkStaticProp, mkStaticProp_,
-  mkBoolIsProp, mkBoolIsProp_,
-  mkBoolHasProp, mkBoolHasProp_,
-  methodImpl, methodExtName, methodApplicability, methodPurity, methodParams,
-  methodReturn, methodExceptionHandlers, methodConst, methodStatic,
-  -- *** Conversion to and from foreign values
-  ClassConversion (..),
-  classConversionNone,
-  classModifyConversion,
-  classSetConversion,
-  ClassHaskellConversion (..),
-  classHaskellConversionNone,
-  classSetHaskellConversion,
-  -- ** Callbacks
-  Callback, makeCallback,
-  callbackExtName, callbackParams, callbackReturn, callbackThrows, callbackReqs,
-  callbackSetThrows,
+  Parameter, parameterType, parameterName, parameterDocumentation,
+  IsParameter (..), toParameters,
+  np, (~:),
+  -- * Conversions
+  ConversionMethod (..),
+  ConversionSpec (conversionSpecName, conversionSpecCpp, conversionSpecHaskell),
+  makeConversionSpec,
+  ConversionSpecCpp (
+    ConversionSpecCpp,
+    conversionSpecCppName,
+    conversionSpecCppReqs,
+    conversionSpecCppConversionType,
+    conversionSpecCppConversionToCppExpr,
+    conversionSpecCppConversionFromCppExpr
+  ),
+  makeConversionSpecCpp,
+  ConversionSpecHaskell (
+    ConversionSpecHaskell,
+    conversionSpecHaskellHsType,
+    conversionSpecHaskellHsArgType,
+    conversionSpecHaskellCType,
+    conversionSpecHaskellToCppFn,
+    conversionSpecHaskellFromCppFn
+  ),
+  makeConversionSpecHaskell,
   -- * Exceptions
   ExceptionId (..),
   exceptionCatchAllId,
   ExceptionHandler (..),
   ExceptionHandlers (..),
-  HandlesExceptions (getExceptionHandlers),
+  HandlesExceptions (..),
   handleExceptions,
   -- * Addenda
   Addendum (..),
   HasAddendum (..),
   addAddendumHaskell,
+  -- * Enum support
+  EnumInfo (..),
+  EnumEntryWords,
+  EnumValueMap (..),
+  EnumValue (..),
+  -- * Languages
+  ForeignLanguage (..),
+  WithForeignLanguageOverrides,
+  MapWithForeignLanguageOverrides,
   -- * Haskell imports
   HsModuleName, HsImportSet, HsImportKey (..), HsImportSpecs (..), HsImportName, HsImportVal (..),
   hsWholeModuleImport, hsQualifiedImport, hsImport1, hsImport1', hsImports, hsImports',
   hsImportSetMakeSource,
   -- * Internal to Hoppy
+  EvaluatedEnumData (..),
+  EvaluatedEnumValueMap,
   interfaceAllExceptionClasses,
   interfaceSharedPtr,
-  classFindCopyCtor,
+  interfaceEvaluatedEnumData,
+  interfaceGetEvaluatedEnumData,
   -- ** Haskell imports
   makeHsImportSet,
   getHsImportSet,
@@ -191,7 +183,6 @@ module Foreign.Hoppy.Generator.Spec.Base (
   hsImportForPrelude,
   hsImportForRuntime,
   hsImportForSystemPosixTypes,
-  hsImportForTypeable,
   hsImportForUnsafeIO,
   -- ** Error messages
   objToHeapTWrongDirectionErrorMsg,
@@ -210,19 +201,26 @@ import Control.Monad.Except (MonadError, throwError)
 import Control.Monad.Error (MonadError, throwError)
 #endif
 import Control.Monad.State (MonadState, StateT, execStateT, get, modify)
-import Data.Char (isAlpha, isAlphaNum, toUpper)
+import Data.Char (isAlpha, isAlphaNum)
 import Data.Function (on)
 import Data.List (intercalate, intersperse)
 import qualified Data.Map as M
-import Data.Maybe (catMaybes, fromMaybe, isJust, isNothing, mapMaybe)
+import Data.Maybe (catMaybes, fromMaybe)
 #if !MIN_VERSION_base(4,8,0)
 import Data.Monoid (Monoid, mappend, mconcat, mempty)
 #endif
 import Data.Semigroup as Sem
 import qualified Data.Set as S
+import Data.Typeable (Typeable, cast)
 import Foreign.Hoppy.Generator.Common
-import {-# SOURCE #-} qualified Foreign.Hoppy.Generator.Language.Haskell as Haskell
-import Language.Haskell.Syntax (HsType)
+import Foreign.Hoppy.Generator.Compiler (Compiler, SomeCompiler (SomeCompiler), defaultCompiler)
+import {-# SOURCE #-} Foreign.Hoppy.Generator.Hook (Hooks, defaultHooks)
+import {-# SOURCE #-} qualified Foreign.Hoppy.Generator.Language.Cpp as LC
+import {-# SOURCE #-} qualified Foreign.Hoppy.Generator.Language.Haskell as LH
+import Foreign.Hoppy.Generator.Override (MapWithOverrides, WithOverrides)
+import {-# SOURCE #-} Foreign.Hoppy.Generator.Spec.Class (Class, classExtName)
+import GHC.Stack (HasCallStack)
+import Language.Haskell.Syntax (HsName, HsQualType, HsType)
 
 -- | Indicates strings that are error messages.
 type ErrorMsg = String
@@ -251,7 +249,8 @@ data Interface = Interface
   , interfaceCallbacksThrow :: Bool
     -- ^ Whether callbacks within the interface support throwing C++ exceptions
     -- from Haskell into C++ during their execution.  This may be overridden by
-    -- 'moduleCallbacksThrow' and 'callbackThrows'.
+    -- 'moduleCallbacksThrow' and
+    -- 'Foreign.Hoppy.Generator.Spec.Callback.callbackThrows'.
   , interfaceExceptionNamesToIds :: M.Map ExtName ExceptionId
     -- ^ Maps from external names of exception classes to their exception IDs.
   , interfaceExceptionSupportModule :: Maybe Module
@@ -260,12 +259,32 @@ data Interface = Interface
     -- This is the selected module.
   , interfaceSharedPtr :: (Reqs, String)
     -- ^ The name of the @shared_ptr@ class to use, and the requirements to use
-    -- it.  This defaults to using @std::shared_ptr@ from @<memory>@, but can be
-    -- changed if necessary via 'interfaceSetSharedPtr'.
+    -- it.  This defaults to using @std::shared_ptr@ from @\<memory\>@, but can
+    -- be changed if necessary via 'interfaceSetSharedPtr'.
+  , interfaceCompiler :: Maybe SomeCompiler
+    -- ^ The compiler to use when building code for the interface.  This can be
+    -- overridden or disabled.  This defaults to 'defaultCompiler'.
+  , interfaceHooks :: Hooks
+    -- ^ Hooks allowing the interface to execute code at various points during
+    -- the code generator's execution.  This defaults to 'defaultHooks'.
+  , interfaceEvaluatedEnumData :: Maybe (M.Map ExtName EvaluatedEnumData)
+    -- ^ Evaluated numeric types and values for all enums in the interface.
+  , interfaceValidateEnumTypes :: Bool
+    -- ^ Whether to validate manually-provided enum numeric types
+    -- ('Foreign.Hoppy.Generator.Spec.Enum.enumNumericType') using a compiled
+    -- C++ @sizeof()@, as is done for enums that don't have an @enumNumericType@
+    -- set.
+    --
+    -- This defaults to true, but can be set to false to discourage requiring a
+    -- compiler.  See 'interfaceSetNoCompiler'.
   }
 
 instance Show Interface where
   show iface = concat ["<Interface ", show (interfaceName iface), ">"]
+
+instance HasExports Interface where
+  lookupExport name iface =
+    lookupExport name =<< M.lookup name (interfaceNamesToModules iface)
 
 -- | Optional parameters when constructing an 'Interface' with 'interface'.
 newtype InterfaceOptions = InterfaceOptions
@@ -341,6 +360,10 @@ interface' ifName modules options = do
     , interfaceExceptionNamesToIds = exceptionNamesToIds
     , interfaceExceptionSupportModule = Nothing
     , interfaceSharedPtr = (reqInclude $ includeStd "memory", "std::shared_ptr")
+    , interfaceCompiler = Just $ SomeCompiler defaultCompiler
+    , interfaceHooks = defaultHooks
+    , interfaceEvaluatedEnumData = Nothing
+    , interfaceValidateEnumTypes = True
     }
 
 -- | The name of the parent Haskell module under which a Haskell module will be
@@ -373,7 +396,8 @@ interfaceAddHaskellModuleBase modulePath iface = case interfaceHaskellModuleBase
     ]
 
 -- | Returns the the exception ID for a class in an interface, if it has one
--- (i.e. if it's been marked as an exception class with 'classMakeException').
+-- (i.e. if it's been marked as an exception class with
+-- 'Foreign.Hoppy.Generator.Spec.Class.classMakeException').
 interfaceExceptionClassId :: Interface -> Class -> Maybe ExceptionId
 interfaceExceptionClassId iface cls =
   M.lookup (classExtName cls) $ interfaceExceptionNamesToIds iface
@@ -386,18 +410,18 @@ interfaceAllExceptionClasses' :: [Module] -> [Class]
 interfaceAllExceptionClasses' modules =
   flip concatMap modules $ \mod ->
   catMaybes $
-  for (M.elems $ moduleExports mod) $ \case
-    ExportClass cls | classIsException cls -> Just cls
-    _ -> Nothing
+  map getExportExceptionClass $
+  M.elems $ moduleExports mod
 
--- | Changes 'callbackThrows' for all callbacks in an interface that don't have it
--- set explicitly at the module or callback level.
+-- | Changes 'Foreign.Hoppy.Generator.Spec.Callback.callbackThrows' for all
+-- callbacks in an interface that don't have it set explicitly at the module or
+-- callback level.
 interfaceSetCallbacksThrow :: Bool -> Interface -> Interface
 interfaceSetCallbacksThrow b iface = iface { interfaceCallbacksThrow = b }
 
 -- | Sets an interface's exception support module, for interfaces that use
 -- exceptions.
-interfaceSetExceptionSupportModule :: Module -> Interface -> Interface
+interfaceSetExceptionSupportModule :: HasCallStack => Module -> Interface -> Interface
 interfaceSetExceptionSupportModule mod iface = case interfaceExceptionSupportModule iface of
   Nothing -> iface { interfaceExceptionSupportModule = Just mod }
   Just existingMod ->
@@ -429,6 +453,55 @@ interfaceSetExceptionSupportModule mod iface = case interfaceExceptionSupportMod
 interfaceSetSharedPtr :: String -> Reqs -> Interface -> Interface
 interfaceSetSharedPtr identifier reqs iface =
   iface { interfaceSharedPtr = (reqs, identifier) }
+
+-- | Replaces the default compiler used by the interface.
+--
+-- @interfaceSetCompiler c = 'interfaceSetCompiler'' ('SomeCompiler' c)@
+interfaceSetCompiler :: Compiler a => a -> Interface -> Interface
+interfaceSetCompiler = interfaceSetCompiler' . Just . SomeCompiler
+
+-- | Replaces the default compiler used by the interface.  When given @Nothing@,
+-- the interface will not be allowed to compile any code when it generates
+-- bindings.
+interfaceSetCompiler' :: Maybe SomeCompiler -> Interface -> Interface
+interfaceSetCompiler' compiler iface = iface { interfaceCompiler = compiler }
+
+-- | Sets an interface to never compile C++ code during binding generation.
+--
+-- This sets the interface to have no compiler, and also asks the interface not
+-- to do things that require a compiler, which would otherwise cause a runtime
+-- failure: currently just validation of provided enum numeric types
+-- (@'interfaceSetValidateEnumTypes' False@).
+interfaceSetNoCompiler :: Interface -> Interface
+interfaceSetNoCompiler =
+  interfaceSetValidateEnumTypes False .
+  interfaceSetCompiler' Nothing
+
+-- | Controls whether the interface will validate manually specified enum types
+-- ('Foreign.Hoppy.Generator.Spec.Enum.enumNumericType') by compiling a C++
+-- program.
+--
+-- See 'interfaceValidateEnumTypes'.
+interfaceSetValidateEnumTypes :: Bool -> Interface -> Interface
+interfaceSetValidateEnumTypes validate iface =
+  iface { interfaceValidateEnumTypes = validate }
+
+-- | Modifies the hooks associated with an interface.
+interfaceModifyHooks :: (Hooks -> Hooks) -> Interface -> Interface
+interfaceModifyHooks f iface =
+  iface { interfaceHooks = f $ interfaceHooks iface }
+
+-- | Returns the map containing the calculated values for all entries in the
+-- enum with the given 'ExtName'.  This requires hooks to have been run.
+interfaceGetEvaluatedEnumData :: HasCallStack => Interface -> ExtName -> EvaluatedEnumData
+interfaceGetEvaluatedEnumData iface extName =
+  case interfaceEvaluatedEnumData iface of
+    Nothing -> error $ "interfaceGetEvaluatedEnumData: Data have not been " ++
+               "evaluated for " ++ show iface ++ "."
+    Just enumMap -> case M.lookup extName enumMap of
+      Nothing -> error $ "interfaceGetEvaluatedEnumData: No data found for " ++
+                 show extName ++ " in " ++ show iface ++ "."
+      Just info -> info
 
 -- | An @#include@ directive in a C++ file.
 newtype Include = Include
@@ -478,7 +551,8 @@ data Module = Module
   , moduleCallbacksThrow :: Maybe Bool
     -- ^ Whether callbacks exported from the module support exceptions being
     -- thrown during their execution.  When present, this overrides
-    -- 'interfaceCallbacksThrow'.  This maybe overridden by 'callbackThrows'.
+    -- 'interfaceCallbacksThrow'.  This maybe overridden by
+    -- 'Foreign.Hoppy.Generator.Spec.Callback.callbackThrows'.
   , moduleAddendum :: Addendum
     -- ^ The module's addendum.
   }
@@ -491,6 +565,9 @@ instance Ord Module where
 
 instance Show Module where
   show m = concat ["<Module ", moduleName m, ">"]
+
+instance HasExports Module where
+  lookupExport name m = M.lookup name $ moduleExports m
 
 instance HasReqs Module where
   getReqs = moduleReqs
@@ -528,7 +605,7 @@ moduleModify = flip execStateT
 
 -- | Same as 'moduleModify', but calls 'error' in the case of failure, which is
 -- okay in for a generator which would abort in this case anyway.
-moduleModify' :: Module -> StateT Module (Either String) () -> Module
+moduleModify' :: HasCallStack => Module -> StateT Module (Either String) () -> Module
 moduleModify' m action = case moduleModify m action of
   Left errorMsg ->
     error $ concat
@@ -569,8 +646,8 @@ moduleAddHaskellName name = do
       ["moduleAddHaskellName: ", show m, " already has Haskell name ",
        show name', "; trying to add name ", show name, "."]
 
--- | Changes 'callbackThrows' for all callbacks in a module that don't have it
--- set explicitly.
+-- | Changes 'Foreign.Hoppy.Generator.Spec.Callback.callbackThrows' for all
+-- callbacks in a module that don't have it set explicitly.
 moduleSetCallbacksThrow :: MonadState Module m => Maybe Bool -> m ()
 moduleSetCallbacksThrow b = modify $ \m -> m { moduleCallbacksThrow = b }
 
@@ -596,10 +673,12 @@ instance Monoid Reqs where
 reqInclude :: Include -> Reqs
 reqInclude include = mempty { reqsIncludes = S.singleton include }
 
--- | Contains the data types for bindings to C++ entities: 'Function', 'Class',
--- etc.  Use 'addReqs' or 'addReqIncludes' to specify requirements for these
--- entities, e.g. header files that must be included in order to access the
--- underlying entities that are being bound.
+-- | Contains the data types for bindings to C++ entities:
+-- 'Foreign.Hoppy.Generator.Spec.Function.Function',
+-- 'Foreign.Hoppy.Generator.Spec.Class.Class', etc.  Use 'addReqs' or
+-- 'addReqIncludes' to specify requirements for these entities, e.g. header
+-- files that must be included in order to access the underlying entities that
+-- are being bound.
 
 -- | C++ types that have requirements in order to use them in generated
 -- bindings.
@@ -647,7 +726,7 @@ instance Show ExtName where
 
 -- | Creates an 'ExtName' that contains the given string, erroring if the string
 -- is an invalid 'ExtName'.
-toExtName :: String -> ExtName
+toExtName :: HasCallStack => String -> ExtName
 toExtName str = case str of
   -- Keep this logic in sync with isValidExtName.
   [] -> error "An ExtName cannot be empty."
@@ -665,14 +744,14 @@ isValidExtName str = case str of
   c:cs -> isAlpha c && all ((||) <$> isAlphaNum <*> (== '_')) cs
 
 -- | Generates an 'ExtName' from an 'Identifier', if the given name is absent.
-extNameOrIdentifier :: Identifier -> Maybe ExtName -> ExtName
+extNameOrIdentifier :: HasCallStack => Identifier -> Maybe ExtName -> ExtName
 extNameOrIdentifier ident = fromMaybe $ case identifierParts ident of
   [] -> error "extNameOrIdentifier: Invalid empty identifier."
   parts -> toExtName $ idPartBase $ last parts
 
 -- | Generates an 'ExtName' from an @'FnName' 'Identifier'@, if the given name
 -- is absent.
-extNameOrFnIdentifier :: FnName Identifier -> Maybe ExtName -> ExtName
+extNameOrFnIdentifier :: HasCallStack => FnName Identifier -> Maybe ExtName -> ExtName
 extNameOrFnIdentifier name =
   fromMaybe $ case name of
     FnName identifier -> case identifierParts identifier of
@@ -789,7 +868,7 @@ makeOperatorInfo :: String -> OperatorType -> OperatorInfo
 makeOperatorInfo = OperatorInfo . toExtName
 
 -- | Returns a conventional string to use for the 'ExtName' of an operator.
-operatorPreferredExtName :: Operator -> ExtName
+operatorPreferredExtName :: HasCallStack => Operator -> ExtName
 operatorPreferredExtName op = case M.lookup op operatorInfo of
   Just info -> operatorPreferredExtName'' info
   Nothing ->
@@ -802,7 +881,7 @@ operatorPreferredExtName' :: Operator -> String
 operatorPreferredExtName' = fromExtName . operatorPreferredExtName
 
 -- | Returns the type of an operator.
-operatorType :: Operator -> OperatorType
+operatorType :: HasCallStack => Operator -> OperatorType
 operatorType op = case M.lookup op operatorInfo of
   Just info -> operatorType' info
   Nothing ->
@@ -862,51 +941,24 @@ operatorInfo =
      then M.fromList input
      else error "operatorInfo: Operator info list is out of sync with Operator data type."
 
--- | Specifies some C++ object (function or class) to give access to.
-data Export =
-  ExportVariable Variable  -- ^ Exports a variable.
-  | ExportEnum CppEnum  -- ^ Exports an enum.
-  | ExportBitspace Bitspace  -- ^ Exports a bitspace.
-  | ExportFn Function  -- ^ Exports a function.
-  | ExportClass Class  -- ^ Exports a class with all of its contents.
-  | ExportCallback Callback  -- ^ Exports a callback.
-  deriving (Show)
-
-instance HasExtNames Export where
-  getPrimaryExtName x = case x of
-    ExportVariable v -> getPrimaryExtName v
-    ExportEnum e -> getPrimaryExtName e
-    ExportBitspace b -> getPrimaryExtName b
-    ExportFn f -> getPrimaryExtName f
-    ExportClass cls -> getPrimaryExtName cls
-    ExportCallback cb -> getPrimaryExtName cb
-
-  getNestedExtNames x = case x of
-    ExportVariable v -> getNestedExtNames v
-    ExportEnum e -> getNestedExtNames e
-    ExportBitspace b -> getNestedExtNames b
-    ExportFn f -> getNestedExtNames f
-    ExportClass cls -> getNestedExtNames cls
-    ExportCallback cb -> getNestedExtNames cb
-
--- | Returns the export's addendum.  'Export' doesn't have a 'HasAddendum'
--- instance because you normally wouldn't want to modify the addendum of one.
-exportAddendum export = case export of
-  ExportVariable v -> getAddendum v
-  ExportEnum e -> getAddendum e
-  ExportBitspace bs -> getAddendum bs
-  ExportFn f -> getAddendum f
-  ExportClass cls -> getAddendum cls
-  ExportCallback cb -> getAddendum cb
+-- | Types that contain 'Export's that can be looked up by their 'ExtName's.
+class HasExports a where
+  -- | Looks up the 'Export' for an 'ExtName' in the given object.
+  lookupExport :: ExtName -> a -> Maybe Export
 
 -- | A path to some C++ object, including namespaces.  An identifier consists of
 -- multiple parts separated by @\"::\"@.  Each part has a name string followed
 -- by an optional template argument list, where each argument gets rendered from
 -- a 'Type' (non-type arguments for template metaprogramming are not supported).
+--
+-- The 'Monoid' instance inserts a @::@ between joined identifiers.  Usually an
+-- identifier needs to contain at least one part, so 'mempty' is an invalid
+-- argument to many functions in Hoppy, but it is useful as a base case for
+-- appending.
 newtype Identifier = Identifier
   { identifierParts :: [IdPart]
     -- ^ The separate parts of the identifier, between @::@s.
-  } deriving (Eq)
+  } deriving (Eq, Monoid, Sem.Semigroup)
 
 instance Show Identifier where
   show ident =
@@ -928,7 +980,16 @@ data IdPart = IdPart
     -- ^ Template arguments, if present.
   } deriving (Eq, Show)
 
--- | Creates an identifier of the form @a@.
+-- | Creates an identifier from a collection of 'IdPart's, with @::@s between.
+makeIdentifier :: [IdPart] -> Identifier
+makeIdentifier = Identifier
+
+-- | Creates an object representing one component of an identifier.
+makeIdPart :: String -> Maybe [Type] -> IdPart
+makeIdPart = IdPart
+
+-- | Creates a identifier of the form @a@, without any namespace operators
+-- (@::@).
 ident :: String -> Identifier
 ident a = Identifier [IdPart a Nothing]
 
@@ -991,86 +1052,135 @@ ident5T a b c d e f ts =
   Identifier [IdPart a Nothing, IdPart b Nothing, IdPart c Nothing,
               IdPart d Nothing, IdPart e Nothing, IdPart f $ Just ts]
 
+-- | Instances of this typeclass are C++ entities that Hoppy can expose to
+-- foreign languages: functions, classes, global variables, etc.  'Interface's
+-- are largely composed of exports (grouped into modules).  Hoppy uses this
+-- interface to perform code generation for each entity.
+class (HasAddendum a, HasExtNames a, HasReqs a, Typeable a, Show a) => Exportable a where
+  -- | Wraps an exportable object in an existential data type.
+  --
+  -- The default instance is just @toExport = 'Export'@, which does not need to
+  -- be overridden in general.
+  toExport :: a -> Export
+  toExport = Export
+
+  -- | Attempts to cast an exportable object to a specific type, pulling off
+  -- 'Export' wrappers as necessary.
+  --
+  -- The default @castExport = 'cast'@ is fine.
+  castExport :: (Typeable a, Exportable b, Typeable b) => a -> Maybe b
+  castExport = cast
+
+  -- | Generates the C++ side of the binding for an entity.
+  --
+  -- For an entity, Hoppy invokes this function once with 'LC.SayHeader' when
+  -- generating the header file for a module, and once with 'LC.SaySource' when
+  -- generating the corresponding source file.
+  sayExportCpp :: LC.SayExportMode -> a -> LC.Generator ()
+
+  -- | Generates the Haskell side of the binding for an entity.
+  --
+  -- For an entity, Hoppy invokes this function once with
+  -- 'LH.SayExportForeignImports' when it is time to emit foreign imports, and
+  -- once with 'LH.SayExportDecls' when it is time to generate Haskell binding
+  -- code later in the module.  Hoppy may also call the function with
+  -- 'LH.SayExportBoot', if necessary.
+  --
+  -- See 'LH.SayExportMode'.
+  sayExportHaskell :: LH.SayExportMode -> a -> LH.Generator ()
+
+  -- | If the export is backed by an C++ enum, then this returns known
+  -- structural information about the enum.  This provides information to the
+  -- \"evaluate enums\" hook so that Hoppy can determine enum values on its own.
+  --
+  -- By default, this returns @Nothing@.
+  --
+  -- See 'Hooks'.
+  getExportEnumInfo :: a -> Maybe EnumInfo
+  getExportEnumInfo _ = Nothing
+
+  -- | If the export is backed by a C++ class that is marked as supporting
+  -- exceptions, then this returns the class definition.
+  --
+  -- By default, this returns @Nothing@.
+  getExportExceptionClass :: a -> Maybe Class
+  getExportExceptionClass _ = Nothing
+
+-- | Specifies some C++ object (function or class) to give access to.
+data Export = forall a. Exportable a => Export a
+
+instance HasAddendum Export where
+  getAddendum (Export e) = getAddendum e
+  setAddendum a (Export e) = Export $ setAddendum a e
+  modifyAddendum f (Export e) = Export $ modifyAddendum f e
+
+instance HasExtNames Export where
+  getPrimaryExtName (Export e) = getPrimaryExtName e
+  getNestedExtNames (Export e) = getNestedExtNames e
+
+instance HasReqs Export where
+  getReqs (Export e) = getReqs e
+  setReqs reqs (Export e) = Export $ setReqs reqs e
+  modifyReqs f (Export e) = Export $ modifyReqs f e
+
+instance Exportable Export where
+  toExport = id
+
+  castExport (Export e) = castExport e
+
+  sayExportCpp sayBody (Export e) = sayExportCpp sayBody e
+
+  sayExportHaskell mode (Export e) = sayExportHaskell mode e
+
+  getExportEnumInfo (Export e) = getExportEnumInfo e
+
+  getExportExceptionClass (Export e) = getExportExceptionClass e
+
+instance Show Export where
+  show (Export e) = "<Export " ++ show e ++ ">"
+
 -- | A concrete C++ type.  Use the bindings in "Foreign.Hoppy.Generator.Types"
 -- for values of this type; these data constructors are subject to change
 -- without notice.
 data Type =
     Internal_TVoid
-  | Internal_TBool
-  | Internal_TChar
-  | Internal_TUChar
-  | Internal_TShort
-  | Internal_TUShort
-  | Internal_TInt
-  | Internal_TUInt
-  | Internal_TLong
-  | Internal_TULong
-  | Internal_TLLong
-  | Internal_TULLong
-  | Internal_TFloat
-  | Internal_TDouble
-  | Internal_TInt8
-  | Internal_TInt16
-  | Internal_TInt32
-  | Internal_TInt64
-  | Internal_TWord8
-  | Internal_TWord16
-  | Internal_TWord32
-  | Internal_TWord64
-  | Internal_TPtrdiff
-  | Internal_TSize
-  | Internal_TSSize
-  | Internal_TEnum CppEnum
-  | Internal_TBitspace Bitspace
   | Internal_TPtr Type
   | Internal_TRef Type
-  | Internal_TFn [Type] Type
-  | Internal_TCallback Callback
+  | Internal_TFn [Parameter] Type
   | Internal_TObj Class
   | Internal_TObjToHeap Class
   | Internal_TToGc Type
+  | Internal_TManual ConversionSpec
   | Internal_TConst Type
-  deriving (Eq, Show)
+  -- When changing the declarations here, be sure to update the Eq instance.
+  deriving (Show)
+
+instance Eq Type where
+  Internal_TVoid == Internal_TVoid = True
+  (Internal_TPtr t) == (Internal_TPtr t') = t == t'
+  (Internal_TRef t) == (Internal_TRef t') = t == t'
+  (Internal_TFn ps r) == (Internal_TFn ps' r') =
+    (and $ zipWith ((==) `on` parameterType) ps ps') && r == r'
+  (Internal_TObj cls) == (Internal_TObj cls') = cls == cls'
+  (Internal_TObjToHeap cls) == (Internal_TObjToHeap cls') = cls == cls'
+  (Internal_TToGc t) == (Internal_TToGc t') = t == t'
+  (Internal_TManual s) == (Internal_TManual s') = s == s'
+  (Internal_TConst t) == (Internal_TConst t') = t == t'
+  _ == _ = False
 
 -- | Canonicalizes a 'Type' without changing its meaning.  Multiple nested
 -- 'Internal_TConst's are collapsed into a single one.
 normalizeType :: Type -> Type
 normalizeType t = case t of
   Internal_TVoid -> t
-  Internal_TBool -> t
-  Internal_TChar -> t
-  Internal_TUChar -> t
-  Internal_TShort -> t
-  Internal_TUShort -> t
-  Internal_TInt -> t
-  Internal_TUInt -> t
-  Internal_TLong -> t
-  Internal_TULong -> t
-  Internal_TLLong -> t
-  Internal_TULLong -> t
-  Internal_TFloat -> t
-  Internal_TDouble -> t
-  Internal_TInt8 -> t
-  Internal_TInt16 -> t
-  Internal_TInt32 -> t
-  Internal_TInt64 -> t
-  Internal_TWord8 -> t
-  Internal_TWord16 -> t
-  Internal_TWord32 -> t
-  Internal_TWord64 -> t
-  Internal_TPtrdiff -> t
-  Internal_TSize -> t
-  Internal_TSSize -> t
-  Internal_TEnum _ -> t
-  Internal_TBitspace _ -> t
   Internal_TPtr t' -> Internal_TPtr $ normalizeType t'
   Internal_TRef t' -> Internal_TRef $ normalizeType t'
-  Internal_TFn paramTypes retType ->
-    Internal_TFn (map normalizeType paramTypes) $ normalizeType retType
-  Internal_TCallback _ -> t
+  Internal_TFn params retType ->
+    Internal_TFn (map (onParameterType normalizeType) params) $ normalizeType retType
   Internal_TObj _ -> t
   Internal_TObjToHeap _ -> t
   Internal_TToGc _ -> t
+  Internal_TManual _ -> t
   Internal_TConst (Internal_TConst t') -> normalizeType $ Internal_TConst t'
   Internal_TConst _ -> t
 
@@ -1080,243 +1190,14 @@ stripConst t = case t of
   Internal_TConst t' -> stripConst t'
   _ -> t
 
--- | A C++ variable.
---
--- Use this data type's 'HasReqs' instance to make the variable accessible.
-data Variable = Variable
-  { varIdentifier :: Identifier
-    -- ^ The identifier used to refer to the variable.
-  , varExtName :: ExtName
-    -- ^ The variable's external name.
-  , varType :: Type
-    -- ^ The variable's type.  This may be
-    -- 'Foreign.Hoppy.Generator.Types.constT' to indicate that the variable is
-    -- read-only.
-  , varReqs :: Reqs
-    -- ^ Requirements for bindings to access this variable.
-  , varAddendum :: Addendum
-    -- ^ The variable's addendum.
-  }
+-- | Whether or not @const@ is applied to an entity.
+data Constness = Nonconst | Const
+               deriving (Bounded, Enum, Eq, Show)
 
-instance Eq Variable where
-  (==) = (==) `on` varExtName
-
-instance Show Variable where
-  show v = concat ["<Variable ", show (varExtName v), " ", show (varType v), ">"]
-
-instance HasExtNames Variable where
-  getPrimaryExtName = varExtName
-  getNestedExtNames v = [varGetterExtName v, varSetterExtName v]
-
-instance HasReqs Variable where
-  getReqs = varReqs
-  setReqs reqs v = v { varReqs = reqs }
-
-instance HasAddendum Variable where
-  getAddendum = varAddendum
-  setAddendum addendum v = v { varAddendum = addendum }
-
--- | Creates a binding for a C++ variable.
-makeVariable :: Identifier -> Maybe ExtName -> Type -> Variable
-makeVariable identifier maybeExtName t =
-  Variable identifier (extNameOrIdentifier identifier maybeExtName) t mempty mempty
-
--- | Returns whether the variable is constant, i.e. whether its type is
--- @'Foreign.Hoppy.Generator.Types.constT' ...@.
-varIsConst :: Variable -> Bool
-varIsConst v = case varType v of
-  Internal_TConst _ -> True
-  _ -> False
-
--- | Returns the external name of the getter function for the variable.
-varGetterExtName :: Variable -> ExtName
-varGetterExtName = toExtName . (++ "_get") . fromExtName . varExtName
-
--- | Returns the external name of the setter function for the variable.
-varSetterExtName :: Variable -> ExtName
-varSetterExtName = toExtName . (++ "_set") . fromExtName . varExtName
-
--- | A C++ enum declaration.  An enum should actually be enumerable (in the
--- sense of Haskell's 'Enum'); if it's not, consider using a 'Bitspace' instead.
-data CppEnum = CppEnum
-  { enumIdentifier :: Identifier
-    -- ^ The identifier used to refer to the enum.
-  , enumExtName :: ExtName
-    -- ^ The enum's external name.
-  , enumValueNames :: [(Int, [String])]
-    -- ^ The numeric values and names of the enum values.  A single value's name
-    -- is broken up into words.  How the words and ext name get combined to make
-    -- a name in a particular foreign language depends on the language.
-  , enumReqs :: Reqs
-    -- ^ Requirements for bindings to access this enum.  Currently unused, but
-    -- will be in the future.
-  , enumAddendum :: Addendum
-    -- ^ The enum's addendum.
-  , enumValuePrefix :: String
-    -- ^ The prefix applied to value names ('enumValueNames') when determining
-    -- the names of values in foreign languages.  This defaults to the external
-    -- name of the enum, plus an underscore.
-    --
-    -- See 'enumSetValuePrefix'.
-  }
-
-instance Eq CppEnum where
-  (==) = (==) `on` enumExtName
-
-instance Show CppEnum where
-  show e = concat ["<Enum ", show (enumExtName e), " ", show (enumIdentifier e), ">"]
-
-instance HasExtNames CppEnum where
-  getPrimaryExtName = enumExtName
-
-instance HasReqs CppEnum where
-  getReqs = enumReqs
-  setReqs reqs e = e { enumReqs = reqs }
-
-instance HasAddendum CppEnum where
-  getAddendum = enumAddendum
-  setAddendum addendum e = e { enumAddendum = addendum }
-
--- | Creates a binding for a C++ enum.
-makeEnum :: Identifier  -- ^ 'enumIdentifier'
-         -> Maybe ExtName
-         -- ^ An optional external name; will be automatically derived from
-         -- the identifier if absent.
-         -> [(Int, [String])]  -- ^ 'enumValueNames'
-         -> CppEnum
-makeEnum identifier maybeExtName valueNames =
-  let extName = extNameOrIdentifier identifier maybeExtName
-  in CppEnum
-     identifier
-     extName
-     valueNames
-     mempty
-     mempty
-     (fromExtName extName ++ "_")
-
--- | Sets the prefix applied to the names of enum values' identifiers in foreign
--- languages.
---
--- See 'enumValuePrefix'.
-enumSetValuePrefix :: String -> CppEnum -> CppEnum
-enumSetValuePrefix prefix enum = enum { enumValuePrefix = prefix }
-
--- | A C++ numeric space with bitwise operations.  This is similar to a
--- 'CppEnum', but in addition to the extra operations, this differs in that
--- these values aren't enumerable.
---
--- Additionally, as a kludge for Qtah, a bitspace may have a C++ type
--- ('bitspaceCppTypeIdentifier') separate from its numeric type
--- ('bitspaceType').  Qt bitspaces aren't raw numbers but are instead type-safe
--- @QFlags@ objects that don't implicitly convert from integers, so we need a
--- means to do so manually.  Barring general ad-hoc argument and return value
--- conversion support, we allow this as follows: when given a C++ type, then a
--- bitspace may also have a conversion function between the numeric and C++
--- type, in each direction.  If a conversion function is present, it will be
--- used for conversions in its respective direction.  The C++ type is not a full
--- 'Type', but only an 'Identifier', since additional information is not needed.
--- See 'bitspaceAddCppType'.
-data Bitspace = Bitspace
-  { bitspaceExtName :: ExtName
-    -- ^ The bitspace's external name.
-  , bitspaceType :: Type
-    -- ^ The C++ type used for bits values.  This should be a primitive numeric
-    -- type, usually 'Foreign.Hoppy.Generator.Types.intT'.
-  , bitspaceValueNames :: [(Int, [String])]
-    -- ^ The numeric values and names of the bitspace values.  See
-    -- 'enumValueNames'.
-  , bitspaceEnum :: Maybe CppEnum
-    -- ^ An associated enum, whose values may be converted to values in the
-    -- bitspace.
-  , bitspaceCppTypeIdentifier :: Maybe Identifier
-    -- ^ The optional C++ type for a bitspace.
-  , bitspaceToCppValueFn :: Maybe String
-    -- ^ The name of a C++ function to convert from 'bitspaceType' to the
-    -- bitspace's C++ type.
-  , bitspaceFromCppValueFn :: Maybe String
-    -- ^ The name of a C++ function to convert from the bitspace's C++ type to
-    -- 'bitspaceType'.
-  , bitspaceReqs :: Reqs
-    -- ^ Requirements for emitting the bindings for a bitspace, i.e. what's
-    -- necessary to reference 'bitspaceCppTypeIdentifier',
-    -- 'bitspaceFromCppValueFn', and 'bitspaceToCppValueFn'.  'bitspaceType' can
-    -- take some numeric types that require includes as well, but you don't need
-    -- to list these here.
-  , bitspaceAddendum :: Addendum
-    -- ^ The bitspace's addendum.
-  , bitspaceValuePrefix :: String
-    -- ^ The prefix applied to value names ('bitspaceValueNames') when
-    -- determining the names of values in foreign languages.  This defaults to
-    -- the external name of the bitspace, plus an underscore.
-    --
-    -- See 'bitspaceSetValuePrefix'.
-  }
-
-instance Eq Bitspace where
-  (==) = (==) `on` bitspaceExtName
-
-instance Show Bitspace where
-  show e = concat ["<Bitspace ", show (bitspaceExtName e), " ", show (bitspaceType e), ">"]
-
-instance HasExtNames Bitspace where
-  getPrimaryExtName = bitspaceExtName
-
-instance HasReqs Bitspace where
-  getReqs = bitspaceReqs
-  setReqs reqs b = b { bitspaceReqs = reqs }
-
-instance HasAddendum Bitspace where
-  getAddendum = bitspaceAddendum
-  setAddendum addendum bs = bs { bitspaceAddendum = addendum }
-
--- | Creates a binding for a C++ bitspace.
-makeBitspace :: ExtName  -- ^ 'bitspaceExtName'
-             -> Type  -- ^ 'bitspaceType'
-             -> [(Int, [String])]  -- ^ 'bitspaceValueNames'
-             -> Bitspace
-makeBitspace extName t valueNames =
-  Bitspace extName t valueNames Nothing Nothing Nothing Nothing mempty mempty
-  (fromExtName extName ++ "_")
-
--- | Sets the prefix applied to the names of enum values' identifiers in foreign
--- languages.
---
--- See 'enumValuePrefix'.
-bitspaceSetValuePrefix :: String -> Bitspace -> Bitspace
-bitspaceSetValuePrefix prefix bitspace = bitspace { bitspaceValuePrefix = prefix }
-
--- | Associates an enum with the bitspace.  See 'bitspaceEnum'.
-bitspaceAddEnum :: CppEnum -> Bitspace -> Bitspace
-bitspaceAddEnum enum bitspace = case bitspaceEnum bitspace of
-  Just enum' ->
-    error $ concat
-    ["bitspaceAddEnum: Adding ", show enum, " to ", show bitspace,
-     ", but it already has ", show enum', "."]
-  Nothing ->
-    if bitspaceValueNames bitspace /= enumValueNames enum
-    then error $ concat
-         ["bitspaceAddEnum: Trying to add ", show enum, " to ", show bitspace,
-          ", but the values aren't equal.\nBitspace values: ", show $ bitspaceValueNames bitspace,
-          "\n    Enum values: ", show $ enumValueNames enum]
-    else bitspace { bitspaceEnum = Just enum }
-
--- | @bitspaceAddCppType cppTypeIdentifier toCppValueFn fromCppValueFn@
--- associates a C++ type (plus optional conversion functions) with a bitspace.
--- At least one conversion should be specified, otherwise adding the C++ type
--- will mean nothing.  You should also add use requirements to the bitspace for
--- all of these arguments; see 'HasReqs'.
-bitspaceAddCppType :: Identifier -> Maybe String -> Maybe String -> Bitspace -> Bitspace
-bitspaceAddCppType cppTypeId toCppValueFnMaybe fromCppValueFnMaybe b =
-  case bitspaceCppTypeIdentifier b of
-    Just cppTypeId' ->
-      error $ concat
-      ["bitspaceAddCppType: Adding C++ type ", show cppTypeId,
-       " to ", show b, ", but it already has ", show cppTypeId', "."]
-    Nothing ->
-      b { bitspaceCppTypeIdentifier = Just cppTypeId
-        , bitspaceToCppValueFn = toCppValueFnMaybe
-        , bitspaceFromCppValueFn = fromCppValueFnMaybe
-        }
+-- | Returns the opposite constness value.
+constNegate :: Constness -> Constness
+constNegate Nonconst = Const
+constNegate Const = Nonconst
 
 -- | Whether or not a function may cause side-effects.
 --
@@ -1330,940 +1211,291 @@ data Purity = Nonpure  -- ^ Side-affects are possible.
             | Pure  -- ^ Side-affects will not happen.
             deriving (Eq, Show)
 
--- | A C++ function declaration.
+-- | A parameter to a function, including a type and an optional name and
+-- documentation string.
 --
--- Use this data type's 'HasReqs' instance to make the function accessible.  You
--- do not need to add requirements for parameter or return types.
-data Function = Function
-  { fnCName :: FnName Identifier
-    -- ^ The identifier used to call the function.
-  , fnExtName :: ExtName
-    -- ^ The function's external name.
-  , fnPurity :: Purity
-    -- ^ Whether the function is pure.
-  , fnParams :: [Type]
-    -- ^ The function's parameter types.
-  , fnReturn :: Type
-    -- ^ The function's return type.
-  , fnReqs :: Reqs
-    -- ^ Requirements for bindings to access this function.
-  , fnExceptionHandlers :: ExceptionHandlers
-    -- ^ Exceptions that the function might throw.
-  , fnAddendum :: Addendum
-    -- ^ The function's addendum.
-  }
+-- Two @Parameter@s are equal if their types are equal.
+data Parameter = Parameter
+  { parameterType :: Type
+  , parameterName :: Maybe String
+  , parameterDocumentation :: Maybe String
+  } deriving (Show)
 
-instance Show Function where
-  show fn =
-    concat ["<Function ", show (fnExtName fn), " ", show (fnCName fn),
-            show (fnParams fn), " ", show (fnReturn fn), ">"]
+class Show a => IsParameter a where
+  toParameter :: a -> Parameter
 
-instance HasExtNames Function where
-  getPrimaryExtName = fnExtName
+instance IsParameter Parameter where
+  toParameter = id
 
-instance HasReqs Function where
-  getReqs = fnReqs
-  setReqs reqs fn = fn { fnReqs = reqs }
+instance IsParameter Type where
+  toParameter t =
+    Parameter
+    { parameterType = t
+    , parameterName = Nothing
+    , parameterDocumentation = Nothing
+    }
 
-instance HandlesExceptions Function where
-  getExceptionHandlers = fnExceptionHandlers
-  modifyExceptionHandlers f fn = fn { fnExceptionHandlers = f $ fnExceptionHandlers fn }
+onParameterType :: (Type -> Type) -> (Parameter -> Parameter)
+onParameterType f p = p { parameterType = f $ parameterType p }
 
-instance HasAddendum Function where
-  getAddendum = fnAddendum
-  setAddendum addendum fn = fn { fnAddendum = addendum }
+-- | An empty parameter list.  This should be used instead of a literal @[]@
+-- when declaring an empty parameter list, because in the context of
+-- @'IsParameter' a => [a]@, the empty list is ambiguously typed, even though it
+-- doesn't matter which instance is selected.
+np :: [Parameter]
+np = []
 
--- | Creates a binding for a C++ function.
-makeFn :: IsFnName Identifier name
-       => name
-       -> Maybe ExtName
-       -- ^ An optional external name; will be automatically derived from
-       -- the identifier if absent.
-       -> Purity
-       -> [Type]  -- ^ Parameter types.
-       -> Type  -- ^ Return type.
-       -> Function
-makeFn cName maybeExtName purity paramTypes retType =
-  let fnName = toFnName cName
-  in Function fnName
-              (extNameOrFnIdentifier fnName maybeExtName)
-              purity paramTypes retType mempty mempty mempty
+toParameters :: IsParameter a => [a] -> [Parameter]
+toParameters = map toParameter
 
--- | A C++ class declaration.  See 'IsClassEntity' for more information about the
--- interaction between a class's names and the names of entities within the
--- class.
---
--- Use this data type's 'HasReqs' instance to make the class accessible.  You do
--- not need to add requirements for methods' parameter or return types.
-data Class = Class
-  { classIdentifier :: Identifier
-    -- ^ The identifier used to refer to the class.
-  , classExtName :: ExtName
-    -- ^ The class's external name.
-  , classSuperclasses :: [Class]
-    -- ^ The class's public superclasses.
-  , classEntities :: [ClassEntity]
-    -- ^ The class's entities.
-  , classDtorIsPublic :: Bool
-    -- ^ The class's methods.
-  , classConversion :: ClassConversion
-    -- ^ Behaviour for converting objects to and from foriegn values.
-  , classReqs :: Reqs
-    -- ^ Requirements for bindings to access this class.
-  , classAddendum :: Addendum
-    -- ^ The class's addendum.
-  , classIsMonomorphicSuperclass :: Bool
-    -- ^ This is true for classes passed through
-    -- 'classSetMonomorphicSuperclass'.
-  , classIsSubclassOfMonomorphic :: Bool
-    -- ^ This is true for classes passed through
-    -- 'classSetSubclassOfMonomorphic'.
-  , classIsException :: Bool
-    -- ^ Whether to support using the class as a C++ exception.
-  , classEntityPrefix :: String
-    -- ^ The prefix applied to the external names of entities (methods, etc.)
-    -- within this class when determining the names of foreign languages'
-    -- corresponding bindings.  This defaults to the external name of the class,
-    -- plus an underscore.  Changing this allows you to potentially have
-    -- entities with the same foreign name in separate modules.  This may be the
-    -- empty string, in which case the foreign name will simply be the external
-    -- name of the entity.
+(~:) :: IsParameter a => String -> a -> Parameter
+(~:) name param = (toParameter param) { parameterName = Just name }
+
+-- | Defines the process for converting a value in one direction between C++ and
+-- a foreign language.  The type parameter varies depending on the actual
+-- conversion being defined.
+data ConversionMethod c =
+    ConversionUnsupported
+    -- ^ The conversion is unsupported.  If part of an interface depends on
+    -- performing this conversion, code generation will fail.
+  | BinaryCompatible
+    -- ^ The input value and its corresponding output have the same binary
+    -- representation in memory, and require no explicit conversion.  Numeric
+    -- types may use this conversion method.
+  | CustomConversion c
+    -- ^ Conversion requires a custom process as specified by the argument.
     --
-    -- This does __not__ affect the things' external names themselves; external
-    -- names must still be unique in an interface.  For instance, a method with
-    -- external name @bar@ in a class with external name @Flab@ and prefix
-    -- @Flob_@ will use the effective external name @Flab_bar@, but the
-    -- generated name in say Haskell would be @Flob_bar@.
+    -- TODO Split into pure (let) vs nonpure (<-)?
+  deriving (Show)
+
+-- | The root data type for specifying how conversions happen between C++ and foreign
+-- values.
+--
+-- The @Cpp@ component of this data structure specifies a C++ type, and
+-- conversions between it and something that can be marshalled over a C FFI
+-- layer, if such a conversion is possible in each direction.
+--
+-- Each foreign language has its own component that must be specified in order
+-- for types using this specification to be usable in that language.
+data ConversionSpec = ConversionSpec
+  { conversionSpecName :: String
+    -- ^ An identifying name, used for rendering in e.g. error messages.
+  , conversionSpecCpp :: ConversionSpecCpp
+    -- ^ Fundamental information about the C++ type.
+  , conversionSpecHaskell :: Maybe ConversionSpecHaskell
+    -- ^ A specification for how values can be used in Haskell.
+  }
+
+instance Eq ConversionSpec where
+  (==) = (==) `on` conversionSpecName
+
+instance Show ConversionSpec where
+  show x = "<ConversionSpec " ++ show (conversionSpecName x) ++ ">"
+
+-- | Creates a 'ConversionSpec' from an identifying name and a specification of
+-- the C++ conversion behaviour.  By default, no foreign language conversion
+-- behaviour is configured.  For Haskell, this should be done by using
+-- 'makeConversionSpecHaskell' to specify behaviour, then writing that to the
+-- 'conversionSpecHaskell' field of the 'ConversionSpec' returned here.
+makeConversionSpec ::
+     String  -- ^ 'conversionSpecName'
+  -> ConversionSpecCpp  -- ^ 'conversionSpecCpp'
+  -> ConversionSpec
+makeConversionSpec name cppSpec =
+  ConversionSpec
+  { conversionSpecName = name
+  , conversionSpecCpp = cppSpec
+  , conversionSpecHaskell = Nothing
+  }
+
+-- | For a 'ConversionSpec', defines the C++ type and conversions to and from a
+-- C FFI layer.
+--
+-- Prefer 'makeConversionSpecCpp' to using this data constructor directly.
+--
+-- 'conversionSpecCppName' specifies the C++ type of the conversion.  This will
+-- be the type that is passed over the C FFI as well, unless
+-- 'conversionSpecCppConversionType' overrides it.
+-- 'conversionSpecCppConversionToCppExpr' and
+-- 'conversionSpecCppConversionFromCppExpr' may define custom code generation
+-- for passing values over the FFI.
+data ConversionSpecCpp = ConversionSpecCpp
+  { conversionSpecCppName :: String
+    -- ^ The name of the C++ type.  May identify a primitive C++ type such as
+    -- @\"unsigned int\"@, or a more complex type like
+    -- @std::list\<std::string\>@.
+
+  , conversionSpecCppReqs :: LC.Generator Reqs
+    -- ^ Computes requirements to refer to the C++ type.  Being in the generator
+    -- monad, this may use its environment, but should not emit code or 'Reqs'
+    -- to the generator directly.
+
+  , conversionSpecCppConversionType :: LC.Generator (Maybe Type)
+    -- ^ Specifies the type that will be passed over the C FFI.
     --
-    -- See 'IsClassEntity' and 'classSetEntityPrefix'.
+    -- If absent (default), then the type named by 'conversionSpecCppName' is
+    -- also used for marshalling to foreign languages.
+    --
+    -- If present, this represents a type distinct from 'conversionSpecCppName'
+    -- that will be exchanged across the FFI boundary.  In this case, you may
+    -- also want to define one or both of 'conversionSpecCppConversionToCppExpr'
+    -- and 'conversionSpecCppConversionFromCppExpr'.
+    --
+    -- This is a monadic value so that it has access to the generator's
+    -- environment.  The action should not add imports or emit code.
+
+  , conversionSpecCppConversionToCppExpr ::
+      Maybe (LC.Generator () -> Maybe (LC.Generator ()) -> LC.Generator ())
+    -- ^ This controls behaviour for receiving a value passed into C++ over the
+    -- FFI.  Specifically, this powers the @ConversionSpec@ being used as
+    -- 'Foreign.Hoppy.Generator.Spec.Function.Function' arguments and
+    -- 'Foreign.Hoppy.Generator.Spec.Callback.Callback' return values.
+    --
+    -- When absent (default), generated code assumes that it can implicitly
+    -- convert a value passed over the FFI from the C FFI type (see
+    -- 'conversionSpecCppConversionType') to the C++ type
+    -- (i.e. 'conversionSpecCppName').  When the former is absent, this is
+    -- always fine.
+    --
+    -- When present, this provides custom conversion behaviour for receiving a
+    -- value passed into C++ over the FFI.  The function should generate C++
+    -- code to convert a value from the type passed over the C FFI into the
+    -- actual C++ type.
+    --
+    -- This is a function of the form:
+    --
+    -- > \emitFromExpr maybeEmitToVar -> ...
+    --
+    -- If the function's second argument is present, then the function should
+    -- emit a variable declaration for that name, created from the expression
+    -- emitted by the first argument.
+    --
+    -- If the function's second argument is absent, then the function should
+    -- emit an expression that converts the expression emitted by the first
+    -- argument into the appropriate type.
+    --
+    -- In both cases, the first generator argument should only be evaluated once
+    -- by the resulting C++ expression; it is not guaranteed to be pure.
+
+  , conversionSpecCppConversionFromCppExpr ::
+      Maybe (LC.Generator () -> Maybe (LC.Generator ()) -> LC.Generator ())
+    -- ^ This is the opposite of 'conversionSpecCppConversionToCppExpr'.  This
+    -- being present enables custom conversion behaviour for passing a value
+    -- /out of/ C++ through the FFI.  This powers the @ConversionSpec@ being
+    -- used as 'Foreign.Hoppy.Generator.Spec.Function.Function' return values
+    -- and 'Foreign.Hoppy.Generator.Spec.Callback.Callback' arguments.
   }
 
-instance Eq Class where
-  (==) = (==) `on` classExtName
-
-instance Ord Class where
-  compare = compare `on` classExtName
-
-instance Show Class where
-  show cls =
-    concat ["<Class ", show (classExtName cls), " ", show (classIdentifier cls), ">"]
-
-instance HasExtNames Class where
-  getPrimaryExtName = classExtName
-
-  getNestedExtNames cls = concatMap (classEntityExtNames cls) $ classEntities cls
-
-instance HasReqs Class where
-  getReqs = classReqs
-  setReqs reqs cls = cls { classReqs = reqs }
-
-instance HasAddendum Class where
-  getAddendum = classAddendum
-  setAddendum addendum cls = cls { classAddendum = addendum }
-
--- | Creates a binding for a C++ class and its contents.
-makeClass :: Identifier
-          -> Maybe ExtName
-          -- ^ An optional external name; will be automatically derived from the
-          -- identifier if absent by dropping leading namespaces, and taking the
-          -- last component (sans template arguments).
-          -> [Class]  -- ^ Superclasses.
-          -> [ClassEntity]
-          -> Class
-makeClass identifier maybeExtName supers entities =
-  let extName = extNameOrIdentifier identifier maybeExtName
-  in Class
-     { classIdentifier = identifier
-     , classExtName = extName
-     , classSuperclasses = supers
-     , classEntities = entities
-     , classDtorIsPublic = True
-     , classConversion = classConversionNone
-     , classReqs = mempty
-     , classAddendum = mempty
-     , classIsMonomorphicSuperclass = False
-     , classIsSubclassOfMonomorphic = False
-     , classIsException = False
-     , classEntityPrefix = fromExtName extName ++ "_"
-     }
-
--- | Sets the prefix applied to foreign languages' entities generated from
--- methods, etc. within the class.
---
--- See 'IsClassEntity' and 'classEntityPrefix'.
-classSetEntityPrefix :: String -> Class -> Class
-classSetEntityPrefix prefix cls = cls { classEntityPrefix = prefix }
-
--- | Adds constructors to a class.
-classAddEntities :: [ClassEntity] -> Class -> Class
-classAddEntities ents cls =
-  if null ents then cls else cls { classEntities = classEntities cls ++ ents }
-
--- | Returns all of the class's variables.
-classVariables :: Class -> [ClassVariable]
-classVariables = mapMaybe pickVar . classEntities
-  where pickVar ent = case ent of
-          CEVar v -> Just v
-          CECtor _ -> Nothing
-          CEMethod _ -> Nothing
-          CEProp _ -> Nothing
-
--- | Returns all of the class's constructors.
-classCtors :: Class -> [Ctor]
-classCtors = mapMaybe pickCtor . classEntities
-  where pickCtor ent = case ent of
-          CEVar _ -> Nothing
-          CECtor ctor -> Just ctor
-          CEMethod _ -> Nothing
-          CEProp _ -> Nothing
-
--- | Returns all of the class's methods, including methods generated from
--- 'Prop's.
-classMethods :: Class -> [Method]
-classMethods = concatMap pickMethods . classEntities
-  where pickMethods ent = case ent of
-          CEVar _ -> []
-          CECtor _ -> []
-          CEMethod m -> [m]
-          CEProp (Prop ms) -> ms
-
--- | Marks a class's destructor as private, so that a binding for it won't be
--- generated.
-classSetDtorPrivate :: Class -> Class
-classSetDtorPrivate cls = cls { classDtorIsPublic = False }
-
--- | Explicitly marks a class as being monomorphic (i.e. not having any
--- virtual methods or destructors).  By default, Hoppy assumes that a class that
--- is derived is also polymorphic, but it can happen that this is not the case.
--- Downcasting with @dynamic_cast@ from such classes is not available.  See also
--- 'classSetSubclassOfMonomorphic'.
-classSetMonomorphicSuperclass :: Class -> Class
-classSetMonomorphicSuperclass cls = cls { classIsMonomorphicSuperclass = True }
-
--- | Marks a class as being derived from some monomorphic superclass.  This
--- prevents any downcasting to this class.  Generally it is better to use
--- 'classSetMonomorphicSuperclass' on the specific superclasses that are
--- monomorphic, but in cases where this is not possible, this function can be
--- applied to the subclass instead.
-classSetSubclassOfMonomorphic :: Class -> Class
-classSetSubclassOfMonomorphic cls = cls { classIsSubclassOfMonomorphic = True }
-
--- | Marks a class as being used as an exception.  This makes the class
--- throwable and catchable.
-classMakeException :: Class -> Class
-classMakeException cls =
-  if classIsException cls
-  then cls
-  else cls { classIsException = True }
-
--- | Separately from passing object handles between C++ and foreign languages,
--- objects can also be made to implicitly convert to native values in foreign
--- languages.  A single such type may be associated with any C++ class for each
--- foreign language.  The foreign type and the conversion process in each
--- direction are specified using this object.  Converting a C++ object to a
--- foreign value is also called decoding, and vice versa is called encoding.  A
--- class may be convertible in one direction and not the other.
---
--- To use these implicit conversions, instead of specifying an object handle
--- type such as
--- @'Foreign.Hoppy.Generator.Types.ptrT' . 'Foreign.Hoppy.Generator.Types.objT'@
--- or
--- @'Foreign.Hoppy.Generator.Types.refT' . 'Foreign.Hoppy.Generator.Types.objT'@,
--- use 'Foreign.Hoppy.Generator.Types.objT' directly.
---
--- The subfields in this object specify how to do conversions between C++ and
--- foreign languages.
-newtype ClassConversion = ClassConversion
-  { classHaskellConversion :: ClassHaskellConversion
-    -- ^ Conversions to and from Haskell.
-
-    -- NOTE!  When adding new languages here, add the language to
-    -- 'classSetConversionToHeap', and 'classSetConversionToGc' as well if the
-    -- language supports garbage collection.
+-- | Builds a 'ConversionSpecCpp' with a C++ type, with no conversions defined.
+makeConversionSpecCpp :: String -> LC.Generator Reqs -> ConversionSpecCpp
+makeConversionSpecCpp cppName cppReqs =
+  ConversionSpecCpp
+  { conversionSpecCppName = cppName
+  , conversionSpecCppReqs = cppReqs
+  , conversionSpecCppConversionType = return Nothing
+  , conversionSpecCppConversionToCppExpr = Nothing
+  , conversionSpecCppConversionFromCppExpr = Nothing
   }
 
--- | Conversion behaviour for a class that is not convertible.
-classConversionNone :: ClassConversion
-classConversionNone = ClassConversion classHaskellConversionNone
-
--- | Modifies a class's 'ClassConversion' structure with a given function.
-classModifyConversion :: (ClassConversion -> ClassConversion) -> Class -> Class
-classModifyConversion f cls =
-  let cls' = cls { classConversion = f $ classConversion cls }
-      conv = classConversion cls'
-      haskellConv = classHaskellConversion conv
-  in case undefined of
-    _ | (isJust (classHaskellConversionToCppFn haskellConv) ||
-         isJust (classHaskellConversionFromCppFn haskellConv)) &&
-        isNothing (classHaskellConversionType haskellConv) ->
-      error $ "classModifyConversion: " ++ show cls' ++
-      " was given a Haskell-to-C++ or C++-to-Haskell conversion function" ++
-      " but no Haskell type.  Please provide a classHaskellConversionType."
-    _ -> cls'
-
--- | Replaces a class's 'ClassConversion' structure.
-classSetConversion :: ClassConversion -> Class -> Class
-classSetConversion c = classModifyConversion $ const c
-
--- | Controls how conversions between C++ objects and Haskell values happen in
+-- | Controls how conversions between C++ values and Haskell values happen in
 -- Haskell bindings.
-data ClassHaskellConversion = ClassHaskellConversion
-  { classHaskellConversionType :: Maybe (Haskell.Generator HsType)
-    -- ^ Produces the Haskell type that represents a value of the corresponding
-    -- C++ class.  This generator may add imports, but must not output code or
-    -- add exports.
-  , classHaskellConversionToCppFn :: Maybe (Haskell.Generator ())
-    -- ^ Produces a Haskell expression that evaluates to a function that takes
-    -- an value of the type that 'classHaskellConversionType' generates, and
-    -- returns a non-const handle for a new C++ object in IO.  The generator
-    -- must output code and may add imports, but must not add exports.
+--
+-- Prefer 'makeConversionSpecHaskell' to using this data constructor directly.
+data ConversionSpecHaskell = ConversionSpecHaskell
+  { conversionSpecHaskellHsType :: LH.Generator HsType
+    -- ^ The type exposed to users of the Haskell side of a binding.  Functions
+    -- that take one of these values as an argument will expect this type, and
+    -- functions returning one of these values will return this type.
     --
-    -- If this field is present, then 'classHaskellConversionType' must also be
-    -- present.
-  , classHaskellConversionFromCppFn :: Maybe (Haskell.Generator ())
-    -- ^ Produces a Haskell expression that evaluates to a function that takes a
-    -- const handle for a C++ object, and returns a value of the type that
-    -- 'classHaskellConversionType' generates, in IO.  It should not delete the
-    -- handle.  The generator must output code and may add imports, but must not
-    -- add exports.
+    -- This type is wrapped in a generator in order to be able to specify any
+    -- necessary imports.  This generator should not generate code or add
+    -- exports.
+
+  , conversionSpecHaskellHsArgType :: Maybe (HsName -> LH.Generator HsQualType)
+    -- ^ If present, then for bindings for C++ functions that expect one of
+    -- these values as an argument, rather than taking a fixed concrete type
+    -- ('conversionSpecHaskellHsType'), this qualified type will be used
+    -- instead.  The 'HsName' parameter receives a unique name from the
+    -- generator that can be used with 'Language.Haskell.Syntax.HsTyVar' like
+    -- so:
     --
-    -- If this field is present, then 'classHaskellConversionType' must also be
+    -- > \name -> return $ HsQualType [...constraints...] (HsTyVar name)
+    --
+    -- 'conversionSpecHaskellHsType' should satisfy this constraint, when
     -- present.
+    --
+    -- This type is wrapped in a generator in order to be able to specify any
+    -- necessary imports.  This generator should not generate code or add
+    -- exports.
+
+  , conversionSpecHaskellCType :: Maybe (LH.Generator HsType)
+    -- ^ If present, then rather than passing a value of native Haskell type
+    -- ('conversionSpecHaskellHsType') directly over the FFI, this is an
+    -- intermediate type that will be passed instead.  This is needed any time
+    -- that the former type isn't a simple type that the FFI supports.
+    --
+    -- 'conversionSpecHaskellToCppFn' and 'conversionSpecHaskellFromCppFn'
+    -- marshal values into and out of this type, respsectively.
+    --
+    -- This type is wrapped in a generator in order to be able to specify any
+    -- necessary imports.  This generator should not generate code or add
+    -- exports.
+
+  , conversionSpecHaskellToCppFn :: ConversionMethod (LH.Generator ())
+    -- ^ This defines how a Haskell value is passed to C++.  If this is
+    -- 'CustomConversion', then 'conversionSpecHaskellCType' must be present,
+    -- and the generator should output a function that takes a value of type
+    -- 'conversionSpecHaskellHsType' and return a value of
+    -- 'conversionSpecHaskellCType'.
+    --
+    -- If 'conversionSpecHaskellHsArgType' is present, then the function should
+    -- be able to accept that more general type instead.  This is used for
+    -- bindings that call into C++ functions.  This function is still
+    -- specialized to 'conversionSpecHaskellHsType' when generating code for
+    -- callback return values.
+    --
+    -- The generator should output code and may add imports, but should not add
+    -- exports.
+
+  , conversionSpecHaskellFromCppFn :: ConversionMethod (LH.Generator ())
+    -- ^ This defines how a Haskell value is passed from C++.  If this is
+    -- 'CustomConversion', then 'conversionSpecHaskellCType' must be present,
+    -- and the generator should output a function that takes a value of type
+    -- 'conversionSpecHaskellCType' and return a value of
+    -- 'conversionSpecHaskellHsType'.
+    --
+    -- The generator should output code and may add imports, but should not add
+    -- exports.
   }
 
--- | Conversion behaviour for a class that is not convertible to or from
--- Haskell.
-classHaskellConversionNone :: ClassHaskellConversion
-classHaskellConversionNone =
-  ClassHaskellConversion
-  { classHaskellConversionType = Nothing
-  , classHaskellConversionToCppFn = Nothing
-  , classHaskellConversionFromCppFn = Nothing
+-- | Builds a 'ConversionSpecHaskell' with the mandatory parameters given.
+makeConversionSpecHaskell ::
+  LH.Generator HsType  -- ^ 'conversionSpecHaskellHsType'
+  -> Maybe (LH.Generator HsType)  -- ^ 'conversionSpecHaskellCType'
+  -> ConversionMethod (LH.Generator ())  -- ^ 'conversionSpecHaskellToCppFn'
+  -> ConversionMethod (LH.Generator ())  -- ^ 'conversionSpecHaskellFromCppFn'
+  -> ConversionSpecHaskell
+makeConversionSpecHaskell hsType cType toCppFn fromCppFn =
+  ConversionSpecHaskell
+  { conversionSpecHaskellHsType = hsType
+  , conversionSpecHaskellHsArgType = Nothing
+  , conversionSpecHaskellCType = cType
+  , conversionSpecHaskellToCppFn = toCppFn
+  , conversionSpecHaskellFromCppFn = fromCppFn
   }
 
--- | Replaces a class's 'classHaskellConversion' with a given value.
-classSetHaskellConversion :: ClassHaskellConversion -> Class -> Class
-classSetHaskellConversion conv = classModifyConversion $ \c ->
-  c { classHaskellConversion = conv }
-
--- | Things that live inside of a class, and have the class's external name
--- prepended to their own in generated code.  With an external name of @\"bar\"@
--- and a class with external name @\"foo\"@, the resulting name will be
--- @\"foo_bar\"@.
---
--- See 'classEntityPrefix' and 'classSetEntityPrefix'.
-class IsClassEntity a where
-  -- | Extracts the external name of the object, without the class name added.
-  classEntityExtNameSuffix :: a -> ExtName
-
--- | Computes the external name to use in generated code, containing both the
--- class's and object's external names.  This is the concatenation of the
--- class's and entity's external names, separated by an underscore.
-classEntityExtName :: IsClassEntity a => Class -> a -> ExtName
-classEntityExtName cls x =
-  toExtName $ fromExtName (classExtName cls) ++ "_" ++ fromExtName (classEntityExtNameSuffix x)
-
--- | Computes the name under which a class entity is to be exposed in foreign
--- languages.  This is the concatenation of a class's entity prefix, and the
--- external name of the entity.
-classEntityForeignName :: IsClassEntity a => Class -> a -> ExtName
-classEntityForeignName cls x =
-  classEntityForeignName' cls $ classEntityExtNameSuffix x
-
--- | Computes the name under which a class entity is to be exposed in foreign
--- languages, given a class and an entity's external name.  The result is the
--- concatenation of a class's entity prefix, and the external name of the
--- entity.
-classEntityForeignName' :: Class -> ExtName -> ExtName
-classEntityForeignName' cls extName =
-  toExtName $ classEntityPrefix cls ++ fromExtName extName
-
--- | A C++ entity that belongs to a class.
-data ClassEntity =
-    CEVar ClassVariable
-  | CECtor Ctor
-  | CEMethod Method
-  | CEProp Prop
-
--- | Returns all of the names in a 'ClassEntity' within the corresponding
--- 'Class'.
-classEntityExtNames :: Class -> ClassEntity -> [ExtName]
-classEntityExtNames cls ent = case ent of
-  CEVar v -> [classEntityExtName cls v]
-  CECtor ctor -> [classEntityExtName cls ctor]
-  CEMethod m -> [classEntityExtName cls m]
-  CEProp (Prop methods) -> map (classEntityExtName cls) methods
-
--- | A C++ member variable.
-data ClassVariable = ClassVariable
-  { classVarCName :: String
-    -- ^ The variable's C++ name.
-  , classVarExtName :: ExtName
-    -- ^ The variable's external name.
-  , classVarType :: Type
-    -- ^ The variable's type.  This may be
-    -- 'Foreign.Hoppy.Generator.Types.constT' to indicate that the variable is
-    -- read-only.
-  , classVarStatic :: Staticness
-    -- ^ Whether the variable is static (i.e. whether it exists once in the
-    -- class itself and not in each instance).
-  , classVarGettable :: Bool
-    -- ^ Whether the variable should have an accompanying getter. Note this
-    -- exists only for disabling getters on callback variables - as there is
-    -- currently no functionality to pass callbacks out of c++
+-- | Information about the enum that has been completed beyond what the
+-- interface definition provides, possibly by building actual C++ code.
+data EvaluatedEnumData = EvaluatedEnumData
+  { evaluatedEnumType :: Type
+    -- ^ The numeric type that C++ uses to hold the enum's values, or an
+    -- equivalently-sized type.
+  , evaluatedEnumValueMap :: EvaluatedEnumValueMap
+    -- ^ Calculated values for all of the enum's entries.
   }
 
-instance Show ClassVariable where
-  show v =
-    concat ["<ClassVariable ",
-            show $ classVarCName v, " ",
-            show $ classVarExtName v, " ",
-            show $ classVarStatic v, " ",
-            show $ classVarType v, ">"]
-
-instance IsClassEntity ClassVariable where
-  classEntityExtNameSuffix = classVarExtName
-
--- | Creates a 'ClassVariable' with full generality and manual name specification.
---
--- The result is wrapped in a 'CEVar'.  For an unwrapped value, use
--- 'makeClassVariable_'.
-makeClassVariable :: String -> Maybe ExtName -> Type -> Staticness -> Bool -> ClassEntity
-makeClassVariable cName maybeExtName tp static gettable =
-  CEVar $ makeClassVariable_ cName maybeExtName tp static gettable
-
--- | The unwrapped version of 'makeClassVariable'.
-makeClassVariable_ :: String -> Maybe ExtName -> Type -> Staticness -> Bool -> ClassVariable
-makeClassVariable_ cName maybeExtName =
-  ClassVariable cName $ extNameOrString cName maybeExtName
-
--- | Creates a 'ClassVariable' for a nonstatic class variable for
--- @class::varName@ whose external name is @class_varName@.
---
--- The result is wrapped in a 'CEVar'.  For an unwrapped value, use
--- 'mkClassVariable_'.
-mkClassVariable :: String -> Type -> ClassEntity
-mkClassVariable = (CEVar .) . mkClassVariable_
-
--- | The unwrapped version of 'mkClassVariable'.
-mkClassVariable_ :: String -> Type -> ClassVariable
-mkClassVariable_ cName t = makeClassVariable_ cName Nothing t Nonstatic True
-
--- | Same as 'mkClassVariable', but returns a static variable instead.
---
--- The result is wrapped in a 'CEVar'.  For an unwrapped value, use
--- 'mkStaticClassVariable_'.
-mkStaticClassVariable :: String -> Type -> ClassEntity
-mkStaticClassVariable = (CEVar .) . mkStaticClassVariable_
-
--- | The unwrapped version of 'mkStaticClassVariable'.
-mkStaticClassVariable_ :: String -> Type -> ClassVariable
-mkStaticClassVariable_ cName t = makeClassVariable_ cName Nothing t Static True
-
--- | Returns the external name of the getter function for the class variable.
-classVarGetterExtName :: Class -> ClassVariable -> ExtName
-classVarGetterExtName cls v =
-  toExtName $ fromExtName (classEntityExtName cls v) ++ "_get"
-
--- | Returns the foreign name of the getter function for the class variable.
-classVarGetterForeignName :: Class -> ClassVariable -> ExtName
-classVarGetterForeignName cls v =
-  toExtName $ fromExtName (classEntityForeignName cls v) ++ "_get"
-
--- | Returns the external name of the setter function for the class variable.
-classVarSetterExtName :: Class -> ClassVariable -> ExtName
-classVarSetterExtName cls v =
-  toExtName $ fromExtName (classEntityExtName cls v) ++ "_set"
-
--- | Returns the foreign name of the setter function for the class variable.
-classVarSetterForeignName :: Class -> ClassVariable -> ExtName
-classVarSetterForeignName cls v =
-  toExtName $ fromExtName (classEntityForeignName cls v) ++ "_set"
-
--- | A C++ class constructor declaration.
-data Ctor = Ctor
-  { ctorExtName :: ExtName
-    -- ^ The constructor's external name.
-  , ctorParams :: [Type]
-    -- ^ The constructor's parameter types.
-  , ctorExceptionHandlers :: ExceptionHandlers
-    -- ^ Exceptions that the constructor may throw.
-  }
-
-instance Show Ctor where
-  show ctor = concat ["<Ctor ", show (ctorExtName ctor), " ", show (ctorParams ctor), ">"]
-
-instance HandlesExceptions Ctor where
-  getExceptionHandlers = ctorExceptionHandlers
-  modifyExceptionHandlers f ctor = ctor { ctorExceptionHandlers = f $ ctorExceptionHandlers ctor }
-
-instance IsClassEntity Ctor where
-  classEntityExtNameSuffix = ctorExtName
-
--- | Creates a 'Ctor' with full generality.
---
--- The result is wrapped in a 'CECtor'.  For an unwrapped value, use
--- 'makeCtor_'.
-makeCtor :: ExtName
-         -> [Type]  -- ^ Parameter types.
-         -> ClassEntity
-makeCtor = (CECtor .) . makeCtor_
-
--- | The unwrapped version of 'makeCtor'.
-makeCtor_ :: ExtName -> [Type] -> Ctor
-makeCtor_ extName paramTypes = Ctor extName paramTypes mempty
-
--- | @mkCtor name@ creates a 'Ctor' whose external name is @className_name@.
---
--- The result is wrapped in a 'CECtor'.  For an unwrapped value, use
--- 'makeCtor_'.
-mkCtor :: String
-       -> [Type]  -- ^ Parameter types.
-       -> ClassEntity
-mkCtor = (CECtor .) . mkCtor_
-
--- | The unwrapped version of 'mkCtor'.
-mkCtor_ :: String -> [Type] -> Ctor
-mkCtor_ = makeCtor_ . toExtName
-
--- | Searches a class for a copy constructor, returning it if found.
-classFindCopyCtor :: Class -> Maybe Ctor
-classFindCopyCtor cls = case mapMaybe check $ classEntities cls of
-  [ctor] -> Just ctor
-  _ -> Nothing
-  where check entity = case entity of
-          CECtor ctor ->
-            let params = map (stripConst . normalizeType) (ctorParams ctor)
-            in if params == [Internal_TObj cls] ||
-                  params == [Internal_TRef $ Internal_TConst $ Internal_TObj cls]
-            then Just ctor
-            else Nothing
-          _ -> Nothing
-
--- | A C++ class method declaration.
---
--- Any operator function that can be written as a method may have its binding be
--- written either as part of the associated class or as a separate entity,
--- independently of how the function is declared in C++.
-data Method = Method
-  { methodImpl :: MethodImpl
-    -- ^ The underlying code that the binding calls.
-  , methodExtName :: ExtName
-    -- ^ The method's external name.
-  , methodApplicability :: MethodApplicability
-    -- ^ How the method is associated to its class.
-  , methodPurity :: Purity
-    -- ^ Whether the method is pure.
-  , methodParams :: [Type]
-    -- ^ The method's parameter types.
-  , methodReturn :: Type
-    -- ^ The method's return type.
-  , methodExceptionHandlers :: ExceptionHandlers
-    -- ^ Exceptions that the method might throw.
-  }
-
-instance Show Method where
-  show method =
-    concat ["<Method ", show (methodExtName method), " ",
-            case methodImpl method of
-              RealMethod name -> show name
-              FnMethod name -> show name, " ",
-            show (methodApplicability method), " ",
-            show (methodPurity method), " ",
-            show (methodParams method), " ",
-            show (methodReturn method), ">"]
-
-instance HandlesExceptions Method where
-  getExceptionHandlers = methodExceptionHandlers
-
-  modifyExceptionHandlers f method =
-    method { methodExceptionHandlers = f $ methodExceptionHandlers method }
-
-instance IsClassEntity Method where
-  classEntityExtNameSuffix = methodExtName
-
--- | The C++ code to which a 'Method' is bound.
-data MethodImpl =
-  RealMethod (FnName String)
-  -- ^ The 'Method' is bound to an actual class method.
-  | FnMethod (FnName Identifier)
-    -- ^ The 'Method' is bound to a wrapper function.  When wrapping a method
-    -- with another function, this is preferrable to just using a 'Function'
-    -- binding because a method will still appear to be part of the class in
-    -- foreign bindings.
-  deriving (Eq, Show)
-
--- | How a method is associated to its class.  A method may be static, const, or
--- neither (a regular method).
-data MethodApplicability = MNormal | MStatic | MConst
-                         deriving (Bounded, Enum, Eq, Show)
-
--- | Whether or not a method is const.
-data Constness = Nonconst | Const
-               deriving (Bounded, Enum, Eq, Show)
-
--- | Returns the opposite constness value.
-constNegate :: Constness -> Constness
-constNegate Nonconst = Const
-constNegate Const = Nonconst
-
--- | Whether or not a method is static.
-data Staticness = Nonstatic | Static
-               deriving (Bounded, Enum, Eq, Show)
-
--- | Returns the constness of a method, based on its 'methodApplicability'.
-methodConst :: Method -> Constness
-methodConst method = case methodApplicability method of
-  MConst -> Const
-  _ -> Nonconst
-
--- | Returns the staticness of a method, based on its 'methodApplicability'.
-methodStatic :: Method -> Staticness
-methodStatic method = case methodApplicability method of
-  MStatic -> Static
-  _ -> Nonstatic
-
--- | Creates a 'Method' with full generality and manual name specification.
---
--- The result is wrapped in a 'CEMethod'.  For an unwrapped value, use
--- 'makeMethod_'.
-makeMethod :: IsFnName String name
-           => name  -- ^ The C++ name of the method.
-           -> ExtName  -- ^ The external name of the method.
-           -> MethodApplicability
-           -> Purity
-           -> [Type]  -- ^ Parameter types.
-           -> Type  -- ^ Return type.
-           -> ClassEntity
-makeMethod = (((((CEMethod .) .) .) .) .) . makeMethod_
-
--- | The unwrapped version of 'makeMethod'.
-makeMethod_ :: IsFnName String name
-            => name
-            -> ExtName
-            -> MethodApplicability
-            -> Purity
-            -> [Type]
-            -> Type
-            -> Method
-makeMethod_ cName extName appl purity paramTypes retType =
-  Method (RealMethod $ toFnName cName) extName appl purity paramTypes retType mempty
-
--- | Creates a 'Method' that is in fact backed by a C++ non-member function (a
--- la 'makeFn'), but appears to be a regular method.  This is useful for
--- wrapping a method on the C++ side when its arguments aren't right for binding
--- directly.
---
--- A @this@ pointer parameter is __not__ automatically added to the parameter
--- list for non-static methods created with @makeFnMethod@.
---
--- The result is wrapped in a 'CEMethod'.  For an unwrapped value, use
--- 'makeFnMethod_'.
-makeFnMethod :: IsFnName Identifier name
-             => name
-             -> String
-             -> MethodApplicability
-             -> Purity
-             -> [Type]
-             -> Type
-             -> ClassEntity
-makeFnMethod = (((((CEMethod .) .) .) .) .) . makeFnMethod_
-
--- | The unwrapped version of 'makeFnMethod'.
-makeFnMethod_ :: IsFnName Identifier name
-              => name
-              -> String
-              -> MethodApplicability
-              -> Purity
-              -> [Type]
-              -> Type
-              -> Method
-makeFnMethod_ cName foreignName appl purity paramTypes retType =
-  Method (FnMethod $ toFnName cName) (toExtName foreignName)
-         appl purity paramTypes retType mempty
-
--- | This function is internal.
---
--- Creates a method similar to 'makeMethod', but with automatic naming.  The
--- method's external name will be @className ++ \"_\" ++ cppMethodName@.  If the
--- method name is a 'FnOp' then the 'operatorPreferredExtName' will be appeneded
--- to the class name.
---
--- For creating multiple bindings to a method, see 'makeMethod''.
-makeMethod' :: IsFnName String name
-            => name  -- ^ The C++ name of the method.
-            -> MethodApplicability
-            -> Purity
-            -> [Type]  -- ^ Parameter types.
-            -> Type  -- ^ Return type.
-            -> Method
-makeMethod' name = makeMethod''' (toFnName name) Nothing
-
--- | This function is internal.
---
--- Creates a method similar to 'makeMethod'', but with an custom string that
--- will be appended to the class name to form the method's external name.  This
--- is useful for making multiple bindings to a method, e.g. for overloading and
--- optional arguments.
-makeMethod'' :: IsFnName String name
-             => name  -- ^ The C++ name of the method.
-             -> String  -- ^ A foreign name for the method.
-             -> MethodApplicability
-             -> Purity
-             -> [Type]  -- ^ Parameter types.
-             -> Type  -- ^ Return type.
-             -> Method
-makeMethod'' name foreignName = makeMethod''' (toFnName name) $ Just foreignName
-
--- | The implementation of 'makeMethod'' and 'makeMethod'''.
-makeMethod''' :: FnName String  -- ^ The C++ name of the method.
-              -> Maybe String  -- ^ A foreign name for the method.
-              -> MethodApplicability
-              -> Purity
-              -> [Type]  -- ^ Parameter types.
-              -> Type  -- ^ Return type.
-              -> Method
-makeMethod''' (FnName "") maybeForeignName _ _ paramTypes retType =
-  error $ concat ["makeMethod''': Given an empty method name with foreign name ",
-                  show maybeForeignName, ", parameter types ", show paramTypes,
-                  ", and return type ", show retType, "."]
-makeMethod''' name (Just "") _ _ paramTypes retType =
-  error $ concat ["makeMethod''': Given an empty foreign name with method ",
-                  show name, ", parameter types ", show paramTypes, ", and return type ",
-                  show retType, "."]
-makeMethod''' name maybeForeignName appl purity paramTypes retType =
-  let extName = flip fromMaybe (toExtName <$> maybeForeignName) $ case name of
-        FnName s -> toExtName s
-        FnOp op -> operatorPreferredExtName op
-  in makeMethod_ name extName appl purity paramTypes retType
-
--- | Creates a nonconst, nonstatic 'Method' for @class::methodName@ and whose
--- external name is @class_methodName@.  If the name is an operator, then the
--- 'operatorPreferredExtName' will be used in the external name.
---
--- For creating multiple bindings to a method, see 'mkMethod''.
---
--- The result is wrapped in a 'CEMethod'.  For an unwrapped value, use
--- 'mkMethod_'.
-mkMethod :: IsFnName String name
-         => name  -- ^ The C++ name of the method.
-         -> [Type]  -- ^ Parameter types.
-         -> Type  -- ^ Return type.
-         -> ClassEntity
-mkMethod = ((CEMethod .) .) . mkMethod_
-
--- | The unwrapped version of 'mkMethod'.
-mkMethod_ :: IsFnName String name
-          => name
-          -> [Type]
-          -> Type
-          -> Method
-mkMethod_ name = makeMethod' name MNormal Nonpure
-
--- | Creates a nonconst, nonstatic 'Method' for method @class::methodName@ and
--- whose external name is @class_methodName@.  This enables multiple 'Method's
--- with different foreign names (and hence different external names) to bind to
--- the same method, e.g. to make use of optional arguments or overloading.  See
--- 'mkMethod' for a simpler form.
---
--- The result is wrapped in a 'CEMethod'.  For an unwrapped value, use
--- 'mkMethod'_'.
-mkMethod' :: IsFnName String name
-          => name  -- ^ The C++ name of the method.
-          -> String  -- ^ A foreign name for the method.
-          -> [Type]  -- ^ Parameter types.
-          -> Type  -- ^ Return type.
-          -> ClassEntity
-mkMethod' = (((CEMethod .) .) .) . mkMethod'_
-
--- | The unwrapped version of 'mkMethod''.
-mkMethod'_ :: IsFnName String name
-           => name
-           -> String
-           -> [Type]
-           -> Type
-           -> Method
-mkMethod'_ cName foreignName = makeMethod'' cName foreignName MNormal Nonpure
-
--- | Same as 'mkMethod', but returns an 'MConst' method.
---
--- The result is wrapped in a 'CEMethod'.  For an unwrapped value, use
--- 'mkConstMethod_'.
-mkConstMethod :: IsFnName String name => name -> [Type] -> Type -> ClassEntity
-mkConstMethod = ((CEMethod .) .) . mkConstMethod_
-
--- | The unwrapped version of 'mkConstMethod'.
-mkConstMethod_ :: IsFnName String name => name -> [Type] -> Type -> Method
-mkConstMethod_ name = makeMethod' name MConst Nonpure
-
--- | Same as 'mkMethod'', but returns an 'MConst' method.
---
--- The result is wrapped in a 'CEMethod'.  For an unwrapped value, use
--- 'mkConstMethod'_'.
-mkConstMethod' :: IsFnName String name => name -> String -> [Type] -> Type -> ClassEntity
-mkConstMethod' = (((CEMethod .) .) .) . mkConstMethod'_
-
--- | The unwrapped version of 'mkConstMethod''.
-mkConstMethod'_ :: IsFnName String name => name -> String -> [Type] -> Type -> Method
-mkConstMethod'_ cName foreignName = makeMethod'' cName foreignName MConst Nonpure
-
--- | Same as 'mkMethod', but returns an 'MStatic' method.
---
--- The result is wrapped in a 'CEMethod'.  For an unwrapped value, use
--- 'mkStaticMethod_'.
-mkStaticMethod :: IsFnName String name => name -> [Type] -> Type -> ClassEntity
-mkStaticMethod = ((CEMethod .) .) . mkStaticMethod_
-
--- | The unwrapped version of 'mkStaticMethod'.
-mkStaticMethod_ :: IsFnName String name => name -> [Type] -> Type -> Method
-mkStaticMethod_ name = makeMethod' name MStatic Nonpure
-
--- | Same as 'mkMethod'', but returns an 'MStatic' method.
---
--- The result is wrapped in a 'CEMethod'.  For an unwrapped value, use
--- 'mkStaticMethod'_'.
-mkStaticMethod' :: IsFnName String name => name -> String -> [Type] -> Type -> ClassEntity
-mkStaticMethod' = (((CEMethod .) .) .) . mkStaticMethod'_
-
--- | The unwrapped version of 'mkStaticMethod''.
-mkStaticMethod'_ :: IsFnName String name => name -> String -> [Type] -> Type -> Method
-mkStaticMethod'_ cName foreignName = makeMethod'' cName foreignName MStatic Nonpure
-
--- | A \"property\" getter/setter pair.
-newtype Prop = Prop [Method]
-
--- | Creates a getter/setter binding pair for methods:
---
--- > T foo() const
--- > void setFoo(T)
---
--- The result is wrapped in a 'CEProp'.  For an unwrapped value, use
--- 'mkProp_'.
-mkProp :: String -> Type -> ClassEntity
-mkProp = (CEProp .) . mkProp_
-
--- | The unwrapped version of 'mkProp'.
-mkProp_ :: String -> Type -> Prop
-mkProp_ name t =
-  let c:cs = name
-      setName = 's' : 'e' : 't' : toUpper c : cs
-  in Prop [ mkConstMethod_ name [] t
-          , mkMethod_ setName [t] Internal_TVoid
-          ]
-
--- | Creates a getter/setter binding pair for static methods:
---
--- > static T foo() const
--- > static void setFoo(T)
-mkStaticProp :: String -> Type -> ClassEntity
-mkStaticProp = (CEProp .) . mkStaticProp_
-
--- | The unwrapped version of 'mkStaticProp'.
-mkStaticProp_ :: String -> Type -> Prop
-mkStaticProp_ name t =
-  let c:cs = name
-      setName = 's' : 'e' : 't' : toUpper c : cs
-  in Prop [ mkStaticMethod_ name [] t
-          , mkStaticMethod_ setName [t] Internal_TVoid
-          ]
-
--- | Creates a getter/setter binding pair for boolean methods, where the getter
--- is prefixed with @is@:
---
--- > bool isFoo() const
--- > void setFoo(bool)
---
--- The result is wrapped in a 'CEProp'.  For an unwrapped value, use
--- 'mkBoolIsProp_'.
-mkBoolIsProp :: String -> ClassEntity
-mkBoolIsProp = CEProp . mkBoolIsProp_
-
--- | The unwrapped version of 'mkBoolIsProp'.
-mkBoolIsProp_ :: String -> Prop
-mkBoolIsProp_ name =
-  let c:cs = name
-      name' = toUpper c : cs
-      isName = 'i':'s':name'
-      setName = 's':'e':'t':name'
-  in Prop [ mkConstMethod_ isName [] Internal_TBool
-          , mkMethod_ setName [Internal_TBool] Internal_TVoid
-          ]
-
--- | Creates a getter/setter binding pair for boolean methods, where the getter
--- is prefixed with @has@:
---
--- > bool hasFoo() const
--- > void setFoo(bool)
---
--- The result is wrapped in a 'CEProp'.  For an unwrapped value, use
--- 'mkBoolHasProp_'.
-mkBoolHasProp :: String -> ClassEntity
-mkBoolHasProp = CEProp . mkBoolHasProp_
-
--- | The unwrapped version of 'mkBoolHasProp'.
-mkBoolHasProp_ :: String -> Prop
-mkBoolHasProp_ name =
-  let c:cs = name
-      name' = toUpper c : cs
-      hasName = 'h':'a':'s':name'
-      setName = 's':'e':'t':name'
-  in Prop [ mkConstMethod_ hasName [] Internal_TBool
-          , mkMethod_ setName [Internal_TBool] Internal_TVoid
-          ]
-
--- | A non-C++ function that can be invoked via a C++ functor or function
--- pointer.
---
--- Use this data type's 'HasReqs' instance to add extra requirements, however
--- manually adding requirements for parameter and return types is not necessary.
-data Callback = Callback
-  { callbackExtName :: ExtName
-    -- ^ The callback's external name.
-  , callbackParams :: [Type]
-    -- ^ The callback's parameter types.
-  , callbackReturn :: Type
-    -- ^ The callback's return type.
-  , callbackThrows :: Maybe Bool
-    -- ^ Whether the callback supports throwing C++ exceptions from Haskell into
-    -- C++ during its execution.  When absent, the value is inherited from
-    -- 'moduleCallbacksThrow' and 'interfaceCallbacksThrow'.
-  , callbackReqs :: Reqs
-    -- ^ Extra requirements for the callback.
-  , callbackAddendum :: Addendum
-    -- ^ The callback's addendum.
-  }
-
-instance Eq Callback where
-  (==) = (==) `on` callbackExtName
-
-instance Show Callback where
-  show cb =
-    concat ["<Callback ", show (callbackExtName cb), " ", show (callbackParams cb), " ",
-            show (callbackReturn cb)]
-
-instance HasExtNames Callback where
-  getPrimaryExtName = callbackExtName
-
-instance HasReqs Callback where
-  getReqs = callbackReqs
-  setReqs reqs cb = cb { callbackReqs = reqs }
-
-instance HasAddendum Callback where
-  getAddendum = callbackAddendum
-  setAddendum addendum cb = cb { callbackAddendum = addendum }
-
--- | Creates a binding for constructing callbacks into foreign code.
-makeCallback :: ExtName
-             -> [Type]  -- ^ Parameter types.
-             -> Type  -- ^ Return type.
-             -> Callback
-makeCallback extName paramTypes retType =
-  Callback extName paramTypes retType Nothing mempty mempty
-
--- | Sets whether a callback supports handling thrown C++ exceptions and passing
--- them into C++.
-callbackSetThrows :: Bool -> Callback -> Callback
-callbackSetThrows value cb = cb { callbackThrows = Just value }
+-- | Contains the numeric values for each of the entries in a C++ enum.
+type EvaluatedEnumValueMap = M.Map [String] Integer
 
 -- | Each exception class has a unique exception ID.
 newtype ExceptionId = ExceptionId
@@ -2321,7 +1553,7 @@ handleExceptions classes =
 -- after the regular binding glue.  The 'Monoid' instance concatenates code
 -- (actions).
 newtype Addendum = Addendum
-  { addendumHaskell :: Haskell.Generator ()
+  { addendumHaskell :: LH.Generator ()
     -- ^ Code to be output into the Haskell binding.  May also add imports and
     -- exports.
   }
@@ -2349,9 +1581,82 @@ class HasAddendum a where
   modifyAddendum f x = setAddendum (f $ getAddendum x) x
 
 -- | Adds a Haskell addendum to an object.
-addAddendumHaskell :: HasAddendum a => Haskell.Generator () -> a -> a
+addAddendumHaskell :: HasAddendum a => LH.Generator () -> a -> a
 addAddendumHaskell gen = modifyAddendum $ \addendum ->
   addendum `mappend` mempty { addendumHaskell = gen }
+
+-- | Structural information about a C++ enum.  This is used when Hoppy is
+-- evaluating enum data, see 'getExportEnumInfo'.
+--
+-- See 'Foreign.Hoppy.Generator.Spec.Enum.CppEnum'.
+data EnumInfo = EnumInfo
+  { enumInfoExtName :: ExtName
+    -- ^ The external name of the enum.
+  , enumInfoIdentifier :: Identifier
+    -- ^ The enum's identifier.
+  , enumInfoNumericType :: Maybe Type
+    -- ^ The enum's numeric type, if explicitly known to the bindings.  This
+    -- does not need to be provided.  If absent, then Hoppy will calculate the
+    -- enum's numeric type on its own, using a C++ compiler.  If this is present
+    -- however, Hoppy will use it, and additionally validate it against what the
+    -- C++ compiler thinks, if validation is enabled (see
+    -- 'interfaceValidateEnumTypes').
+  , enumInfoReqs :: Reqs
+    -- ^ Requirements for accessing the enum.
+  , enumInfoValues :: EnumValueMap
+    -- ^ The entries in the enum.
+  }
+
+-- | A list of words that comprise the name of an enum entry.  Each string in
+-- this list is treated as a distinct word for the purpose of performing case
+-- conversion to create identifiers in foreign languages.  These values are most
+-- easily created from a C++ identifier using
+-- 'Foreign.Hoppy.Generator.Util.splitIntoWords'.
+type EnumEntryWords = [String]
+
+-- | Describes the entries in a C++ enum.
+--
+-- Equality is defined as having the same 'enumValueMapValues'.
+data EnumValueMap = EnumValueMap
+  { enumValueMapNames :: [EnumEntryWords]
+    -- ^ The names of all entries in the enum being generated, in the order
+    -- specified by the enum definition.  These are the strings used to name
+    -- generated bindings.  Each name is broken up into words.  How the words
+    -- and get combined to make a name in a particular foreign language depends
+    -- on the language.
+  , enumValueMapForeignNames :: MapWithForeignLanguageOverrides EnumEntryWords EnumEntryWords
+    -- ^ Per-language renames of enum value entries.
+  , enumValueMapValues :: M.Map EnumEntryWords EnumValue
+    -- ^ A map specifying for each entry in 'enumValueMapNames', how to
+    -- determine the entry's numeric value.
+  }
+
+instance Eq EnumValueMap where
+  (==) = (==) `on` enumValueMapValues
+
+instance Show EnumValueMap where
+  show x = "<EnumValueMap values=" ++ show (enumValueMapValues x) ++ ">"
+
+-- | Describes the value of an entry in a C++ enum.  A numeric value may either
+-- be provided manually, or if omitted, Hoppy can determine it automatically.
+data EnumValue =
+    EnumValueManual Integer
+    -- ^ A manually specified numeric enum value.
+  | EnumValueAuto Identifier
+    -- ^ A numeric enum value that will be determined when the generator is run,
+    -- by means of compiling a C++ program.
+  deriving (Eq, Show)
+
+-- | Languages that Hoppy supports binding to.  Currently this is only Haskell.
+data ForeignLanguage =
+  Haskell  -- ^ The Haskell language.
+  deriving (Eq, Ord, Show)
+
+-- | A value that may be overridden based on a 'ForeignLanguage'.
+type WithForeignLanguageOverrides = WithOverrides ForeignLanguage
+
+-- | A map whose values may be overridden based on a 'ForeignLanguage'.
+type MapWithForeignLanguageOverrides = MapWithOverrides ForeignLanguage
 
 -- | A collection of imports for a Haskell module.  This is a monoid: import
 -- Statements are merged to give the union of imported bindings.
@@ -2362,11 +1667,14 @@ addAddendumHaskell gen = modifyAddendum $ \addendum ->
 -- Imports with @as@ but without @qualified@, and @qualified@ imports with a
 -- spec list, are not supported.  This satisfies the needs of the code
 -- generator, and keeps the merging logic simple.
-newtype HsImportSet = HsImportSet
+data HsImportSet = HsImportSet
   { getHsImportSet :: M.Map HsImportKey HsImportSpecs
     -- ^ Returns the import set's internal map from module names to imported
     -- bindings.
   } deriving (Show)
+
+-- TODO Make HsImportSet back into a newtype when it doesn't involve listing out
+-- its contents recursively in Base.hs-boot.
 
 instance Sem.Semigroup HsImportSet where
   (<>) (HsImportSet m) (HsImportSet m') =
@@ -2510,10 +1818,6 @@ hsImportForRuntime = hsQualifiedImport "Foreign.Hoppy.Runtime" "HoppyFHR"
 -- | Imports "System.Posix.Types" qualified as @HoppySPT@.
 hsImportForSystemPosixTypes :: HsImportSet
 hsImportForSystemPosixTypes = hsQualifiedImport "System.Posix.Types" "HoppySPT"
-
--- | Imports "Data.Typeable" qualified as @HoppyDT@.
-hsImportForTypeable :: HsImportSet
-hsImportForTypeable = hsQualifiedImport "Data.Typeable" "HoppyDT"
 
 -- | Imports "System.IO.Unsafe" qualified as @HoppySIU@.
 hsImportForUnsafeIO :: HsImportSet

@@ -15,7 +15,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-CXXFLAGS += -std=c++11 -fPIC
+CXXFLAGS += -std=c++11 -fPIC -I.
 
 .PHONY: clean
 
@@ -23,4 +23,4 @@ libhoppy-tests-circular.so: flob.o flobm.o flub.o flubm.o
 	$(CXX) -shared $^ -o $@
 
 clean:
-	-rm {flob,flub}m.{cpp,hpp} *.o *.so
+	-rm flobm.cpp flobm.hpp flubm.cpp flubm.hpp *.o *.so

@@ -15,20 +15,27 @@
 -- You should have received a copy of the GNU Affero General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-module Foreign.Hoppy.Test.Interfaces.Circular (interfaceResult) where
+module Foreign.Hoppy.Generator.Spec.Base (
+  ErrorMsg,
+  Reqs,
+  ExtName,
+  Identifier,
+  Constness,
+  HsImportSet,
+  ) where
 
-import Foreign.Hoppy.Generator.Spec
-import Foreign.Hoppy.Test.Interfaces.Circular.Flob (flobModule)
-import Foreign.Hoppy.Test.Interfaces.Circular.Flub (flubModule)
-import Foreign.Hoppy.Test.Interfaces.Compiler (makeTestCompiler)
+type ErrorMsg = String
 
-{-# ANN module "HLint: ignore Use camelCase" #-}
+data Reqs
 
-interfaceResult :: Either String Interface
-interfaceResult =
-  interface "circular" modules >>=
-  pure . interfaceSetCompiler (makeTestCompiler "circular") >>=
-  interfaceAddHaskellModuleBase ["Foreign", "Hoppy", "Test"]
+newtype ExtName = ExtName { fromExtName :: String }
 
-modules :: [Module]
-modules = [flobModule, flubModule]
+newtype Identifier = Identifier
+  { identifierParts :: [IdPart]
+  }
+
+data IdPart
+
+data Constness
+
+data HsImportSet

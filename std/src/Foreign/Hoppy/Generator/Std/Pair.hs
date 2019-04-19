@@ -30,6 +30,14 @@ module Foreign.Hoppy.Generator.Std.Pair (
 import Data.Monoid (mconcat)
 #endif
 import Foreign.Hoppy.Generator.Spec
+import Foreign.Hoppy.Generator.Spec.Class (
+  Class,
+  MethodApplicability (MConst, MNormal),
+  makeClass,
+  makeFnMethod,
+  mkCtor,
+  mkMethod,
+  )
 import Foreign.Hoppy.Generator.Std.Internal (includeHelper)
 import Foreign.Hoppy.Generator.Types
 import Foreign.Hoppy.Generator.Version (CppVersion (Cpp2011), activeCppVersion, collect, just, test)
@@ -70,7 +78,7 @@ instantiate' pairName a b userReqs opts =
         classAddFeatures (Assignable : Copyable : optPairClassFeatures opts) $
         makeClass (ident1T "std" "pair" [a, b]) (Just $ toExtName pairName) [] $
         collect
-        [ just $ mkCtor "new" []
+        [ just $ mkCtor "new" np
         , just $ mkCtor "newWith" [a, b]
         , just $ makeFnMethod (ident2 "hoppy" "utility" "pairFirst") "first" MNormal Nonpure
           [refT $ objT pair] $ refT a
@@ -90,4 +98,4 @@ instantiate' pairName a b userReqs opts =
 -- | Converts an instantiation into a list of exports to be included in a
 -- module.
 toExports :: Contents -> [Export]
-toExports m = map (ExportClass . ($ m)) [c_pair]
+toExports m = map (Export . ($ m)) [c_pair]

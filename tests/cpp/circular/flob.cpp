@@ -15,9 +15,9 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#include "flob.hpp"
+#include <flob.hpp>
 
-void takesFlubValues(FlubClass*, FlubEnum, int) {}
+void takesFlubValues(FlubClass*, FlubEnum) {}
 
 FlubClass* returnsFlubClass() {
     return 0;
@@ -25,8 +25,4 @@ FlubClass* returnsFlubClass() {
 
 FlubEnum returnsFlubEnum() {
     return OPTION_B;
-}
-
-int returnsFlubBitspace() {
-    return OPTION_A | OPTION_C;
 }

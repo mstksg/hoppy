@@ -18,30 +18,37 @@
 {-# LANGUAGE CPP #-}
 
 module Foreign.Hoppy.Generator.Language.Haskell (
+  Managed,
   Generator,
   Output,
+  SayExportMode,
+  withErrorContext,
+  addImports,
+  sayLn,
   prettyPrint,
   ) where
 
-#if MIN_VERSION_mtl(2,2,1)
 import Control.Monad.Except (Except)
-#endif
 import Control.Monad.Reader (ReaderT)
 import Control.Monad.Writer (WriterT)
-#if !MIN_VERSION_base(4,8,0)
-import Data.Monoid (Monoid)
-#endif
+import {-# SOURCE #-} Foreign.Hoppy.Generator.Spec.Base (HsImportSet)
 import qualified Language.Haskell.Pretty as P
 
-#if MIN_VERSION_mtl(2,2,1)
+data Managed = Unmanaged | Managed
+
 type Generator = ReaderT Env (WriterT Output (Except String))
-#else
-type Generator = ReaderT Env (WriterT Output (Either String))
-#endif
 
 data Env
 
 data Output
 instance Monoid Output
+
+data SayExportMode
+
+withErrorContext :: String -> Generator a -> Generator a
+
+addImports :: HsImportSet -> Generator ()
+
+sayLn :: String -> Generator ()
 
 prettyPrint :: P.Pretty a => a -> String

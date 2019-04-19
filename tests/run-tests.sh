@@ -33,6 +33,10 @@ cd "$myDir"
 
 declare -r testsRoot=$PWD
 
+# The Foreign.Hoppy.Test.Interfaces.Compiler module expects this variable to
+# point to the directory above each of the test suite's C++ files.
+export HOPPY_TEST_CPP_DIR="$testsRoot/cpp"
+
 if [[ $# -eq 0 ]]; then
     declare -r suites="basic circular stl"
 else
@@ -60,6 +64,7 @@ if [[ -n $doBuild ]]; then
     run cabal sandbox delete || true
     run cabal sandbox init
     run cabal install ../../{generator,std}
+    run cabal configure --ghc-options=-Werror
     run cabal build
 fi
 
@@ -79,7 +84,8 @@ for suite in $suites; do
         run cabal sandbox init
         run cabal install ../../../runtime
         run ../../generator/dist/build/generator/generator --interface "$suite" --gen-hs .
-        run cabal configure --enable-tests --extra-lib-dirs="$testsRoot/cpp/$suite"
+        run cabal configure \
+            --ghc-options=-Werror --enable-tests --extra-lib-dirs="$testsRoot/cpp/$suite"
         run cabal build --ghc-options=-Werror
         LD_LIBRARY_PATH="$testsRoot/cpp/$suite" run cabal test
     fi

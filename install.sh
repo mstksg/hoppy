@@ -40,26 +40,26 @@ projectDir=$(dirname "$projectDir")
 set -x
 
 cd "$projectDir/generator"
-cabal configure --ghc-options=-Werror --enable-tests
+cabal configure --ghc-options='-Werror -Wwarn=missing-home-modules' --enable-tests
 cabal build
 cabal test
 cabal haddock
 cabal install --force-reinstalls
 
 cd "$projectDir/std"
-cabal configure --ghc-options=-Werror
+cabal configure --ghc-options='-Werror -Wwarn=missing-home-modules'
 cabal build
 cabal haddock
 cabal install --force-reinstalls
 
 cd "$projectDir/runtime"
-cabal configure --ghc-options=-Werror
+cabal configure --ghc-options='-Werror -Wwarn=missing-home-modules'
 cabal build
 cabal haddock
 cabal install --force-reinstalls
 
 cd "$projectDir/docs"
-cabal configure --ghc-options=-Werror
+cabal configure --ghc-options='-Werror -Wwarn=missing-home-modules'
 cabal build
 cabal haddock
 cabal install --force-reinstalls

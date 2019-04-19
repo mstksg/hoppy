@@ -28,6 +28,7 @@ module Foreign.Hoppy.Generator.Spec.ClassFeature (
 import Data.Monoid (mempty)
 #endif
 import Foreign.Hoppy.Generator.Spec.Base
+import Foreign.Hoppy.Generator.Spec.Class
 import Foreign.Hoppy.Generator.Types
 
 -- | Sets of functionality that can be stamped onto a class with

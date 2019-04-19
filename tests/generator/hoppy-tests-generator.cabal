@@ -14,9 +14,12 @@ executable generator
     , Foreign.Hoppy.Test.Interfaces.Circular
     , Foreign.Hoppy.Test.Interfaces.Circular.Flob
     , Foreign.Hoppy.Test.Interfaces.Circular.Flub
+    , Foreign.Hoppy.Test.Interfaces.Compiler
     , Foreign.Hoppy.Test.Interfaces.Stl
+    , Paths_hoppy_tests_generator
   build-depends:
       base >=4.7 && <5
+    , filepath >= 1.4 && <1.5
     , haskell-src >=1.0 && <1.1
     , hoppy-generator
     , hoppy-std
