@@ -1,6 +1,6 @@
 -- This file is part of Hoppy.
 --
--- Copyright 2015-2018 Bryan Gardiner <bog@khumba.net>
+-- Copyright 2015-2019 Bryan Gardiner <bog@khumba.net>
 --
 -- This program is free software: you can redistribute it and/or modify
 -- it under the terms of the GNU Affero General Public License as published by
@@ -15,6 +15,15 @@
 -- You should have received a copy of the GNU Affero General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+-- | Support for specifying overrides of values based on parameters.
+--
+-- For example, an entity may have a name that you want to override on a
+-- per-language basis.  A single value like this may be represented as a
+-- @'WithOverrides' Language Name@ value.  Such a value will have a default
+-- name, as well as zero or more overrides, keyed by @Language@.
+--
+-- A 'MapWithOverrides' type is also provided for ease of overriding values
+-- inside of a map.
 module Foreign.Hoppy.Generator.Override (
   WithOverrides,
   plain,
@@ -38,7 +47,12 @@ import Data.Maybe (fromMaybe)
 -- parameter type @p@.  The type @p@ must have an 'Ord' instance.
 data WithOverrides p v = WithOverrides
   { unoverriddenValue :: v
+    -- ^ The default, unoverriden value for the 'WithOverrides'.  Lookups on the
+    -- override will return this value a given parameter doesn't have an
+    -- override.
+
   , overriddenValues :: M.Map p v
+    -- ^ Any overridden values that have been added to the 'WithOverrides'.
   }
 
 -- | Creates a 'WithOverrides' with the given default value @v@, and no

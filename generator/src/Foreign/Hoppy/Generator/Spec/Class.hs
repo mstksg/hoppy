@@ -621,9 +621,9 @@ data MethodImpl =
   -- ^ The 'Method' is bound to an actual class method.
   | FnMethod (FnName Identifier)
     -- ^ The 'Method' is bound to a wrapper function.  When wrapping a method
-    -- with another function, this is preferrable to just using a 'Function'
-    -- binding because a method will still appear to be part of the class in
-    -- foreign bindings.
+    -- with another function, this is preferrable to just using a
+    -- 'Foreign.Hoppy.Generator.Spec.Function.Function' binding because a method
+    -- will still appear to be part of the class in foreign bindings.
   deriving (Eq, Show)
 
 -- | How a method is associated to its class.  A method may be static, const, or
@@ -675,9 +675,9 @@ makeMethod_ cName extName appl purity paramTypes retType =
          (toParameters paramTypes) retType mempty
 
 -- | Creates a 'Method' that is in fact backed by a C++ non-member function (a
--- la 'makeFn'), but appears to be a regular method.  This is useful for
--- wrapping a method on the C++ side when its arguments aren't right for binding
--- directly.
+-- la 'Foreign.Hoppy.Generator.Spec.Function.makeFn'), but appears to be a
+-- regular method.  This is useful for wrapping a method on the C++ side when
+-- its arguments aren't right for binding directly.
 --
 -- A @this@ pointer parameter is __not__ automatically added to the parameter
 -- list for non-static methods created with @makeFnMethod@.
@@ -714,7 +714,7 @@ makeFnMethod_ cName foreignName appl purity paramTypes retType =
 -- method name is a 'FnOp' then the 'operatorPreferredExtName' will be appeneded
 -- to the class name.
 --
--- For creating multiple bindings to a method, see 'makeMethod''.
+-- For creating multiple bindings to a method, see @makeMethod''@.
 makeMethod' :: (IsFnName String name, IsParameter p)
             => name  -- ^ The C++ name of the method.
             -> MethodApplicability
@@ -726,7 +726,7 @@ makeMethod' name = makeMethod''' (toFnName name) Nothing
 
 -- | This function is internal.
 --
--- Creates a method similar to 'makeMethod'', but with an custom string that
+-- Creates a method similar to @makeMethod'@, but with an custom string that
 -- will be appended to the class name to form the method's external name.  This
 -- is useful for making multiple bindings to a method, e.g. for overloading and
 -- optional arguments.
@@ -740,7 +740,7 @@ makeMethod'' :: (IsFnName String name, IsParameter p)
              -> Method
 makeMethod'' name foreignName = makeMethod''' (toFnName name) $ Just foreignName
 
--- | The implementation of 'makeMethod'' and 'makeMethod'''.
+-- | The implementation of @makeMethod'@ and @makeMethod''@.
 makeMethod''' :: (HasCallStack, IsParameter p)
               => FnName String  -- ^ The C++ name of the method.
               -> Maybe String  -- ^ A foreign name for the method.
@@ -1969,7 +1969,7 @@ toHsClassDeleteFnName' :: Class -> String
 toHsClassDeleteFnName' cls = 'd':'e':'l':'e':'t':'e':'\'':toHsDataTypeName' Nonconst cls
 
 -- | The name of the foreign import that imports the same function as
--- 'toHsClassDeleteFnName', but as a 'Foreign.Ptr.FunPtr' rather than an actual
+-- 'toHsClassDeleteFnName'', but as a 'Foreign.Ptr.FunPtr' rather than an actual
 -- function.
 --
 -- This is internal to a generated Haskell module, so it does not have a public

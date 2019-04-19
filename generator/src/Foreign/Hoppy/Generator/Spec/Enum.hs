@@ -86,13 +86,13 @@ data CppEnum = CppEnum
     -- ^ The identifier used to refer to the enum.
   , enumNumericType :: Maybe Type
     -- ^ An optional, explicit numeric type provided for the enum's values, that
-    -- matches what the C++ compiler uses.  Hoppy will use 'Hooks' to compute
-    -- this automatically, if not given manually.  This does not need to be
-    -- provided.  If absent (default), then Hoppy will calculate the enum's
-    -- numeric type on its own, using a C++ compiler.  If this is present
-    -- however, Hoppy will use it, and additionally validate it against what the
-    -- C++ compiler thinks, if validation is enabled (see
-    -- 'interfaceValidateEnumTypes').
+    -- matches what the C++ compiler uses.  Hoppy will use
+    -- 'Foreign.Hoppy.Generator.Hook.Hooks' to compute this automatically, if
+    -- not given manually.  This does not need to be provided.  If absent
+    -- (default), then Hoppy will calculate the enum's numeric type on its own,
+    -- using a C++ compiler.  If this is present however, Hoppy will use it, and
+    -- additionally validate it against what the C++ compiler thinks, if
+    -- validation is enabled (see 'interfaceValidateEnumTypes').
   , enumValues :: EnumValueMap
     -- ^ The numeric values and names of the enum entires.
   , enumReqs :: Reqs
@@ -514,7 +514,7 @@ toHsEnumTypeName' = LH.toHsTypeName' Nonconst . enumExtName
 -- | Constructs the data constructor name for a value in an enum.  Like C++ and
 -- unlike say Java, Haskell enum values aren't in a separate enum-specific
 -- namespace, so we prepend the enum name to the value name to get the data
--- constructor name.  The value name is a list of words; see 'enumValueNames'.
+-- constructor name.  The value name is a list of words.
 toHsEnumCtorName :: CppEnum -> EnumEntryWords -> LH.Generator String
 toHsEnumCtorName enum words =
   LH.inFunction "toHsEnumCtorName" $

@@ -22,6 +22,7 @@ library
     , Foreign.Hoppy.Generator.Language.Cpp
     , Foreign.Hoppy.Generator.Language.Haskell
     , Foreign.Hoppy.Generator.Main
+    , Foreign.Hoppy.Generator.Override
     , Foreign.Hoppy.Generator.Spec
     , Foreign.Hoppy.Generator.Spec.Callback
     , Foreign.Hoppy.Generator.Spec.ClassFeature
@@ -37,7 +38,6 @@ library
     , Foreign.Hoppy.Generator.Common.Consume
     , Foreign.Hoppy.Generator.Language.Cpp.Internal
     , Foreign.Hoppy.Generator.Language.Haskell.Internal
-    , Foreign.Hoppy.Generator.Override
     , Foreign.Hoppy.Generator.Spec.Base
     , Foreign.Hoppy.Generator.Spec.Conversion
   default-extensions:

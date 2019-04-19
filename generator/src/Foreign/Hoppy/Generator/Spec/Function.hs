@@ -748,8 +748,8 @@ sayHsCallAndProcessReturn dir t callWords =
 
   where sayCall = LH.saysLn $ "(" : callWords ++ [")"]
 
--- | Implements special logic on top of 'cppTypeToHsTypeAndUse', that computes
--- the Haskell __qualified__ type for a function, including typeclass
+-- | Implements special logic on top of 'LH.cppTypeToHsTypeAndUse', that
+-- computes the Haskell __qualified__ type for a function, including typeclass
 -- constraints.
 fnToHsTypeAndUse :: LH.HsTypeSide
                  -> Purity

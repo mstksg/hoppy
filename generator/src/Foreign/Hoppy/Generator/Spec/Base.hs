@@ -41,6 +41,7 @@ module Foreign.Hoppy.Generator.Spec.Base (
   interfaceSetSharedPtr,
   interfaceCompiler,
   interfaceSetCompiler,
+  interfaceSetCompiler',
   interfaceSetNoCompiler,
   interfaceValidateEnumTypes,
   interfaceSetValidateEnumTypes,
@@ -248,7 +249,8 @@ data Interface = Interface
   , interfaceCallbacksThrow :: Bool
     -- ^ Whether callbacks within the interface support throwing C++ exceptions
     -- from Haskell into C++ during their execution.  This may be overridden by
-    -- 'moduleCallbacksThrow' and 'callbackThrows'.
+    -- 'moduleCallbacksThrow' and
+    -- 'Foreign.Hoppy.Generator.Spec.Callback.callbackThrows'.
   , interfaceExceptionNamesToIds :: M.Map ExtName ExceptionId
     -- ^ Maps from external names of exception classes to their exception IDs.
   , interfaceExceptionSupportModule :: Maybe Module
@@ -269,8 +271,9 @@ data Interface = Interface
     -- ^ Evaluated numeric types and values for all enums in the interface.
   , interfaceValidateEnumTypes :: Bool
     -- ^ Whether to validate manually-provided enum numeric types
-    -- ('enumNumericType') using a compiled C++ @sizeof()@, as is done for enums
-    -- that don't have an 'enumNumericType' set.
+    -- ('Foreign.Hoppy.Generator.Spec.Enum.enumNumericType') using a compiled
+    -- C++ @sizeof()@, as is done for enums that don't have an @enumNumericType@
+    -- set.
     --
     -- This defaults to true, but can be set to false to discourage requiring a
     -- compiler.  See 'interfaceSetNoCompiler'.
@@ -393,7 +396,8 @@ interfaceAddHaskellModuleBase modulePath iface = case interfaceHaskellModuleBase
     ]
 
 -- | Returns the the exception ID for a class in an interface, if it has one
--- (i.e. if it's been marked as an exception class with 'classMakeException').
+-- (i.e. if it's been marked as an exception class with
+-- 'Foreign.Hoppy.Generator.Spec.Class.classMakeException').
 interfaceExceptionClassId :: Interface -> Class -> Maybe ExceptionId
 interfaceExceptionClassId iface cls =
   M.lookup (classExtName cls) $ interfaceExceptionNamesToIds iface
@@ -409,8 +413,9 @@ interfaceAllExceptionClasses' modules =
   map getExportExceptionClass $
   M.elems $ moduleExports mod
 
--- | Changes 'callbackThrows' for all callbacks in an interface that don't have it
--- set explicitly at the module or callback level.
+-- | Changes 'Foreign.Hoppy.Generator.Spec.Callback.callbackThrows' for all
+-- callbacks in an interface that don't have it set explicitly at the module or
+-- callback level.
 interfaceSetCallbacksThrow :: Bool -> Interface -> Interface
 interfaceSetCallbacksThrow b iface = iface { interfaceCallbacksThrow = b }
 
@@ -473,7 +478,8 @@ interfaceSetNoCompiler =
   interfaceSetCompiler' Nothing
 
 -- | Controls whether the interface will validate manually specified enum types
--- ('enumNumericType') by compiling a C++ program.
+-- ('Foreign.Hoppy.Generator.Spec.Enum.enumNumericType') by compiling a C++
+-- program.
 --
 -- See 'interfaceValidateEnumTypes'.
 interfaceSetValidateEnumTypes :: Bool -> Interface -> Interface
@@ -545,7 +551,8 @@ data Module = Module
   , moduleCallbacksThrow :: Maybe Bool
     -- ^ Whether callbacks exported from the module support exceptions being
     -- thrown during their execution.  When present, this overrides
-    -- 'interfaceCallbacksThrow'.  This maybe overridden by 'callbackThrows'.
+    -- 'interfaceCallbacksThrow'.  This maybe overridden by
+    -- 'Foreign.Hoppy.Generator.Spec.Callback.callbackThrows'.
   , moduleAddendum :: Addendum
     -- ^ The module's addendum.
   }
@@ -639,8 +646,8 @@ moduleAddHaskellName name = do
       ["moduleAddHaskellName: ", show m, " already has Haskell name ",
        show name', "; trying to add name ", show name, "."]
 
--- | Changes 'callbackThrows' for all callbacks in a module that don't have it
--- set explicitly.
+-- | Changes 'Foreign.Hoppy.Generator.Spec.Callback.callbackThrows' for all
+-- callbacks in a module that don't have it set explicitly.
 moduleSetCallbacksThrow :: MonadState Module m => Maybe Bool -> m ()
 moduleSetCallbacksThrow b = modify $ \m -> m { moduleCallbacksThrow = b }
 
@@ -666,10 +673,12 @@ instance Monoid Reqs where
 reqInclude :: Include -> Reqs
 reqInclude include = mempty { reqsIncludes = S.singleton include }
 
--- | Contains the data types for bindings to C++ entities: 'Function', 'Class',
--- etc.  Use 'addReqs' or 'addReqIncludes' to specify requirements for these
--- entities, e.g. header files that must be included in order to access the
--- underlying entities that are being bound.
+-- | Contains the data types for bindings to C++ entities:
+-- 'Foreign.Hoppy.Generator.Spec.Function.Function',
+-- 'Foreign.Hoppy.Generator.Spec.Class.Class', etc.  Use 'addReqs' or
+-- 'addReqIncludes' to specify requirements for these entities, e.g. header
+-- files that must be included in order to access the underlying entities that
+-- are being bound.
 
 -- | C++ types that have requirements in order to use them in generated
 -- bindings.
@@ -1407,7 +1416,8 @@ data ConversionSpecHaskell = ConversionSpecHaskell
     -- these values as an argument, rather than taking a fixed concrete type
     -- ('conversionSpecHaskellHsType'), this qualified type will be used
     -- instead.  The 'HsName' parameter receives a unique name from the
-    -- generator that can be used with 'HsTyVar' like so:
+    -- generator that can be used with 'Language.Haskell.Syntax.HsTyVar' like
+    -- so:
     --
     -- > \name -> return $ HsQualType [...constraints...] (HsTyVar name)
     --

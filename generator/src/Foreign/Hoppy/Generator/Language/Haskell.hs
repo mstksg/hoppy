@@ -31,6 +31,7 @@ module Foreign.Hoppy.Generator.Language.Haskell (
   evalGenerator,
   execGenerator,
   renderPartial,
+  Env (..),
   askInterface,
   askModule,
   askModuleName,

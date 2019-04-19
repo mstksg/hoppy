@@ -41,7 +41,11 @@ import Foreign.Hoppy.Generator.Spec.Class
 import Foreign.Hoppy.Generator.Types
 
 -- | Modifies a class's 'ClassConversion' structure by setting all languages
--- to use 'ClassConversionToHeap'.
+-- to copy objects to the heap when being passed out of C++.  Lifetimes of the
+-- resulting objects must be managed by code in the foreign language.
+--
+-- Calling this on a class makes 'objT' behave like 'objToHeapT' for values
+-- being passed out of C++.
 classSetConversionToHeap :: Class -> Class
 classSetConversionToHeap cls = case classFindCopyCtor cls of
   Just _ ->
@@ -51,7 +55,12 @@ classSetConversionToHeap cls = case classFindCopyCtor cls of
   Nothing -> error $ "classSetConversionToHeap: " ++ show cls ++ " must be copyable."
 
 -- | Modifies a class's 'ClassConversion' structure by setting all languages
--- that support garbage collection to use 'ClassConversionToGc'.
+-- that support garbage collection to copy objects to the heap when being passed
+-- out of C++, and put those objects under the care of the foreign language's
+-- garbage collector.
+--
+-- Calling this on a class makes 'objT' behave like 'toGcT' for values being
+-- passed out of C++.
 classSetConversionToGc :: Class -> Class
 classSetConversionToGc cls = case classFindCopyCtor cls of
   Just _ ->

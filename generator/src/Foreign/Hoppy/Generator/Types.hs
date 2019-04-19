@@ -361,8 +361,9 @@ objT = Internal_TObj
 
 -- | A special case of 'objT' that is only allowed when passing objects from
 -- C++ to a foreign language.  Rather than looking at the object's
--- 'ClassConversion', the object will be copied to the heap, and a pointer to
--- the heap object will be passed.  The object must be copy-constructable.
+-- 'Foreign.Hoppy.Generator.Spec.Class.ClassConversion', the object will be
+-- copied to the heap, and a pointer to the heap object will be passed.  The
+-- object must be copy-constructable.
 --
 -- __The foreign language owns the pointer, even for callback arguments.__
 objToHeapT = Internal_TObjToHeap

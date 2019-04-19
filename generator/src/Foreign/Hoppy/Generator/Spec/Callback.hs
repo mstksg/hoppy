@@ -374,8 +374,8 @@ sayCppExport mode cb = do
 
 -- | Prints \"foreign import\" statements and an internal callback construction
 -- function for a given 'Callback' specification.  For example, for a callback
--- of 'HsHsSide' type @Int -> String -> IO Int@, we will generate the following
--- bindings:
+-- of 'LH.HsHsSide' type @Int -> String -> IO Int@, we will generate the
+-- following bindings:
 --
 -- > foreign import ccall "wrapper" name'newFunPtr
 -- >   :: (CInt -> Ptr CChar -> IO CInt)
