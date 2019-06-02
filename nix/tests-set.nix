@@ -15,26 +15,27 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-{ mkDerivation, stdenv, lib
-, base, bytestring, containers, directory, filepath, haskell-src, mtl
-, process, temporary, text
-, enableSplitObjs ? null
-, forceParallelBuilding ? false
-}:
-mkDerivation ({
-  pname = "hoppy-generator";
-  version = "0.6.0";
-  src = ./.;
-  libraryHaskellDepends = [
-    base bytestring containers directory filepath haskell-src mtl process
-    temporary text
-  ];
-  homepage = "http://khumba.net/projects/hoppy";
-  description = "C++ FFI generator - Code generator";
-  license = stdenv.lib.licenses.agpl3Plus;
+# Like all-builds-set.nix, this file evaluates to a set of derivations that run
+# Hoppy's test suite.  There is an attribute in this set, for each Haskell
+# package set provided by haskells.nix, for each package provided by
+# tests-set-1.nix.
+#
+# To build all of these packages, run "nix-build tests.nix".
 
-  preConfigure =
-    if forceParallelBuilding
-    then "configureFlags+=\" --ghc-option=-j$NIX_BUILD_CORES\""
-    else null;
-} // lib.filterAttrs (k: v: v != null) { inherit enableSplitObjs; })
+{ ... }@nixpkgsArgs:
+with import ./nixpkgs.nix nixpkgsArgs;
+let
+
+  # Load all of the Haskell package sets we'll build against.
+  haskells = import ./haskells.nix nixpkgsArgs;
+
+in
+
+lib.foldl (x: y: x // y) {}
+  (lib.mapAttrsToList
+     (setName: hpkgs:
+        let pkgs = import ./tests-set-1.nix hpkgs; in
+        lib.mapAttrs'
+          (pkgName: pkg: lib.nameValuePair "${setName}-${pkgName}" pkg)
+          pkgs)
+     haskells)

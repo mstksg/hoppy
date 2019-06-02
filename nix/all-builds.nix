@@ -15,26 +15,12 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-{ mkDerivation, stdenv, lib
-, base, bytestring, containers, directory, filepath, haskell-src, mtl
-, process, temporary, text
-, enableSplitObjs ? null
-, forceParallelBuilding ? false
-}:
-mkDerivation ({
-  pname = "hoppy-generator";
-  version = "0.6.0";
-  src = ./.;
-  libraryHaskellDepends = [
-    base bytestring containers directory filepath haskell-src mtl process
-    temporary text
-  ];
-  homepage = "http://khumba.net/projects/hoppy";
-  description = "C++ FFI generator - Code generator";
-  license = stdenv.lib.licenses.agpl3Plus;
+# A nix-build-able file whose output contains links to builds of all main Hoppy
+# packages (i.e. not tests or examples), for multiple versions of GHC.
 
-  preConfigure =
-    if forceParallelBuilding
-    then "configureFlags+=\" --ghc-option=-j$NIX_BUILD_CORES\""
-    else null;
-} // lib.filterAttrs (k: v: v != null) { inherit enableSplitObjs; })
+{ ... }@nixpkgsArgs:
+with import ./nixpkgs.nix nixpkgsArgs;
+callPackage (import ./set-to-links.nix {
+  name = "all-builds";
+  pkgSet = import ./all-builds-set.nix nixpkgsArgs;
+}) {}

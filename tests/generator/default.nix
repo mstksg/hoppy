@@ -15,26 +15,17 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-{ mkDerivation, stdenv, lib
-, base, bytestring, containers, directory, filepath, haskell-src, mtl
-, process, temporary, text
-, enableSplitObjs ? null
-, forceParallelBuilding ? false
+{ mkDerivation, base, filepath, haskell-src, hoppy-generator
+, hoppy-std, stdenv
 }:
-mkDerivation ({
-  pname = "hoppy-generator";
-  version = "0.6.0";
+mkDerivation {
+  pname = "hoppy-tests-generator";
+  version = "0.3.0";
   src = ./.;
-  libraryHaskellDepends = [
-    base bytestring containers directory filepath haskell-src mtl process
-    temporary text
+  isLibrary = false;
+  isExecutable = true;
+  executableHaskellDepends = [
+    base filepath haskell-src hoppy-generator hoppy-std
   ];
-  homepage = "http://khumba.net/projects/hoppy";
-  description = "C++ FFI generator - Code generator";
   license = stdenv.lib.licenses.agpl3Plus;
-
-  preConfigure =
-    if forceParallelBuilding
-    then "configureFlags+=\" --ghc-option=-j$NIX_BUILD_CORES\""
-    else null;
-} // lib.filterAttrs (k: v: v != null) { inherit enableSplitObjs; })
+}

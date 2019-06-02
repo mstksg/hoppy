@@ -15,26 +15,26 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-{ mkDerivation, stdenv, lib
-, base, bytestring, containers, directory, filepath, haskell-src, mtl
-, process, temporary, text
-, enableSplitObjs ? null
-, forceParallelBuilding ? false
-}:
-mkDerivation ({
-  pname = "hoppy-generator";
-  version = "0.6.0";
-  src = ./.;
-  libraryHaskellDepends = [
-    base bytestring containers directory filepath haskell-src mtl process
-    temporary text
-  ];
-  homepage = "http://khumba.net/projects/hoppy";
-  description = "C++ FFI generator - Code generator";
-  license = stdenv.lib.licenses.agpl3Plus;
+# This file is a Nixpkgs overlay that adds in the (non-testing) Hoppy packages.
 
-  preConfigure =
-    if forceParallelBuilding
-    then "configureFlags+=\" --ghc-option=-j$NIX_BUILD_CORES\""
-    else null;
-} // lib.filterAttrs (k: v: v != null) { inherit enableSplitObjs; })
+let
+
+  haskellOptions =
+    if builtins.pathExists ../config.nix
+    then import ../config.nix
+    else {};
+
+  haskellOverrides = hself: hsuper: {
+    hoppy-generator = hsuper.callPackage ../generator haskellOptions;
+    hoppy-std = hsuper.callPackage ../std haskellOptions;
+    hoppy-runtime = hsuper.callPackage ../runtime haskellOptions;
+    hoppy-docs = hsuper.callPackage ../docs haskellOptions;
+  };
+
+in self: super: {
+  haskell = super.haskell // {
+    packageOverrides = hself: hsuper:
+      (super.haskell.packageOverrides or (x: y: {})) hself super //
+      haskellOverrides hself hsuper;
+  };
+}

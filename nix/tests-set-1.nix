@@ -15,26 +15,16 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-{ mkDerivation, stdenv, lib
-, base, bytestring, containers, directory, filepath, haskell-src, mtl
-, process, temporary, text
-, enableSplitObjs ? null
-, forceParallelBuilding ? false
-}:
-mkDerivation ({
-  pname = "hoppy-generator";
-  version = "0.6.0";
-  src = ./.;
-  libraryHaskellDepends = [
-    base bytestring containers directory filepath haskell-src mtl process
-    temporary text
-  ];
-  homepage = "http://khumba.net/projects/hoppy";
-  description = "C++ FFI generator - Code generator";
-  license = stdenv.lib.licenses.agpl3Plus;
+# Takes a Haskell package set (haskellPackages or haskell.packages.ghcXXX) from
+# Nixpkgs for a specific GHC version, and returns a set containing derivations
+# to build to run Hoppy unit tests.
 
-  preConfigure =
-    if forceParallelBuilding
-    then "configureFlags+=\" --ghc-option=-j$NIX_BUILD_CORES\""
-    else null;
-} // lib.filterAttrs (k: v: v != null) { inherit enableSplitObjs; })
+haskellPackages:
+with haskellPackages;
+rec {
+  generator = callPackage ../tests/generator {};
+
+  # TODO Derivations to run the unit tests.
+
+  # TODO Include the derivation for the example here, once written.
+}
