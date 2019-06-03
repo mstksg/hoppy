@@ -22,9 +22,19 @@
 haskellPackages:
 with haskellPackages;
 rec {
-  generator = callPackage ../tests/generator {};
+  # Build and run unit tests:
+
+  hoppy-tests-generator = callPackage ../tests/generator {};
 
   # TODO Derivations to run the unit tests.
 
-  # TODO Include the derivation for the example here, once written.
+  # Build the Hoppy example package as part of the test suite:
+
+  hoppy-example-generator = callPackage ../example/example-generator {};
+
+  hoppy-example-cpp = callPackage ../example/example-cpp
+    { inherit hoppy-example-generator; };
+
+  hoppy-example = callPackage ../example/example
+    { inherit hoppy-example-generator hoppy-example-cpp; };
 }

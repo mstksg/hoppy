@@ -18,7 +18,6 @@ module Main (main) where
 
 import Foreign.Hoppy.Generator.Main (defaultMain)
 import Foreign.Hoppy.Generator.Spec (
-  Export (ExportFn),
   Function,
   Interface,
   Module,
@@ -34,6 +33,7 @@ import Foreign.Hoppy.Generator.Spec (
   moduleModify',
   moduleSetCppPath,
   moduleSetHppPath,
+  toExport,
   )
 import Foreign.Hoppy.Generator.Std (c_string, mod_std)
 import Foreign.Hoppy.Generator.Types (objT)
@@ -54,7 +54,7 @@ interfaceResult = do
 mod_example :: Module
 mod_example =
   moduleModify' (makeModule "utils" "gen_utils.hpp" "gen_utils.cpp") $
-  moduleAddExports [ExportFn f_reverse]
+  moduleAddExports [toExport f_reverse]
 
 f_reverse :: Function
 f_reverse =

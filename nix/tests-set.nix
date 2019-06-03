@@ -20,7 +20,11 @@
 # package set provided by haskells.nix, for each package provided by
 # tests-set-1.nix.
 #
-# To build all of these packages, run "nix-build tests.nix".
+# To build all of these packages: nix-build tests.nix
+#
+# To query packages in this set: nix-env -f tests-set.nix -qaP
+#
+# To build a specific package in this set: nix-build tests-set.nix -A <attrName>
 
 { ... }@nixpkgsArgs:
 with import ./nixpkgs.nix nixpkgsArgs;
@@ -31,6 +35,7 @@ let
 
 in
 
+# Include all tests:
 lib.foldl (x: y: x // y) {}
   (lib.mapAttrsToList
      (setName: hpkgs:
@@ -39,3 +44,7 @@ lib.foldl (x: y: x // y) {}
           (pkgName: pkg: lib.nameValuePair "${setName}-${pkgName}" pkg)
           pkgs)
      haskells)
+
+# Also explicitly include all main packages, to ensure that they build: (In
+# particular, the docs aren't covered by unit tests.)
+// import ./all-builds-set.nix nixpkgsArgs

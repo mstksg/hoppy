@@ -14,31 +14,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-.PHONY: all
-
-OS=$(shell ghc -e ":m +System.Info" -e "putStrLn os")
-
-CC = g++
-CFLAGS = -O2
-
-all: cpp/libexample.so
-
-cpp/libexample.so: cpp/utils.o cpp/gen_utils.o cpp/gen_std.o
-ifeq ($(OS),darwin)
-	$(CC) $(CFLAGS) -dynamic -shared -fPIC -install_name @rpath/libexample.so -o $@ $^
-else
-	$(CC) $(CFLAGS) -dynamic -shared -fPIC -o $@ $^
-endif
-
-%.o: %.cpp
-	$(CC) $(CFLAGS) -fPIC -c -o $@ $<
-
-clean:
-	rm -f cpp/utils.o cpp/gen_utils.o cpp/gen_std.o cpp/libexample.so
-
-install:
-ifeq ($(OS),darwin)
-	install cpp/libexample.so "$(libdir)"
-else
-	install -t "$(libdir)" cpp/libexample.so
-endif
+{ mkDerivation, base, haskell-src, hoppy-generator, hoppy-std
+, stdenv
+}:
+mkDerivation {
+  pname = "hoppy-example-generator";
+  version = "0.1.0";
+  src = ./.;
+  isLibrary = true;
+  isExecutable = true;
+  libraryHaskellDepends = [ base ];
+  executableHaskellDepends = [
+    base haskell-src hoppy-generator hoppy-std
+  ];
+  doHaddock = false;
+  license = stdenv.lib.licenses.asl20;
+}

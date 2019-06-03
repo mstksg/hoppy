@@ -19,7 +19,11 @@
 # versions of GHC.  Building this file with nix-build ensures that Hoppy builds
 # against various versions of GHC, including the latest (see haskells.nix).
 #
-# To build all of these packages, run "nix-build all-builds.nix".
+# To build all of these packages: nix-build all-builds.nix
+#
+# To query packages in this set: nix-env -f all-builds-set.nix -qaP
+#
+# To build a specific package in this set: nix-build all-builds-set.nix -A <attrName>
 #
 # The attribute names are of the form:
 #

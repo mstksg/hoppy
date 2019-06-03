@@ -7,16 +7,16 @@ copyright: Copyright 2015-2019 Bryan Gardiner
 build-type: Custom
 cabal-version: >=1.10
 
+extra-source-files:
+  Makefile
+  cpp/utils.cpp
+  cpp/utils.hpp
+
 custom-setup
   setup-depends:
       base
     , Cabal
     , hoppy-runtime >=0.6 && <0.7
-
-extra-source-files:
-  Makefile
-  cpp/utils.cpp
-  cpp/utils.hpp
 
 library
   hs-source-dirs: src
