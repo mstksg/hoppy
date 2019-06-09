@@ -21,6 +21,8 @@ OS=$(shell ghc -e ":m +System.Info" -e "putStrLn os")
 CC = g++
 CFLAGS = -O2
 
+.PHONY: clean install
+
 all: cpp/libexample.so
 
 cpp/libexample.so: cpp/utils.o cpp/gen_utils.o cpp/gen_std.o

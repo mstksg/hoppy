@@ -17,14 +17,14 @@
 
 module Main (main) where
 
-import Foreign.Hoppy.Setup (ProjectConfig (..), hsMain)
+import Foreign.Hoppy.Setup (ProjectConfig (..), cppMain)
 
 main =
-  hsMain
+  cppMain
   ProjectConfig
   { generatorExecutableName = "hoppy-tests-generator"
-  , cppPackageName = "hoppy-tests-stl-cpp"
+  , cppPackageName = "hoppy-tests-basic-cpp"
   , cppSourcesDir = "cpp"
   , hsSourcesDir = "src"
-  , interfaceName = Just "stl"
+  , interfaceName = Just "basic"
   }

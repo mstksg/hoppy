@@ -26,7 +26,25 @@ rec {
 
   hoppy-tests-generator = callPackage ../tests/generator {};
 
-  # TODO Derivations to run the unit tests.
+  hoppy-tests-basic-cpp = callPackage ../tests/suites/basic/cpp
+    { inherit hoppy-tests-generator; };
+
+  hoppy-tests-basic = callPackage ../tests/suites/basic/hs
+    { inherit hoppy-tests-generator hoppy-tests-basic-cpp; };
+
+  hoppy-tests-circular-cpp = callPackage ../tests/suites/circular/cpp
+    { inherit hoppy-tests-generator; };
+
+  hoppy-tests-circular = callPackage ../tests/suites/circular/hs
+    { inherit hoppy-tests-generator hoppy-tests-circular-cpp; };
+
+  hoppy-tests-stl-cpp = callPackage ../tests/suites/stl/cpp
+    { inherit hoppy-tests-generator; };
+
+  hoppy-tests-stl = callPackage ../tests/suites/stl/hs
+    { inherit hoppy-tests-generator hoppy-tests-stl-cpp; };
+
+  # TODO Other test suites.
 
   # Build the Hoppy example package as part of the test suite:
 

@@ -25,4 +25,5 @@ main =
   , cppPackageName = "hoppy-example-cpp"
   , cppSourcesDir = "cpp"
   , hsSourcesDir = "src"
+  , interfaceName = Nothing
   }

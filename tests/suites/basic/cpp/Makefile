@@ -15,12 +15,16 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-CXXFLAGS += -std=c++11 -fPIC -I.
+CXXFLAGS += -std=c++11 -fPIC -Icpp
 
-.PHONY: clean
+.PHONY: clean install
 
-libhoppy-tests-basic.so: basic.o constants.o functions.o ptrctr.o undeletable.o
-	$(CXX) -shared $^ -o $@
+cpp/libhoppy-tests-basic.so: \
+	cpp/basic.o cpp/constants.o cpp/functions.o cpp/ptrctr.o cpp/undeletable.o
+	$(CXX) $(CXXFLAGS) -shared -o $@ $^
 
 clean:
-	-rm basic.cpp basic.hpp *.o *.so
+	-rm cpp/basic.cpp cpp/basic.hpp cpp/*.o cpp/*.so
+
+install:
+	install -t "$(libdir)" cpp/libhoppy-tests-basic.so

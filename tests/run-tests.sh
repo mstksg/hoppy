@@ -35,7 +35,7 @@ declare -r testsRoot=$PWD
 
 # The Foreign.Hoppy.Test.Interfaces.Compiler module expects this variable to
 # point to the directory above each of the test suite's C++ files.
-export HOPPY_TEST_CPP_DIR="$testsRoot/cpp"
+# FIXME: export HOPPY_TEST_SUITES_DIR="$testsRoot/suites"
 
 if [[ $# -eq 0 ]]; then
     declare -r suites="basic circular stl"

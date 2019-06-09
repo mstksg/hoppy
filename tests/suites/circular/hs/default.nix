@@ -15,19 +15,26 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-{ mkDerivation, base, filepath, haskell-src, hoppy-generator
-, hoppy-std, stdenv
+{ mkDerivation, base, Cabal, containers, hoppy-runtime
+, hoppy-tests-circular-cpp, hoppy-tests-generator, HUnit, stdenv
 }:
 mkDerivation {
-  pname = "hoppy-tests-generator";
+  pname = "hoppy-tests-circular";
   version = "0.3.0";
   src = ./.;
-  isLibrary = true;
-  isExecutable = true;
-  libraryHaskellDepends = [ base ];
-  executableHaskellDepends = [
-    base filepath haskell-src hoppy-generator hoppy-std
+  setupHaskellDepends = [ base Cabal hoppy-runtime ];
+  libraryHaskellDepends = [
+    base hoppy-runtime hoppy-tests-circular-cpp hoppy-tests-generator
   ];
+  # librarySystemDepends = [ hoppy-tests-circular ];
+  testHaskellDepends = [ base containers hoppy-runtime HUnit ];
   doHaddock = false;
   license = stdenv.lib.licenses.agpl3Plus;
+
+  enableSharedExecutables = true;
+
+  # Tell the generator where the C++ files are for this package.
+  preConfigure = ''
+    export HOPPY_TEST_CPP_DIR="${hoppy-tests-circular-cpp}/include/hoppy-tests-circular-cpp"
+  '';
 }
