@@ -156,10 +156,19 @@ data ProjectConfig = ProjectConfig
   , hsSourcesDir :: FilePath
     -- ^ The directory into which to generate Haskell sources, under the Haskell
     -- gateway package root.
+  , interfaceName :: Maybe String
+    -- ^ If the generator contains multiple interfaces, then this can be used to
+    -- select one.  If present, it is passed as an argument to @--interface@
+    -- when invoking the generator.  If absent, the default interface is used.
   }
 
 getGeneratorProgram :: ProjectConfig -> Program
 getGeneratorProgram project = simpleProgram $ generatorExecutableName project
+
+getInterfaceArg :: ProjectConfig -> [String]
+getInterfaceArg project = case interfaceName project of
+  Just name -> ["--interface", name]
+  Nothing -> []
 
 -- | A @main@ implementation to be used in the @Setup.hs@ of a C++ gateway
 -- package.
@@ -234,7 +243,8 @@ cppConfigure project verbosity localBuildInfo generatorProgram = do
   let programDb = withPrograms localBuildInfo
       sourcesDir = cppSourcesDir project
   createDirectoryIfMissing True sourcesDir
-  runDbProgram verbosity generatorProgram programDb ["--gen-cpp", sourcesDir]
+  runDbProgram verbosity generatorProgram programDb $
+    getInterfaceArg project ++ ["--gen-cpp", sourcesDir]
 
   -- When there is a configure script, then run it.
   maybeConfigureProgram <- findConfigure
@@ -421,7 +431,8 @@ hsConfigure project verbosity localBuildInfo generatorProgram = do
           let programDb = withPrograms localBuildInfo
               sourcesDir = hsSourcesDir project
           createDirectoryIfMissing True sourcesDir
-          runDbProgram verbosity generatorProgram programDb ["--gen-hs", sourcesDir]
+          runDbProgram verbosity generatorProgram programDb $
+            getInterfaceArg project ++ ["--gen-hs", sourcesDir]
 
 addLibDir :: IO HookedBuildInfo
 addLibDir = do
@@ -438,7 +449,10 @@ removeGeneratedFiles language project verbosity = do
         Cpp -> ("--list-cpp-files", cppSourcesDir)
         Haskell -> ("--list-hs-files", hsSourcesDir)
   generatorProgram <- findSystemProgram verbosity $ generatorExecutableName project
-  generatedFiles <- lines <$> getProgramOutput verbosity generatorProgram [listArg]
+  generatedFiles <-
+    lines <$> getProgramOutput verbosity
+                               generatorProgram
+                               (getInterfaceArg project ++ [listArg])
   forM_ generatedFiles $ \file -> do
     let path = sourcesDir project </> file
     exists <- doesFileExist path

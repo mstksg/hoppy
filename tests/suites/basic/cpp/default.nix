@@ -15,12 +15,27 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-CXXFLAGS += -std=c++11 -fPIC -I.
+{ mkDerivation, base, Cabal, hoppy-runtime, hoppy-tests-generator, stdenv
+}:
+mkDerivation {
+  pname = "hoppy-tests-basic-cpp";
+  version = "0.1.0";
+  src = ./.;
+  setupHaskellDepends = [ base Cabal hoppy-runtime ];
+  libraryHaskellDepends = [
+    base hoppy-runtime hoppy-tests-generator
+  ];
+  license = stdenv.lib.licenses.agpl3Plus;
 
-.PHONY: clean
+  # Tell the generator where the C++ files are for this package.
+  preConfigure = ''
+    export HOPPY_TEST_CPP_DIR="$PWD/cpp"
+  '';
 
-libhoppy-tests-circular.so: flob.o flobm.o flub.o flubm.o
-	$(CXX) -shared $^ -o $@
-
-clean:
-	-rm flobm.cpp flobm.hpp flubm.cpp flubm.hpp *.o *.so
+  # Install the C++ sources so that the hs/ package can use them for its
+  # compiler call.
+  postInstall = ''
+    mkdir -p $out/include/hoppy-tests-basic-cpp
+    cp cpp/*.hpp $out/include/hoppy-tests-basic-cpp
+  '';
+}

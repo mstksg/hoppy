@@ -22,10 +22,12 @@ mkDerivation {
   pname = "hoppy-tests-generator";
   version = "0.3.0";
   src = ./.;
-  isLibrary = false;
+  isLibrary = true;
   isExecutable = true;
+  libraryHaskellDepends = [ base ];
   executableHaskellDepends = [
     base filepath haskell-src hoppy-generator hoppy-std
   ];
+  doHaddock = false;
   license = stdenv.lib.licenses.agpl3Plus;
 }

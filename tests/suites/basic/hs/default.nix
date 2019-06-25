@@ -15,27 +15,26 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-# This file is a Nixpkgs overlay that adds in the (non-testing) Hoppy packages.
+{ mkDerivation, base, Cabal, containers, hoppy-runtime
+, hoppy-tests-basic-cpp, hoppy-tests-generator, HUnit, stdenv
+}:
+mkDerivation {
+  pname = "hoppy-tests-basic";
+  version = "0.3.0";
+  src = ./.;
+  setupHaskellDepends = [ base Cabal hoppy-runtime ];
+  libraryHaskellDepends = [
+    base hoppy-runtime hoppy-tests-basic-cpp hoppy-tests-generator
+  ];
+  # librarySystemDepends = [ hoppy-tests-basic ];
+  testHaskellDepends = [ base containers hoppy-runtime HUnit ];
+  doHaddock = false;
+  license = stdenv.lib.licenses.agpl3Plus;
 
-let
+  enableSharedExecutables = true;
 
-  haskellOptions =
-    if builtins.pathExists ../config.nix
-    then import ../config.nix
-    else {};
-
-  haskellOverrides = hself: hsuper: {
-    hoppy-generator = hsuper.callPackage ../generator haskellOptions;
-    hoppy-std = hsuper.callPackage ../std haskellOptions;
-    hoppy-runtime = hsuper.callPackage ../runtime haskellOptions;
-    hoppy-docs = hsuper.callPackage ../docs haskellOptions;
-  };
-
-in self: super: {
-  haskell = super.haskell // {
-    packageOverrides =
-      super.lib.composeExtensions
-        (super.haskell.packageOverrides or (x: y: {}))
-        haskellOverrides;
-  };
+  # Tell the generator where the C++ files are for this package.
+  preConfigure = ''
+    export HOPPY_TEST_CPP_DIR="${hoppy-tests-basic-cpp}/include/hoppy-tests-basic-cpp"
+  '';
 }

@@ -15,12 +15,15 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-CXXFLAGS += -std=c++11 -fPIC -I.
+CXXFLAGS += -std=c++11 -fPIC -Icpp
 
-.PHONY: clean
+.PHONY: clean install
 
-libhoppy-tests-stl.so: std.o stl.o
-	$(CXX) -shared $^ -o $@
+cpp/libhoppy-tests-stl.so: cpp/std.o cpp/stl.o
+	$(CXX) -shared -o $@ $^
 
 clean:
-	-rm std.cpp std.hpp stl.cpp stl.hpp *.o *.so
+	-rm cpp/std.cpp cpp/std.hpp cpp/stl.cpp cpp/stl.hpp cpp/*.o cpp/*.so
+
+install:
+	install -t "$(libdir)" cpp/libhoppy-tests-stl.so

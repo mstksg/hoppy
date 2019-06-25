@@ -15,9 +15,16 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-# This file provides Nixpkgs with overlay.nix included.
+CXXFLAGS += -std=c++11 -fPIC -Icpp
 
-{ overlays ? [], ... }@args:
-import <nixpkgs> (args // {
-  overlays = overlays ++ [ (import ./overlay.nix) ];
-})
+.PHONY: clean install
+
+cpp/libhoppy-tests-basic.so: \
+	cpp/basic.o cpp/constants.o cpp/functions.o cpp/ptrctr.o cpp/undeletable.o
+	$(CXX) $(CXXFLAGS) -shared -o $@ $^
+
+clean:
+	-rm cpp/basic.cpp cpp/basic.hpp cpp/*.o cpp/*.so
+
+install:
+	install -t "$(libdir)" cpp/libhoppy-tests-basic.so

@@ -16,7 +16,6 @@
 
 { mkDerivation, base, filepath, haskell-src, hoppy-generator
 , stdenv, lib
-, enableSplitObjs ? null
 , forceParallelBuilding ? false
 }:
 mkDerivation ({
@@ -38,4 +37,4 @@ mkDerivation ({
   postInstall = ''
     cp -r include $out
   '';
-} // lib.filterAttrs (k: v: v != null) { inherit enableSplitObjs; })
+})

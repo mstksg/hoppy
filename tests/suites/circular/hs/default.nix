@@ -15,25 +15,26 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-{ mkDerivation, stdenv, lib
-, base, bytestring, containers, directory, filepath, haskell-src, mtl
-, process, temporary, text
-, forceParallelBuilding ? false
+{ mkDerivation, base, Cabal, containers, hoppy-runtime
+, hoppy-tests-circular-cpp, hoppy-tests-generator, HUnit, stdenv
 }:
-mkDerivation ({
-  pname = "hoppy-generator";
-  version = "0.6.0";
+mkDerivation {
+  pname = "hoppy-tests-circular";
+  version = "0.3.0";
   src = ./.;
+  setupHaskellDepends = [ base Cabal hoppy-runtime ];
   libraryHaskellDepends = [
-    base bytestring containers directory filepath haskell-src mtl process
-    temporary text
+    base hoppy-runtime hoppy-tests-circular-cpp hoppy-tests-generator
   ];
-  homepage = "http://khumba.net/projects/hoppy";
-  description = "C++ FFI generator - Code generator";
+  # librarySystemDepends = [ hoppy-tests-circular ];
+  testHaskellDepends = [ base containers hoppy-runtime HUnit ];
+  doHaddock = false;
   license = stdenv.lib.licenses.agpl3Plus;
 
-  preConfigure =
-    if forceParallelBuilding
-    then "configureFlags+=\" --ghc-option=-j$NIX_BUILD_CORES\""
-    else null;
-})
+  enableSharedExecutables = true;
+
+  # Tell the generator where the C++ files are for this package.
+  preConfigure = ''
+    export HOPPY_TEST_CPP_DIR="${hoppy-tests-circular-cpp}/include/hoppy-tests-circular-cpp"
+  '';
+}

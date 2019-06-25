@@ -6,22 +6,33 @@ the `nix/` directory.  You'll want to build either `nix/all-builds.nix` or
 Nix expressions are provided to ease building Hoppy within
 [Nixpkgs](https://nixos.org/nixpkgs), to demonstrate building sample programs,
 and to run unit tests.  There is a `default.nix` for each package in the
-repository, as well as a few other Nix files:
+repository, as well as a collection of Nix expressions in the `nix/` directory.
+The primary ones in this directory are:
 
-- `/pkgs.nix` provides a modified Nixpkgs with all of the Hoppy packages
-  inserted.  You can use this as a model for your own `~/.nixpkgs/config.nix`.
+- `nix/overlay.nix` provides a Nixpkgs overlay that adds Hoppy packages to the
+  Haskell packages set, for all compiler versions (both `haskell` and
+  `haskellPackages`).
 
-- `/config.nix` may optionally be created to pass additional arguments to the
-  `hoppy` package.  `pkgs.nix` will use this file if it exists.  See below for
-  additional options this package accepts.
+- `nix/nixpkgs.nix` imports Nixpkgs and adds in the above overlay.
 
-- `/tests/default.nix` is a `nix-build`able expression that builds and runs all
-  of the Hoppy tests.
+- `nix/all-builds.nix` evaluates to a derivation that builds all Hoppy packages
+  against a few different GHC versions (as controlled by `haskells.nix`), and
+  symlinks the results into its output directory.  `all-builds-set.nix` can be
+  used to build individual packages in this collection.
 
-The `hoppy` package accepts two optional parameters.  `enableSplitObjs`, when
-non-null, will override Nixpkgs's default behaivour for Cabal, and the boolean
-`forceParallelBuilding` will force a parallel build for faster development, at
-the risk of nondeterministic results (see
+- `nix/tests.nix`, similarly to `all-builds.nix`, evaluates to a derivation that
+  builds and runs all of the unit tests, plus the example binding, plus the
+  Hoppy packages, again for a few different GHC versions, symlinking the results
+  into its output directory.  Individual packages can be built via
+  `tests-set.nix`.
+
+- `/config.nix` (*not* in `nix/`!) may optionally be created to pass additional
+  arguments to the `hoppy` package.  The other Nix expressions will use this
+  file if it exists.  See below for additional options this package accepts.
+
+The Nix expressions for Hoppy packages accept one additional optional parameter.
+The boolean `forceParallelBuilding` will force a parallel build for faster
+development, at the risk of nondeterministic results (see
 [Nixpkgs bug 3220](https://github.com/NixOS/nixpkgs/issues/3220)).
 
 ---

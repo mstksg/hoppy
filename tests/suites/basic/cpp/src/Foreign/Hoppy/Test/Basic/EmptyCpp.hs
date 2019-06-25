@@ -15,5 +15,4 @@
 -- You should have received a copy of the GNU Affero General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-import Distribution.Simple
-main = defaultMain
+module Foreign.Hoppy.Test.Basic.EmptyCpp () where

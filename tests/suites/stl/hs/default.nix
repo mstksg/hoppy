@@ -15,12 +15,26 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-CXXFLAGS += -std=c++11 -fPIC -I.
+{ mkDerivation, base, Cabal, containers, hoppy-runtime
+, hoppy-tests-stl-cpp, hoppy-tests-generator, HUnit, stdenv
+}:
+mkDerivation {
+  pname = "hoppy-tests-stl";
+  version = "0.3.0";
+  src = ./.;
+  setupHaskellDepends = [ base Cabal hoppy-runtime ];
+  libraryHaskellDepends = [
+    base hoppy-runtime hoppy-tests-stl-cpp hoppy-tests-generator
+  ];
+  # librarySystemDepends = [ hoppy-tests-stl ];
+  testHaskellDepends = [ base containers hoppy-runtime HUnit ];
+  doHaddock = false;
+  license = stdenv.lib.licenses.agpl3Plus;
 
-.PHONY: clean
+  enableSharedExecutables = true;
 
-libhoppy-tests-basic.so: basic.o constants.o functions.o ptrctr.o undeletable.o
-	$(CXX) -shared $^ -o $@
-
-clean:
-	-rm basic.cpp basic.hpp *.o *.so
+  # Tell the generator where the C++ files are for this package.
+  preConfigure = ''
+    export HOPPY_TEST_CPP_DIR="${hoppy-tests-stl-cpp}/include/hoppy-tests-stl-cpp"
+  '';
+}

@@ -23,14 +23,13 @@ import System.Environment (getEnv)
 import System.FilePath ((</>))
 import System.IO.Unsafe (unsafePerformIO)
 
--- | Creates a compiler that has a the C++ files for a particular test suite on
+-- | Creates a compiler that has the C++ files for a particular test suite on
 -- its include path.  We need this for enum value computation.
 makeTestCompiler :: String -> SimpleCompiler
 makeTestCompiler interfaceName =
-  prependArguments ["-I" ++ cppDirPath </> interfaceName] defaultCompiler
+  prependArguments ["-I" ++ cppDirPath] defaultCompiler
 
--- | The path to the directory above each suite's C++ files (in subdirectories
--- named after the suites).
+-- | The path to the directory holding the current suite's C++ files.
 cppDirPath :: FilePath
 {-# NOINLINE cppDirPath #-}
 cppDirPath = unsafePerformIO $ getEnv "HOPPY_TEST_CPP_DIR"

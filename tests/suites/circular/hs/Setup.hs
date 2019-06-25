@@ -15,5 +15,16 @@
 -- You should have received a copy of the GNU Affero General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-import Distribution.Simple
-main = defaultMain
+module Main (main) where
+
+import Foreign.Hoppy.Setup (ProjectConfig (..), hsMain)
+
+main =
+  hsMain
+  ProjectConfig
+  { generatorExecutableName = "hoppy-tests-generator"
+  , cppPackageName = "hoppy-tests-circular-cpp"
+  , cppSourcesDir = "cpp"
+  , hsSourcesDir = "src"
+  , interfaceName = Just "circular"
+  }

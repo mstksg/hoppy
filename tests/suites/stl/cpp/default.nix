@@ -15,9 +15,27 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-# This file provides Nixpkgs with overlay.nix included.
+{ mkDerivation, base, Cabal, hoppy-runtime, hoppy-tests-generator, stdenv
+}:
+mkDerivation {
+  pname = "hoppy-tests-stl-cpp";
+  version = "0.1.0";
+  src = ./.;
+  setupHaskellDepends = [ base Cabal hoppy-runtime ];
+  libraryHaskellDepends = [
+    base hoppy-runtime hoppy-tests-generator
+  ];
+  license = stdenv.lib.licenses.agpl3Plus;
 
-{ overlays ? [], ... }@args:
-import <nixpkgs> (args // {
-  overlays = overlays ++ [ (import ./overlay.nix) ];
-})
+  # Tell the generator where the C++ files are for this package.
+  preConfigure = ''
+    export HOPPY_TEST_CPP_DIR="$PWD/cpp"
+  '';
+
+  # Install the C++ sources so that the hs/ package can use them for its
+  # compiler call.
+  postInstall = ''
+    mkdir -p $out/include/hoppy-tests-stl-cpp
+    cp cpp/*.hpp $out/include/hoppy-tests-stl-cpp
+  '';
+}
