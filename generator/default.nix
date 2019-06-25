@@ -18,7 +18,6 @@
 { mkDerivation, stdenv, lib
 , base, bytestring, containers, directory, filepath, haskell-src, mtl
 , process, temporary, text
-, enableSplitObjs ? null
 , forceParallelBuilding ? false
 }:
 mkDerivation ({
@@ -37,4 +36,4 @@ mkDerivation ({
     if forceParallelBuilding
     then "configureFlags+=\" --ghc-option=-j$NIX_BUILD_CORES\""
     else null;
-} // lib.filterAttrs (k: v: v != null) { inherit enableSplitObjs; })
+})

@@ -44,8 +44,6 @@ rec {
   hoppy-tests-stl = callPackage ../tests/suites/stl/hs
     { inherit hoppy-tests-generator hoppy-tests-stl-cpp; };
 
-  # TODO Other test suites.
-
   # Build the Hoppy example package as part of the test suite:
 
   hoppy-example-generator = callPackage ../example/example-generator {};
