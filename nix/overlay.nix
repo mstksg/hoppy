@@ -33,8 +33,9 @@ let
 
 in self: super: {
   haskell = super.haskell // {
-    packageOverrides = hself: hsuper:
-      (super.haskell.packageOverrides or (x: y: {})) hself super //
-      haskellOverrides hself hsuper;
+    packageOverrides =
+      super.lib.composeExtensions
+        (super.haskell.packageOverrides or (x: y: {}))
+        haskellOverrides;
   };
 }
