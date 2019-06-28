@@ -18,7 +18,7 @@
 , stdenv, lib
 , forceParallelBuilding ? false
 }:
-mkDerivation ({
+mkDerivation {
   pname = "hoppy-std";
   version = "0.6.0";
   src = ./.;
@@ -37,4 +37,4 @@ mkDerivation ({
   postInstall = ''
     cp -r include $out
   '';
-})
+}

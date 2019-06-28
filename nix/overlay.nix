@@ -35,7 +35,7 @@ in self: super: {
   haskell = super.haskell // {
     packageOverrides =
       super.lib.composeExtensions
-        (super.haskell.packageOverrides or (x: y: {}))
+        (super.haskell.packageOverrides or (_: _: {}))
         haskellOverrides;
   };
 }

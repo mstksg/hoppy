@@ -17,7 +17,7 @@
 { mkDerivation, base, stdenv, lib
 , forceParallelBuilding ? false
 }:
-mkDerivation ({
+mkDerivation {
   pname = "hoppy-runtime";
   version = "0.6.0";
   src = ./.;
@@ -30,4 +30,4 @@ mkDerivation ({
     if forceParallelBuilding
     then "configureFlags+=\" --ghc-option=-j$NIX_BUILD_CORES\""
     else null;
-})
+}

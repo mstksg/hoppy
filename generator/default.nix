@@ -20,7 +20,7 @@
 , process, temporary, text
 , forceParallelBuilding ? false
 }:
-mkDerivation ({
+mkDerivation {
   pname = "hoppy-generator";
   version = "0.6.0";
   src = ./.;
@@ -36,4 +36,4 @@ mkDerivation ({
     if forceParallelBuilding
     then "configureFlags+=\" --ghc-option=-j$NIX_BUILD_CORES\""
     else null;
-})
+}

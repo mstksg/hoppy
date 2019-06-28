@@ -46,8 +46,8 @@ browse the HTML files in `docs/dist/doc` after building.
 
 ## Developing
 
-Patches welcome!  Please enable the pre-commit hook at `scripts/git-pre-commit`
-which checks lint and copyright/license issues:
+Patches are welcome!  Please enable the pre-commit hook at
+`scripts/git-pre-commit` which checks lint and copyright/license issues:
 
     $ ln -s ../../scripts/git-pre-commit .git/hooks/pre-commit
 
