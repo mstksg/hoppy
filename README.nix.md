@@ -1,7 +1,4 @@
-(**NOTE:** Nix expressions are currently being rewritten; tests and the example
-bindings aren't buildable via Nix right now.  Nix expressions are now found in
-the `nix/` directory.  You'll want to build either `nix/all-builds.nix` or
-`nix/tests.nix`.  This file needs to be updated.)
+TODO
 
 Nix expressions are provided to ease building Hoppy within
 [Nixpkgs](https://nixos.org/nixpkgs), to demonstrate building sample programs,

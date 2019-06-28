@@ -13,16 +13,10 @@ individually.
 
 The `LICENSE` file contains information about Hoppy's license.
 
-## Dependencies
-
-- GHC 7.10-8.x
-- haskell-src (for binding development only)
-- mtl (for binding development only)
+## Using
 
 If you just want to install Hoppy to use it as a dependency of another project,
 then all you need to do is build and install the Cabal package in `runtime/`.
-
-## Using
 
 Hoppy consists of four Cabal packages:
 
@@ -42,6 +36,9 @@ Hoppy consists of four Cabal packages:
   previous packages for hyperlinks.
 
 It can be built and installed with the `install.sh` script.
+
+If you are using the Nix package manager, see `README.nix.md` for more
+information about using Hoppy with it.
 
 There is a user's guide written using Haddock at
 `docs/src/Foreign/Hoppy/Documentation/UsersGuide.hs`.  You can read it as is, or

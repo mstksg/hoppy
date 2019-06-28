@@ -2,6 +2,114 @@
 
 ## Unreleased
 
+This release is a significant refactoring of Hoppy, featuring many new features
+and changes to its API.
+
+- Compatibility with GHC 8.6, Cabal 2.4.
+
+- [API change] C++ data types have been generalized, and you can now define your
+  own kinds of entities to be exported, in parallel with enums, objects,
+  variables, functions, etc.
+
+  The core of this is the support is the `Exportable` typeclass, which defines
+  the entry points that Hoppy will call to generate support code necessary on
+  either side of a binding, if needed.  Rather than `Export` being having a
+  number of fixed data constructors, it's now an existential data type that
+  wraps an `Exportable`, and can be created with the `toExport` function.
+
+- Marshalling of values between C++ and Haskell has also been generalized and is
+  now extensible to your own types or specific arguments, as you see fit
+  (issue #9).
+
+  The main entry point here is the `ConversionSpec` data type, which specifies
+  C++ and Haskell types and the code generators necessary to convert values
+  between them.  A `ConversionSpec` can be lifted to a `Type` with the function
+  `manualT`, and various existing type functions (`intT`, `enumT`, etc.) are
+  wrappers around this function.
+
+  All of the built-in number types are now implemented via this mechanism, and
+  you can create your own with `makeNumericType`.  The `Type` data type has been
+  reduced to a handful of primitive types, and all of the nonessentials have
+  been split out to use the new generic support.  This doesn't affect the use of
+  the `typeT` functions.
+
+  Classes and `objT` still remain to be unified with this new way.  For now,
+  class conversions are still handled via `ClassConversion`.
+
+- [API change] Enum support has been improved in many ways.
+
+  First and most importantly, Hoppy can now compute the ordinal values for enum
+  entries itself, by building a sample program with a provided compiler
+  (issue #17).  Binding authors no longer need to determine these values, hard
+  code them into their bindings, and hope they don't change.  These new-style
+  enums can be created with `makeAutoEnum`.  Enums can still be created the old
+  way, for example if it's not convenient to call a C++ compiler.  By default,
+  g++ is assumed to be present and any manually-specified enum details will be
+  verified by running the compiler.  Compilation can be disabled with
+  `interfaceSetNoCompiler`.
+
+  Secondly, as part of `makeAutoEnum`, enum entry names are easier to specify.
+  You now just specify the C++ name of the entry, rather than splitting them up
+  into words.
+
+  Thirdly, previously Hoppy assumed that enums were backed by a C++ int, which
+  is bad because this type can have both the wrong width, and the wrong
+  signedness (issue #30).  As part of enum autodetection, this is computed
+  automatically now.  For old-style enums, a data type can be provided manually.
+
+  Fourthly, Hoppy used to generate `Bounded` and `Enum` instances for C++ enums
+  in Haskell, and it no longer does (issue #7); instead, it generates an
+  instance of a new typeclass `CppEnum`.  The instances generated were incorrect
+  when the enum's numeric values weren't all sequential integers.  The instance
+  generated for `Bounded` incorrectly used the first and last entries in the
+  list provided to `makeEnum` (I suppose we could instead take the lowest and
+  highest numeric value though).  For `Enum`, the instances used the default
+  `succ` and `pred` instances of adding and subtracting one, which isn't
+  guaranteed to work.  Also, both of these only work with `Int` (see the
+  previous paragraph).  The new `CppEnum` typeclass only supports the bare
+  minimum for now: `toCppEnum` and `fromCppEnum`.
+
+  Fifthly, multiple enum entries having the same ordinal value is now supported.
+
+  Sixthly, enums can now optionally represent values that aren't included in the
+  binding's definition (issue #4).  This supports the case where a new enum
+  value has been added by the C++ library but it hasn't been added to the
+  bindings yet.  This is a choice for each enum: either the enum doesn't support
+  unknown values, and Haskell will `error` if one is seen, or it will have an
+  additional "unknown" data constructor that will have to be pattern-matched
+  against, but `toCppEnum` will never error out.
+
+  Seventhly, Haskell bindings for enums now get `Bits` instances.  This is on by
+  default and can be disabled on a per-enum basis.
+
+- [API change] Bitspaces are now removed.
+
+  In case you didn't see this coming after the above: bitspaces were a hack in
+  order to support QFlags in Qtah, and all of the logic necessary to support
+  this in a more general fashion within Qtah itself has been added via the above
+  points, so bitspaces are gone from Hoppy.
+
+- [API change] Function parameters can now be named (issue #12).
+
+  Names and documentation strings can now be attached to function parameters.
+  Currently this isn't used anywhere, but in the future it will be used to
+  generate documentation for generated bindings.
+
+  Unfortunately, this causes some unpleasant API breakage.
+
+  Parameter lists to `makeFn`, `mkMethod`, etc. are now generic.  They can
+  either be `[Type]` as before, or `(~:)` can be used to attach names to types
+  to give `[Parameter]`.  The breakage is that the empty list is now ambiguously
+  typed, so a new `np = [] :: [Parameter]` value should be used instead.
+
+- Generator binaries have new `--dump-ext-names` and `--dump-enums` options for
+  displaying information for debugging purposes, suhc as enum information
+  determined from the C++ compiler.
+
+- The Nix expressions, which had long been languishing, have been brought up to
+  date, and now make use of Nix overlays.  The example now includes Nix
+  expressions.
+
 ## hoppy-generator-0.5.2 (2018-09-01)
 
 - Generated bindings now require GHC 7.10 or newer (released Apr 2015), and no
