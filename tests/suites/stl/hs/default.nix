@@ -20,7 +20,7 @@
 }:
 mkDerivation {
   pname = "hoppy-tests-stl";
-  version = "0.3.0";
+  version = "0.1.0";
   src = ./.;
   setupHaskellDepends = [ base Cabal hoppy-runtime ];
   libraryHaskellDepends = [
