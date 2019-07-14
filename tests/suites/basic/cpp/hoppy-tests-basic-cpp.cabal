@@ -8,6 +8,7 @@ build-type: Custom
 cabal-version: >=1.10
 
 extra-source-files:
+  Makefile
   cpp/class-prefixes.hpp
   cpp/constants.cpp
   cpp/constants.hpp

@@ -67,6 +67,7 @@ data Hooks = Hooks
 
 -- | The default set of hooks associated with an interface.  This sets
 -- 'hookEvaluateEnums' to 'evaluateEnumsWithDefaultCompiler'.
+defaultHooks :: Hooks
 defaultHooks =
   Hooks
   { hookEvaluateEnums = evaluateEnumsWithDefaultCompiler
@@ -184,14 +185,14 @@ makeCppSourceToEvaluateEnums args =
   , "int main() {"
   , "  std::cout << \"#sizes\\n\";"
   ] ++ for (enumEvaluatorArgsSizeofIdentifiers args)
-       (\ident ->
-         let rendered = renderIdentifier ident
+       (\identifier ->
+         let rendered = renderIdentifier identifier
          in "  std::cout << sizeof(" ++ rendered ++ ") << ' ' << " ++
             doubleQuote rendered ++ " << '\\n';") ++
   [ "  std::cout << \"#values\\n\";"
   ] ++ for (enumEvaluatorArgsEntryIdentifiers args)
-       (\ident ->
-         let rendered = renderIdentifier ident
+       (\identifier ->
+         let rendered = renderIdentifier identifier
          in "  std::cout << (" ++ rendered ++ ") << ' ' << " ++
             doubleQuote rendered ++ " << '\\n';") ++
   [ ""

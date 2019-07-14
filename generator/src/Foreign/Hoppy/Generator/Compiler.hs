@@ -151,16 +151,16 @@ gppCompiler =
 -- interpolation on the program and argument strings.  Returns true if the
 -- program executes successfully, and false otherwise (logging to stderr).
 runProgram :: Show a => a -> FilePath -> [String] -> M.Map String String -> IO Bool
-runProgram compiler program arguments values = do
+runProgram compiler rawProgram rawArgs values = do
   let interpolationResults =
         partitionEithers $
-        map (strInterpolate values) (program:arguments)
+        map (strInterpolate values) (rawProgram:rawArgs)
   case interpolationResults of
     (unknownKey:_, _) -> do
       hPutStrLn stderr $
         "Error: Hit unknown binding {" ++ unknownKey ++ "} when executing C++ compiler '" ++
-        show compiler ++ ".  program = " ++ show program ++ ", arguments = " ++
-        show arguments ++ "."
+        show compiler ++ ".  program = " ++ show rawProgram ++ ", arguments = " ++
+        show rawArgs ++ "."
       return False
     ([], program:args) -> do
       let cmdLine = showCommandForUser program args

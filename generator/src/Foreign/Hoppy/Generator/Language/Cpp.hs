@@ -87,8 +87,8 @@ data Env = Env
 -- | Runs a generator action and returns its output, or an error message if
 -- unsuccessful.
 execGenerator :: Interface -> Module -> Maybe String -> Generator a -> Either ErrorMsg String
-execGenerator interface m maybeHeaderGuardName action = do
-  chunk <- execChunkWriterT $ runReaderT action $ Env interface m
+execGenerator iface m maybeHeaderGuardName action = do
+  chunk <- execChunkWriterT $ runReaderT action $ Env iface m
   let contents = chunkContents chunk
       includes = chunkIncludes chunk
   return $ chunkContents $ execChunkWriter $ do

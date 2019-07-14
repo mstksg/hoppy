@@ -315,8 +315,8 @@ cppClean project verbosity = do
     die
 #endif
     "No Makefile found."
-  makeProgram <- findSystemProgram verbosity "make"
-  runProgram verbosity makeProgram ["clean"]
+  make <- findSystemProgram verbosity "make"
+  runProgram verbosity make ["clean"]
 
 findSystemProgram :: Verbosity -> FilePath -> IO ConfiguredProgram
 findSystemProgram verbosity basename = do

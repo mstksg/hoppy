@@ -200,7 +200,7 @@ import Control.Monad.Except (MonadError, throwError)
 #else
 import Control.Monad.Error (MonadError, throwError)
 #endif
-import Control.Monad.State (MonadState, StateT, execStateT, get, modify)
+import Control.Monad.State (MonadState, StateT, execStateT, get, modify, put)
 import Data.Char (isAlpha, isAlphaNum)
 import Data.Function (on)
 import Data.List (intercalate, intersperse)
@@ -318,9 +318,9 @@ interface' ifName modules options = do
   let extNamesToModules :: M.Map ExtName [Module]
       extNamesToModules =
         M.unionsWith (++) $
-        for modules $ \mod ->
-        let extNames = concatMap getAllExtNames $ M.elems $ moduleExports mod
-        in M.fromList $ zip extNames $ repeat [mod]
+        for modules $ \m ->
+        let extNames = concatMap getAllExtNames $ M.elems $ moduleExports m
+        in M.fromList $ zip extNames $ repeat [m]
 
       extNamesInMultipleModules :: [(ExtName, [Module])]
       extNamesInMultipleModules =
@@ -333,14 +333,14 @@ interface' ifName modules options = do
   unless (null extNamesInMultipleModules) $
     Left $ unlines $
     "Some external name(s) are exported by multiple modules:" :
-    map (\(extName, modules) ->
-          concat $ "- " : show extName : ": " : intersperse ", " (map show modules))
+    map (\(extName, modules') ->
+          concat $ "- " : show extName : ": " : intersperse ", " (map show modules'))
         extNamesInMultipleModules
 
   let haskellModuleImportNames =
         M.fromList $
-        (\a b f -> zipWith f a b) modules [1..] $
-        \mod index -> (mod, 'M' : show index)
+        (\a b f -> zipWith f a b) modules [(1::Int)..] $
+        \m index -> (m, 'M' : show index)
 
   -- Generate a unique exception ID integer for each exception class.  IDs 0 and
   -- 1 are reserved.
@@ -408,10 +408,10 @@ interfaceAllExceptionClasses = interfaceAllExceptionClasses' . M.elems . interfa
 
 interfaceAllExceptionClasses' :: [Module] -> [Class]
 interfaceAllExceptionClasses' modules =
-  flip concatMap modules $ \mod ->
+  flip concatMap modules $ \m ->
   catMaybes $
   map getExportExceptionClass $
-  M.elems $ moduleExports mod
+  M.elems $ moduleExports m
 
 -- | Changes 'Foreign.Hoppy.Generator.Spec.Callback.callbackThrows' for all
 -- callbacks in an interface that don't have it set explicitly at the module or
@@ -422,14 +422,14 @@ interfaceSetCallbacksThrow b iface = iface { interfaceCallbacksThrow = b }
 -- | Sets an interface's exception support module, for interfaces that use
 -- exceptions.
 interfaceSetExceptionSupportModule :: HasCallStack => Module -> Interface -> Interface
-interfaceSetExceptionSupportModule mod iface = case interfaceExceptionSupportModule iface of
-  Nothing -> iface { interfaceExceptionSupportModule = Just mod }
+interfaceSetExceptionSupportModule m iface = case interfaceExceptionSupportModule iface of
+  Nothing -> iface { interfaceExceptionSupportModule = Just m }
   Just existingMod ->
-    if mod == existingMod
+    if m == existingMod
     then iface
     else error $ "interfaceSetExceptionSupportModule: " ++ show iface ++
          " already has exception support module " ++ show existingMod ++
-         ", trying to set " ++ show mod ++ "."
+         ", trying to set " ++ show m ++ "."
 
 -- | Installs a custom @std::shared_ptr@ implementation for use by an interface.
 -- Hoppy uses shared pointers for generated callback code.  This function is
@@ -629,7 +629,7 @@ moduleAddExports exports = do
       newExports = M.fromList $ map (getPrimaryExtName &&& id) exports
       duplicateNames = (S.intersection `on` M.keysSet) existingExports newExports
   if S.null duplicateNames
-    then modify $ \m -> m { moduleExports = existingExports `mappend` newExports }
+    then put m { moduleExports = existingExports `mappend` newExports }
     else throwError $ concat
          ["moduleAddExports: ", show m, " defines external names multiple times: ",
           show duplicateNames]
@@ -640,7 +640,7 @@ moduleAddHaskellName :: (MonadError String m, MonadState Module m) => [String] -
 moduleAddHaskellName name = do
   m <- get
   case moduleHaskellName m of
-    Nothing -> modify $ \m -> m { moduleHaskellName = Just name }
+    Nothing -> put m { moduleHaskellName = Just name }
     Just name' ->
       throwError $ concat
       ["moduleAddHaskellName: ", show m, " already has Haskell name ",
@@ -745,7 +745,7 @@ isValidExtName str = case str of
 
 -- | Generates an 'ExtName' from an 'Identifier', if the given name is absent.
 extNameOrIdentifier :: HasCallStack => Identifier -> Maybe ExtName -> ExtName
-extNameOrIdentifier ident = fromMaybe $ case identifierParts ident of
+extNameOrIdentifier identifier = fromMaybe $ case identifierParts identifier of
   [] -> error "extNameOrIdentifier: Invalid empty identifier."
   parts -> toExtName $ idPartBase $ last parts
 
@@ -961,8 +961,8 @@ newtype Identifier = Identifier
   } deriving (Eq, Monoid, Sem.Semigroup)
 
 instance Show Identifier where
-  show ident =
-    (\words -> concat $ "<Identifier " : words ++ [">"]) $
+  show identifier =
+    (\wordList -> concat $ "<Identifier " : wordList ++ [">"]) $
     intersperse "::" $
     map (\part -> case idPartArgs part of
             Nothing -> idPartBase part
@@ -970,7 +970,7 @@ instance Show Identifier where
               concat $
               idPartBase part : "<" :
               intersperse ", " (map show args) ++ [">"]) $
-    identifierParts ident
+    identifierParts identifier
 
 -- | A single component of an 'Identifier', between @::@s.
 data IdPart = IdPart
@@ -1725,7 +1725,7 @@ mergeImportSpecs (HsImportSpecs mm s) (HsImportSpecs mm' s') =
         mergeValues v v' = case (v, v') of
           (HsImportValAll, _) -> HsImportValAll
           (_, HsImportValAll) -> HsImportValAll
-          (HsImportValSome s, HsImportValSome s') -> HsImportValSome $ s ++ s'
+          (HsImportValSome x, HsImportValSome x') -> HsImportValSome $ x ++ x'
           (x@(HsImportValSome _), _) -> x
           (_, x@(HsImportValSome _)) -> x
           (HsImportVal, HsImportVal) -> HsImportVal
@@ -1748,35 +1748,35 @@ data HsImportVal =
 
 -- | An import for the entire contents of a Haskell module.
 hsWholeModuleImport :: HsModuleName -> HsImportSet
-hsWholeModuleImport moduleName =
-  HsImportSet $ M.singleton (HsImportKey moduleName Nothing) $
+hsWholeModuleImport modName =
+  HsImportSet $ M.singleton (HsImportKey modName Nothing) $
   HsImportSpecs Nothing False
 
 -- | A qualified import of a Haskell module.
 hsQualifiedImport :: HsModuleName -> HsModuleName -> HsImportSet
-hsQualifiedImport moduleName qualifiedName =
-  HsImportSet $ M.singleton (HsImportKey moduleName $ Just qualifiedName) $
+hsQualifiedImport modName qualifiedName =
+  HsImportSet $ M.singleton (HsImportKey modName $ Just qualifiedName) $
   HsImportSpecs Nothing False
 
 -- | An import of a single name from a Haskell module.
 hsImport1 :: HsModuleName -> HsImportName -> HsImportSet
-hsImport1 moduleName valueName = hsImport1' moduleName valueName HsImportVal
+hsImport1 modName valueName = hsImport1' modName valueName HsImportVal
 
 -- | A detailed import of a single name from a Haskell module.
 hsImport1' :: HsModuleName -> HsImportName -> HsImportVal -> HsImportSet
-hsImport1' moduleName valueName valueType =
-  HsImportSet $ M.singleton (HsImportKey moduleName Nothing) $
+hsImport1' modName valueName valueType =
+  HsImportSet $ M.singleton (HsImportKey modName Nothing) $
   HsImportSpecs (Just $ M.singleton valueName valueType) False
 
 -- | An import of multiple names from a Haskell module.
 hsImports :: HsModuleName -> [HsImportName] -> HsImportSet
-hsImports moduleName names =
-  hsImports' moduleName $ map (\name -> (name, HsImportVal)) names
+hsImports modName names =
+  hsImports' modName $ map (\name -> (name, HsImportVal)) names
 
 -- | A detailed import of multiple names from a Haskell module.
 hsImports' :: HsModuleName -> [(HsImportName, HsImportVal)] -> HsImportSet
-hsImports' moduleName values =
-  HsImportSet $ M.singleton (HsImportKey moduleName Nothing) $
+hsImports' modName values =
+  HsImportSet $ M.singleton (HsImportKey modName Nothing) $
   HsImportSpecs (Just $ M.fromList values) False
 
 -- | Imports "Data.Bits" qualified as @HoppyDB@.

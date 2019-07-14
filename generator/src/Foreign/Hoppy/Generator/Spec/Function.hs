@@ -765,7 +765,7 @@ fnToHsTypeAndUse side purity paramTypes returnType exceptionHandlers = do
              then (++ [("excId", ptrT intT), ("excPtr", ptrT $ ptrT voidT)])
              else id) $
             zip (map LH.toArgName [1..]) paramTypes
-  let context = concatMap (\(HsQualType context _) -> context) params :: HsContext
+  let context = concatMap (\(HsQualType ctx _) -> ctx) params :: HsContext
       hsParams = map (\(HsQualType _ t) -> t) params
 
   -- Determine the 'HsHsSide' return type for the function.  Do the conversion
@@ -801,7 +801,7 @@ fnToHsTypeAndUse side purity paramTypes returnType exceptionHandlers = do
         -- Use whatever type 'cppTypeToHsTypeAndUse' suggests, with no typeclass
         -- constraints.
         handoff :: LH.HsTypeSide -> Type -> LH.Generator HsQualType
-        handoff side t = HsQualType [] <$> LH.cppTypeToHsTypeAndUse side t
+        handoff side' t = HsQualType [] <$> LH.cppTypeToHsTypeAndUse side' t
 
         -- Receives a @FooPtr this => this@.
         receivePtr :: String -> Class.Class -> Constness -> LH.Generator HsQualType

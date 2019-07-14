@@ -16,7 +16,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 # A nix-build-able file whose output contains links to builds of all main Hoppy
-# packages (i.e. not tests or examples), for multiple versions of GHC.
+# packages (i.e. not tests or examples), for the current version of GHC.
 
 { ... }@nixpkgsArgs:
 with import ./nixpkgs.nix nixpkgsArgs;

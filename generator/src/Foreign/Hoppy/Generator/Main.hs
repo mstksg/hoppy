@@ -306,10 +306,10 @@ processArgs stateVar args =
 
     "--dump-ext-names":rest -> do
       withCurrentCache stateVar $ \_ iface cache -> do
-        forM_ (interfaceModules iface) $ \mod ->
-          forM_ (moduleExports mod) $ \export ->
+        forM_ (interfaceModules iface) $ \m ->
+          forM_ (moduleExports m) $ \export ->
           forM_ (getAllExtNames export) $ \extName ->
-          putStrLn $ "extname module=" ++ moduleName mod ++ " name=" ++ fromExtName extName
+          putStrLn $ "extname module=" ++ moduleName m ++ " name=" ++ fromExtName extName
         return (iface, cache, ())
       (DumpExtNames:) <$> processArgs stateVar rest
 
@@ -320,17 +320,17 @@ processArgs stateVar args =
           hPutStrLn stderr $ "--dump-enums expected to have evaluated enum data, but doesn't."
           exitFailure
         forM_ (M.toList allEvaluatedData) $ \(extName, evaluatedData) -> do
-          mod <- flip fromMaybeM (M.lookup extName $ interfaceNamesToModules iface) $ do
+          m <- flip fromMaybeM (M.lookup extName $ interfaceNamesToModules iface) $ do
             hPutStrLn stderr $
               "--dump-enums couldn't find module for enum " ++ show extName ++ "."
             exitFailure
           let typeStr =
                 Cpp.chunkContents $ Cpp.execChunkWriter $
                 Cpp.sayType Nothing $ evaluatedEnumType evaluatedData
-          putStrLn $ "enum name=" ++ fromExtName extName ++ " module=" ++ moduleName mod ++
+          putStrLn $ "enum name=" ++ fromExtName extName ++ " module=" ++ moduleName m ++
             " type=" ++ typeStr
-          forM_ (M.toList $ evaluatedEnumValueMap evaluatedData) $ \(words, number) ->
-            putStrLn $ "entry value=" ++ show number ++ " name=" ++ show words
+          forM_ (M.toList $ evaluatedEnumValueMap evaluatedData) $ \(words', number) ->
+            putStrLn $ "entry value=" ++ show number ++ " name=" ++ show words'
         return (iface', cache, ())
       (DumpEnums:) <$> processArgs stateVar rest
 

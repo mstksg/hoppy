@@ -120,9 +120,9 @@ data Managed =
 -- taking into account the 'interfaceHaskellModuleBase' and the
 -- 'moduleHaskellName'.
 getModuleName :: Interface -> Module -> String
-getModuleName interface m =
+getModuleName iface m =
   intercalate "." $
-  interfaceHaskellModuleBase interface ++
+  interfaceHaskellModuleBase iface ++
   fromMaybe [toModuleName $ moduleName m] (moduleHaskellName m)
 
 -- | Performs case conversions on the given string to ensure that it is a valid
@@ -137,7 +137,7 @@ renderImports = map renderModuleImport . M.assocs . getHsImportSet
   where -- | Renders an import as a string that contains one or more lines.
         renderModuleImport :: (HsImportKey, HsImportSpecs) -> String
         renderModuleImport (key, specs) =
-          let moduleName = hsImportModule key
+          let modName = hsImportModule key
               maybeQualifiedName = hsImportQualifiedName key
               isQual = isJust maybeQualifiedName
               importPrefix = if hsImportSource specs
@@ -149,9 +149,9 @@ renderImports = map renderModuleImport . M.assocs . getHsImportSet
                 else "import qualified "
           in case getHsImportSpecs specs of
             Nothing -> case maybeQualifiedName of
-              Nothing -> importPrefix ++ moduleName
+              Nothing -> importPrefix ++ modName
               Just qualifiedName ->
-                concat [importQualifiedPrefix, moduleName, " as ", qualifiedName]
+                concat [importQualifiedPrefix, modName, " as ", qualifiedName]
             Just specMap ->
               let specWords :: [String]
                   specWords = concatWithCommas $ map renderSpecAsWords $ M.assocs specMap
@@ -159,14 +159,14 @@ renderImports = map renderModuleImport . M.assocs . getHsImportSet
                   singleLineImport =
                     concat $
                     (if isQual then importQualifiedPrefix else importPrefix) :
-                    moduleName : " (" : intersperse " " specWords ++
+                    modName : " (" : intersperse " " specWords ++
                     case maybeQualifiedName of
                       Nothing -> [")"]
                       Just qualifiedName -> [") as ", qualifiedName]
               in if null $ drop maxLineLength singleLineImport
                  then singleLineImport
                  else intercalate "\n" $
-                      (importPrefix ++ moduleName ++ " (") :
+                      (importPrefix ++ modName ++ " (") :
                       groupWordsIntoLines specWords ++
                       case maybeQualifiedName of
                         Nothing -> ["  )"]
@@ -184,9 +184,9 @@ renderImports = map renderModuleImport . M.assocs . getHsImportSet
           HsImportValSome parts -> case parts of
             [] -> [name ++ " ()"]
             [part] -> [concat [name, " (", part, ")"]]
-            part0:parts -> let (parts', [partN]) = splitAt (length parts - 1) parts
+            part0:parts' -> let (parts'', [partN]) = splitAt (length parts' - 1) parts'
                            in concat [name, " (", part0, ","] :
-                              map (++ ",") parts' ++
+                              map (++ ",") parts'' ++
                               [partN ++ ")"]
           HsImportValAll -> [name ++ " (..)"]
 
@@ -209,17 +209,17 @@ renderImports = map renderModuleImport . M.assocs . getHsImportSet
         -- flowed.
         groupWordsIntoLines :: [String] -> [String]
         groupWordsIntoLines [] = []
-        groupWordsIntoLines words =
+        groupWordsIntoLines wordList =
           let (wordCount, line, _) =
                 last $
-                takeWhile (\(wordCount, _, len) -> wordCount <= 1 || len <= maxLineLength) $
-                scanl (\(wordCount, acc, len) word ->
-                        (wordCount + 1,
+                takeWhile (\(wordCount', _, len) -> wordCount' <= 1 || len <= maxLineLength) $
+                scanl (\(wordCount', acc, len) word ->
+                        (wordCount' + 1,
                          concat [acc, " ", word],
                          len + 1 + length word))
                       (0, "", 0)
-                      words
-          in line : groupWordsIntoLines (drop wordCount words)
+                      wordList
+          in line : groupWordsIntoLines (drop wordCount wordList)
 
         maxLineLength :: Int
         maxLineLength = 100
@@ -264,7 +264,7 @@ getModuleForExtName :: ExtName -> Generator Module
 getModuleForExtName extName = inFunction "getModuleForExtName" $ do
   iface <- askInterface
   case M.lookup extName $ interfaceNamesToModules iface of
-    Just mod -> return mod
+    Just m -> return m
     Nothing -> throwError $ "Can't find module for " ++ show extName
 
 -- | A partially-rendered 'Module'.  Contains all of the module's bindings, but
@@ -318,20 +318,20 @@ instance Monoid Output where
 -- Returns an error message if an error occurred, otherwise the action's output
 -- together with its value.
 runGenerator :: Interface -> Module -> Generator a -> Either ErrorMsg (Partial, a)
-runGenerator iface mod generator =
-  let modName = getModuleName iface mod
+runGenerator iface m generator =
+  let modName = getModuleName iface m
   in fmap (first (Partial modName) . swap) $
      runExcept $
      flip catchError (\msg -> throwError $ msg ++ ".") $
-     runWriterT $ runReaderT generator $ Env iface mod modName
+     runWriterT $ runReaderT generator $ Env iface m modName
 
 -- | Runs a generator action and returns the its value.
 evalGenerator :: Interface -> Module -> Generator a -> Either ErrorMsg a
-evalGenerator iface mod = fmap snd . runGenerator iface mod
+evalGenerator iface m = fmap snd . runGenerator iface m
 
 -- | Runs a generator action and returns its output.
 execGenerator :: Interface -> Module -> Generator a -> Either ErrorMsg Partial
-execGenerator iface mod = fmap fst . runGenerator iface mod
+execGenerator iface m = fmap fst . runGenerator iface m
 
 -- | Converts a 'Partial' into a complete Haskell module.
 renderPartial :: Partial -> String
@@ -490,11 +490,11 @@ getExtNameModule extName = inFunction "getExtNameModule" $ do
 -- | Returns a module's unique short name that should be used for a qualified
 -- import of the module.
 getModuleImportName :: Module -> Generator String
-getModuleImportName mod = do
+getModuleImportName m = do
   iface <- askInterface
-  fromMaybeM (throwError $ "Couldn't find a Haskell import name for " ++ show mod ++
+  fromMaybeM (throwError $ "Couldn't find a Haskell import name for " ++ show m ++
               " (is it included in the interface's module list?)") $
-    M.lookup mod $
+    M.lookup m $
     interfaceHaskellModuleImportNames iface
 
 -- | Adds a qualified import of the given external name's module into the current

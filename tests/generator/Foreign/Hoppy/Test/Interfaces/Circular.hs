@@ -20,14 +20,14 @@ module Foreign.Hoppy.Test.Interfaces.Circular (interfaceResult) where
 import Foreign.Hoppy.Generator.Spec
 import Foreign.Hoppy.Test.Interfaces.Circular.Flob (flobModule)
 import Foreign.Hoppy.Test.Interfaces.Circular.Flub (flubModule)
-import Foreign.Hoppy.Test.Interfaces.Compiler (makeTestCompiler)
+import Foreign.Hoppy.Test.Interfaces.Compiler (testCompiler)
 
 {-# ANN module "HLint: ignore Use camelCase" #-}
 
 interfaceResult :: Either String Interface
 interfaceResult =
   interface "circular" modules >>=
-  pure . interfaceSetCompiler (makeTestCompiler "circular") >>=
+  pure . interfaceSetCompiler testCompiler >>=
   interfaceAddHaskellModuleBase ["Foreign", "Hoppy", "Test"]
 
 modules :: [Module]

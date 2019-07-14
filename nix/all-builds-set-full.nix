@@ -15,37 +15,36 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-# This file evaluates to a set of Hoppy derivations built against the current
-# version of GHC.  Building this file with nix-build ensures that Hoppy builds
+# This file evaluates to a set of Hoppy derivations built against different
+# versions of GHC.  Building this file with nix-build ensures that Hoppy builds
 # against various versions of GHC, including the latest (see haskells.nix).
 #
-# To build all of these packages: nix-build all-builds.nix
+# To build all of these packages: nix-build all-builds-full.nix
 #
-# To query packages in this set: nix-env -f all-builds-set.nix -qaP
+# To query packages in this set: nix-env -f all-builds-set-full.nix -qaP
 #
-# To build a specific package in this set: nix-build all-builds-set.nix -A <attrName>
+# To build a specific package in this set: nix-build all-builds-set-full.nix -A <attrName>
 #
-# The attribute names are of the form:
+# The attribute names are just the individual Hoppy package names:
 #
-#     ${compiler}-${hoppyPackage}
-#
-# Where 'compiler' is one of the Haskell package sets, e.g. "ghc864" for
-# haskell.packages.ghc864, and 'hoppyPackage' is any of the Hoppy packages,
-# e.g. "hoppy-generator".
-#
-# If the latest stable version of GHC shipped by Nixpkgs happens not to be
-# explicitly listed below, then it will be included with 'compiler' set to
-# "latest" rather than a numbered "ghcXXX" string.
+#     ${hoppyPackage}
 
 { ... }@nixpkgsArgs:
 with import ./nixpkgs.nix nixpkgsArgs;
 let
+
+  # Load all of the Haskell package sets we'll build against.
+  haskells = import ./haskells.nix nixpkgsArgs;
 
   # The Hoppy packages we want to build.
   packageNames = [ "hoppy-generator" "hoppy-std" "hoppy-runtime" "hoppy-docs" ];
 
 in
 
-builtins.listToAttrs
-(map (pkgName: lib.nameValuePair pkgName haskellPackages.${pkgName})
-     packageNames)
+lib.foldl (x: y: x // y) {}
+  (lib.mapAttrsToList
+     (setName: hpkgs:
+        builtins.listToAttrs
+        (map (pkgName: lib.nameValuePair "${setName}-${pkgName}" hpkgs.${pkgName})
+             packageNames))
+     haskells)

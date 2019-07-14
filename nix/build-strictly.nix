@@ -15,12 +15,9 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-# A nix-build-able file whose output contains links to builds of Hoppy test
-# packages, for the current version of GHC.
+# This is a reimplementation of haskell.lib.buildStrictly.  It still calls
+# buildFromSdist, but it only enables -Werror, not -Wall.
 
-{ ... }@nixpkgsArgs:
-with import ./nixpkgs.nix nixpkgsArgs;
-callPackage (import ./set-to-links.nix {
-  name = "tests";
-  pkgSet = import ./tests-set.nix nixpkgsArgs;
-}) {}
+haskellLib:
+pkg:
+haskellLib.buildFromSdist (haskellLib.appendConfigureFlag pkg "--ghc-option=-Werror")

@@ -1,27 +1,32 @@
-TODO
-
 Nix expressions are provided to ease building Hoppy within
 [Nixpkgs](https://nixos.org/nixpkgs), to demonstrate building sample programs,
 and to run unit tests.  There is a `default.nix` for each package in the
 repository, as well as a collection of Nix expressions in the `nix/` directory.
-The primary ones in this directory are:
+The primary ones in this directory are described below.
+
+For adding Hoppy to Nixpkgs in order to build it, and possibly your build own
+packages against it, there are:
 
 - `nix/overlay.nix` provides a Nixpkgs overlay that adds Hoppy packages to the
   Haskell packages set, for all compiler versions (both `haskell` and
-  `haskellPackages`).
+  `haskellPackages` are modified).
 
 - `nix/nixpkgs.nix` imports Nixpkgs and adds in the above overlay.
 
+To ease building Hoppy itself, there are some `nix-build`-ready expressions:
+
 - `nix/all-builds.nix` evaluates to a derivation that builds all Hoppy packages
-  against a few different GHC versions (as controlled by `haskells.nix`), and
-  symlinks the results into its output directory.  `all-builds-set.nix` can be
-  used to build individual packages in this collection.
+  and symlinks the results into its output directory.  `all-builds-set.nix` can
+  be used to build individual packages in this collection.
 
 - `nix/tests.nix`, similarly to `all-builds.nix`, evaluates to a derivation that
   builds and runs all of the unit tests, plus the example binding, plus the
-  Hoppy packages, again for a few different GHC versions, symlinking the results
-  into its output directory.  Individual packages can be built via
-  `tests-set.nix`.
+  Hoppy packages, symlinking the results into its output directory.  Individual
+  packages can be built via `tests-set.nix`.
+
+The above two files also have `-full.nix` versions that build against a few
+different GHC versions, rather than just the current one.  This is controlled by
+`haskells.nix`.
 
 - `/config.nix` (*not* in `nix/`!) may optionally be created to pass additional
   arguments to the `hoppy` package.  The other Nix expressions will use this

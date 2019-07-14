@@ -24,18 +24,20 @@ let
     then import ../config.nix
     else {};
 
-  haskellOverrides = hself: hsuper: {
-    hoppy-generator = hsuper.callPackage ../generator haskellOptions;
-    hoppy-std = hsuper.callPackage ../std haskellOptions;
-    hoppy-runtime = hsuper.callPackage ../runtime haskellOptions;
-    hoppy-docs = hsuper.callPackage ../docs haskellOptions;
-  };
+  haskellOverrides = haskellLib: hself: hsuper:
+    let buildStrictly = import ./build-strictly.nix haskellLib; in
+    builtins.mapAttrs (name: pkg: buildStrictly pkg) {
+      hoppy-generator = hsuper.callPackage ../generator haskellOptions;
+      hoppy-std = hsuper.callPackage ../std haskellOptions;
+      hoppy-runtime = hsuper.callPackage ../runtime haskellOptions;
+      hoppy-docs = hsuper.callPackage ../docs haskellOptions;
+    };
 
 in self: super: {
   haskell = super.haskell // {
     packageOverrides =
       super.lib.composeExtensions
         (super.haskell.packageOverrides or (_: _: {}))
-        haskellOverrides;
+        (haskellOverrides super.haskell.lib);
   };
 }

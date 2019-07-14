@@ -324,9 +324,10 @@ sayCppExport mode cb = do
             LC.sayVar "result" Nothing retType >> LC.say " = " >> sayCall >> LC.say ";\n"
             sayExceptionCheck
             LC.say "return result;\n"
-          (Internal_TObj cls1, Just retCType@(Internal_TPtr (Internal_TConst (Internal_TObj cls2))))
+          (Internal_TObj cls1,
+           Just retCType'@(Internal_TPtr (Internal_TConst (Internal_TObj cls2))))
             | cls1 == cls2 -> do
-            LC.sayVar "resultPtr" Nothing retCType >> LC.say " = " >> sayCall >> LC.say ";\n"
+            LC.sayVar "resultPtr" Nothing retCType' >> LC.say " = " >> sayCall >> LC.say ";\n"
             sayExceptionCheck
             LC.sayVar "result" Nothing retType >> LC.say " = *resultPtr;\n"
             LC.say "delete resultPtr;\n"
@@ -468,7 +469,7 @@ sayHsExport mode cb =
         LH.saysLn $ hsNewFunPtrFnName : " f'hs = " : hsCtorName'newFunPtr : " $" :
           case (if throws then (++ ["excIdPtr", "excPtrPtr"]) else id) argNames of
             [] -> []
-            argNames' -> [" \\", unwords argNames', " ->"]
+            argNames'' -> [" \\", unwords argNames'', " ->"]
         LH.indent $ do
           when throws $ LH.sayLn "HoppyFHR.internalHandleCallbackExceptions excIdPtr excPtrPtr $"
           forM_ (zip3 params argNames argNames') $ \(p, argName, argName') ->

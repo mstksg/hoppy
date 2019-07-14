@@ -198,7 +198,7 @@ makeEnum identifier maybeExtName entries =
      extName
      identifier
      Nothing
-     (let entries' = for entries $ \(num, words) -> (words, EnumValueManual num)
+     (let entries' = for entries $ \(num, words') -> (words', EnumValueManual num)
           entryNames = map fst entries'
       in EnumValueMap
          { enumValueMapNames = entryNames
@@ -285,11 +285,11 @@ enumAddEntryNameOverrides lang nameOverrides enum = enum { enumValues = enumValu
 
 -- | Retrieves the name for an enum entry in a specific foreign language.
 enumGetOverriddenEntryName :: ForeignLanguage -> CppEnum -> EnumEntryWords -> EnumEntryWords
-enumGetOverriddenEntryName lang enum words =
-  case overriddenMapLookup lang words $ enumValueMapForeignNames $ enumValues enum of
-    Just words' -> words'
+enumGetOverriddenEntryName lang enum words' =
+  case overriddenMapLookup lang words' $ enumValueMapForeignNames $ enumValues enum of
+    Just words'' -> words''
     Nothing ->
-      error $ "enumGetOverriddenEntryName: Entry with name " ++ show words ++
+      error $ "enumGetOverriddenEntryName: Entry with name " ++ show words' ++
       " not found in " ++ show enum ++ "."
 
 -- | Sets the prefix applied to the names of enum values' identifiers in foreign
@@ -514,11 +514,11 @@ toHsEnumTypeName' = LH.toHsTypeName' Nonconst . enumExtName
 -- namespace, so we prepend the enum name to the value name to get the data
 -- constructor name.  The value name is a list of words.
 toHsEnumCtorName :: CppEnum -> EnumEntryWords -> LH.Generator String
-toHsEnumCtorName enum words =
+toHsEnumCtorName enum words' =
   LH.inFunction "toHsEnumCtorName" $
-  LH.addExtNameModule (enumExtName enum) $ toHsEnumCtorName' enum words
+  LH.addExtNameModule (enumExtName enum) $ toHsEnumCtorName' enum words'
 
 -- | Pure version of 'toHsEnumCtorName' that doesn't create a qualified name.
 toHsEnumCtorName' :: CppEnum -> EnumEntryWords -> String
-toHsEnumCtorName' enum words =
-  concat $ enumValuePrefix enum : map capitalize words
+toHsEnumCtorName' enum words' =
+  concat $ enumValuePrefix enum : map capitalize words'

@@ -19,8 +19,11 @@
 # Nixpkgs for a specific GHC version, and returns a set containing derivations
 # to build to run Hoppy unit tests.
 
+haskellLib:
 haskellPackages:
 with haskellPackages;
+let buildStrictly = (import ./build-strictly.nix haskellLib); in
+builtins.mapAttrs (name: pkg: buildStrictly pkg)
 rec {
   # Build and run unit tests:
 

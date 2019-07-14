@@ -8,6 +8,7 @@ build-type: Custom
 cabal-version: >=1.10
 
 extra-source-files:
+  Makefile
   cpp/intbox.hpp
 
 custom-setup

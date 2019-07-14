@@ -104,7 +104,7 @@ instantiate' mapName k v userReqs opts =
       getIteratorKeyIdent = ident2T "hoppy" "unordered_map" "getIteratorKey" [k, v]
       getIteratorValueIdent = ident2T "hoppy" "unordered_map" "getIteratorValue" [k, v]
 
-      map =
+      map' =
         (case (optKeyConversion opts, optValueConversion opts) of
            (Nothing, Nothing) -> id
            (Just keyConv, Just valueConv) -> addAddendumHaskell $ makeAddendum keyConv valueConv
@@ -137,7 +137,7 @@ instantiate' mapName k v userReqs opts =
           -- lower_bound: find is good enough.
         , mkConstMethod' "max_size" "maxSize" np sizeT
         , mkConstMethod "size" np sizeT
-        , mkMethod "swap" [refT $ objT map] voidT
+        , mkMethod "swap" [refT $ objT map'] voidT
           -- upper_bound: find is good enough.
         , mkMethod OpArray [k] $ refT v
         ]
@@ -167,7 +167,7 @@ instantiate' mapName k v userReqs opts =
         []
         [ mkCtor "newFromConst" [objT iterator]
         , makeFnMethod (ident2 "hoppy" "iterator" "deconst") "deconst" MConst Nonpure
-          [objT constIterator, refT $ objT map] $ toGcT $ objT iterator
+          [objT constIterator, refT $ objT map'] $ toGcT $ objT iterator
         , makeFnMethod getIteratorKeyIdent "getKey" MConst Nonpure
           [objT constIterator] $ refT $ constT k
         , makeFnMethod getIteratorValueIdent "getValueConst" MConst Nonpure
@@ -182,7 +182,7 @@ instantiate' mapName k v userReqs opts =
                               hsImportForRuntime]
 
         forM_ [Const, Nonconst] $ \cst -> do
-          hsDataTypeName <- toHsDataTypeName cst map
+          hsDataTypeName <- toHsDataTypeName cst map'
 
           keyHsType <-
             cppTypeToHsTypeAndUse HsHsSide $
@@ -207,11 +207,11 @@ instantiate' mapName k v userReqs opts =
           indent $ do
             sayLn "toContents this' = do"
             indent $ do
-              mapEmpty <- toHsClassEntityName map "empty"
-              mapBegin <- toHsClassEntityName map $ case cst of
+              mapEmpty <- toHsClassEntityName map' "empty"
+              mapBegin <- toHsClassEntityName map' $ case cst of
                 Const -> "beginConst"
                 Nonconst -> "begin"
-              mapEnd <- toHsClassEntityName map $ case cst of
+              mapEnd <- toHsClassEntityName map' $ case cst of
                 Const -> "endConst"
                 Nonconst -> "end"
               let iter = case cst of
@@ -258,15 +258,15 @@ instantiate' mapName k v userReqs opts =
             indent $ do
               sayLn "fromContents values' = do"
               indent $ do
-                mapNew <- toHsClassEntityName map "new"
-                mapAt <- toHsClassEntityName map "at"
+                mapNew <- toHsClassEntityName map' "new"
+                mapAt <- toHsClassEntityName map' "at"
                 saysLn ["map' <- ", mapNew]
                 saysLn ["HoppyP.mapM_ (\\(k, v) -> HoppyP.flip HoppyFHR.assign v =<< ",
                         mapAt, " map' k) values'"]
                 sayLn "HoppyP.return map'"
 
   in Contents
-     { c_map = map
+     { c_map = map'
      , c_iterator = iterator
      , c_constIterator = constIterator
      }

@@ -1041,24 +1041,24 @@ sayCppExport mode cls = case mode of
       forM_ (classSuperclasses cls) $ genDowncastFns cls
 
   where genUpcastFns :: Class -> Class -> LC.Generator ()
-        genUpcastFns cls ancestorCls = do
-          LC.sayFunction (cppCastFnName cls ancestorCls)
+        genUpcastFns cls' ancestorCls = do
+          LC.sayFunction (cppCastFnName cls' ancestorCls)
                          ["self"]
-                         (fnT [ptrT $ constT $ objT cls] $ ptrT $ constT $ objT ancestorCls)
+                         (fnT [ptrT $ constT $ objT cls'] $ ptrT $ constT $ objT ancestorCls)
                          (Just $ LC.say "return self;\n")
-          forM_ (classSuperclasses ancestorCls) $ genUpcastFns cls
+          forM_ (classSuperclasses ancestorCls) $ genUpcastFns cls'
 
         genDowncastFns :: Class -> Class -> LC.Generator ()
-        genDowncastFns cls ancestorCls = unless (classIsMonomorphicSuperclass ancestorCls) $ do
-          let clsPtr = ptrT $ constT $ objT cls
+        genDowncastFns cls' ancestorCls = unless (classIsMonomorphicSuperclass ancestorCls) $ do
+          let clsPtr = ptrT $ constT $ objT cls'
               ancestorPtr = ptrT $ constT $ objT ancestorCls
-          LC.sayFunction (cppCastFnName ancestorCls cls)
+          LC.sayFunction (cppCastFnName ancestorCls cls')
                          ["self"]
                          (fnT [ancestorPtr] clsPtr) $ Just $ do
             LC.say "return dynamic_cast<"
             LC.sayType Nothing clsPtr
             LC.say ">(self);\n"
-          forM_ (classSuperclasses ancestorCls) $ genDowncastFns cls
+          forM_ (classSuperclasses ancestorCls) $ genDowncastFns cls'
 
 sayCppExportClassVar :: Class -> ClassVariable -> LC.Generator ()
 sayCppExportClassVar cls v =
@@ -1639,7 +1639,6 @@ sayHsExportClassExceptionSupport doDecls cls =
                  " (HoppyF.castPtr ptr' :: HoppyF.Ptr ", typeNameConst, ")"]
 
       LH.indentSpaces 6 $ do
-        ctorName <- toHsDataCtorName LH.Unmanaged Nonconst cls
         LH.ln
         LH.saysLn ["copy' = HoppyP.fmap (HoppyF.castPtr . HoppyFHR.toPtr) . HoppyFHR.copy . ",
                    ctorName, " . HoppyF.castPtr"]
@@ -2012,7 +2011,7 @@ toHsClassEntityName' cls name =
   lowerFirst $ fromExtName $
   classEntityForeignName' cls $
   case toFnName name of
-    FnName name -> toExtName name
+    FnName name' -> toExtName name'
     FnOp op -> operatorPreferredExtName op
 
 -- | Generates C++ gateway functions (via 'Function.sayCppExportFn') for getting
@@ -2038,8 +2037,8 @@ sayCppExportVar ::
   -> LC.Generator ()
 sayCppExportVar t maybeThisTypes gettable getterName setterName sayVarName = do
   let (isConst, deconstType) = case t of
-        Internal_TConst t -> (True, t)
-        t -> (False, t)
+        Internal_TConst t' -> (True, t')
+        t' -> (False, t')
 
   -- Say a getter function.
   when gettable $
@@ -2091,8 +2090,8 @@ sayHsExportVar mode
                setterExtName
                setterForeignName = do
   let (isConst, deconstType) = case t of
-        Internal_TConst t -> (True, t)
-        t -> (False, t)
+        Internal_TConst t' -> (True, t')
+        t' -> (False, t')
 
   when gettable $
     Function.sayHsExportFn

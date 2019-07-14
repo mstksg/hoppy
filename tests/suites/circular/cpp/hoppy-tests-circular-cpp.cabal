@@ -8,10 +8,11 @@ build-type: Custom
 cabal-version: >=1.10
 
 extra-source-files:
-  flob.cpp
-  flob.hpp
-  flub.cpp
-  flub.hpp
+  Makefile
+  cpp/flob.cpp
+  cpp/flob.hpp
+  cpp/flub.cpp
+  cpp/flub.hpp
 
 custom-setup
   setup-depends:
