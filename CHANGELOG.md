@@ -13,9 +13,9 @@ and changes to its API.
 
   The core of this is the support is the `Exportable` typeclass, which defines
   the entry points that Hoppy will call to generate support code necessary on
-  either side of a binding, if needed.  Rather than `Export` being having a
-  number of fixed data constructors, it's now an existential data type that
-  wraps an `Exportable`, and can be created with the `toExport` function.
+  either side of a binding, if needed.  Rather than `Export` having a number of
+  fixed data constructors, it's now an existential data type that wraps an
+  `Exportable`, and can be created with the `toExport` function.
 
 - Marshalling of values between C++ and Haskell has also been generalized and is
   now extensible to your own types or specific arguments, as you see fit
@@ -101,6 +101,17 @@ and changes to its API.
   either be `[Type]` as before, or `(~:)` can be used to attach names to types
   to give `[Parameter]`.  The breakage is that the empty list is now ambiguously
   typed, so a new `np = [] :: [Parameter]` value should be used instead.
+
+- Initial support has been added for exported names to be overridable on a
+  per-language basis, with data types in `Foreign.Hoppy.Generator.Overrides`.
+  This is used in conjunction with `makeAutoEnum` enum entries, where this is
+  the mechanism to provide a Haskell name different than the C++ name (see
+  `enumAddEntryNameOverrides`).
+
+  For all other entities (functions, variables, classes, etc.), you can just
+  give the entity a different external name than its C++ name, and only one
+  foreign language is supported, so this isn't necessary now, but these
+  overrides may be more tightly integrated with `ExtName`s in the future.
 
 - Generator binaries have new `--dump-ext-names` and `--dump-enums` options for
   displaying information for debugging purposes, suhc as enum information
