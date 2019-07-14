@@ -105,7 +105,7 @@ module Foreign.Hoppy.Documentation.UsersGuide (
   ) where
 
 import Data.Bits (Bits)
-import Foreign.C (CInt, peekCString, withCString)
+import Foreign.C (CBool, CDouble, CFloat, CInt, peekCString, withCString)
 import Foreign.Hoppy.Generator.Language.Haskell
 import Foreign.Hoppy.Generator.Main
 import Foreign.Hoppy.Generator.Spec
@@ -123,8 +123,8 @@ import System.IO.Unsafe (unsafePerformIO)
 {- $overview
 
 Hoppy is a foreign function interface (FFI) generator for interfacing Haskell
-with C++.  It lets developers specify C++ interfaces in pure Haskell, and
-generates code to expose that functionality to Haskell.  Hoppy is made up of a
+with C++.  With Hoppy, you can specify C++ interfaces in pure Haskell, and
+generate code to expose that functionality to Haskell.  Hoppy is made up of a
 few different packages that provide interface definition data structures and
 code generators, some runtime support for Haskell bindings, and interface
 definitions for the C++ standard library.
@@ -134,16 +134,16 @@ Bindings using Hoppy have three Cabal packages:
 - A Haskell generator program (in @\/myproject-generator@) that knows the
 interface definition and generates code for the next two parts.
 
-- A C++ library (in @\/myproject-cpp@) that gets compiled into a shared object containing
-the C++ half of the bindings.
+- A C++ library (in @\/myproject-cpp@) that gets compiled into a shared object
+containing the C++ half of the bindings.
 
 - A Haskell library (in @\/myproject@) that links against the C++ library and
 exposes the bindings.
 
 The path names are suggested subdirectories of a project, and are used in this
-document, but are not required.  Only the latter two items need to be packaged
-and distributed to users of the binding (plus Hoppy itself which is a dependency
-of the generated bindings).
+document, but are not required.  Despite the second being called a C++ library
+and containing C++ code, all three of these are Haskell packages, built using
+Cabal.
 
 -}
 {- $getting-started
@@ -153,21 +153,29 @@ This section provides a gentle introduction to working with Hoppy.
 -}
 {- $getting-started-project-setup
 
-To set up a new Hoppy project, it's recommended to start with the project in the
-@example\/@ directory as a base.  It is a minimal project that defines a C++
-function to reverse a @std::string@, exposes that to Haskell via a library, and
-provides a demo program that uses the library.  The @example\/install.sh@ script
-simply compiles and installs the generator, C++, and Haskell packages in turn.
+To set up a new Hoppy project, it's recommended to start with the template
+project in the @example\/@ directory.  You can find this in the Hoppy source
+repository:
+
+<https://gitlab.com/khumba/hoppy/tree/master/example>
+
+This is a minimal project that defines a C++ function to reverse a @std::string@,
+exposes that to Haskell via a library, and provides a demo program that uses the
+library.  The @example\/install.sh@ script simply compiles and installs the
+generator, C++, and Haskell packages in turn.
 
 The generator package specifies the C++ interface to be exposed, using the
 functions and data types described in the rest of this section.
 
-The C++ package is a mostly empty, primarily containing a @Setup.hs@ file that
-invokes Hoppy build hooks, and the C++ code we're binding to.  When building
-this package, Hoppy generates some C++ code and then relies on a Makefile we
-provide for linking it together with any code we provided (see
-@example\/example-cpp\/cpp\/Makefile@).  If you are relying on a system library,
-you can link to it in the Makefile.
+The C++ package is mostly empty, primarily containing a @Setup.hs@ file that
+invokes Hoppy build hooks, and any C++ code of our own that we want to bind to,
+beyond what's provided by third-party libraries.  For this example, we add a
+@reverse()@ function and make use of the C++ standard library.  If we were
+writing a binding for an existing third-party library, we might not need to
+provide any C++ code ourselves here.  When building this package, Hoppy
+generates some C++ code and then relies on a Makefile we provide for linking it
+together with any code we provided (see @example\/example-cpp\/Makefile@).  If
+you are relying on a system library, you can link to it in the Makefile.
 
 The Haskell package is even more empty than the C++ one.  It contains a similar
 @Setup.hs@ to invoke Hoppy.  Nothing else is included in the package's library,
@@ -358,7 +366,7 @@ Haskell code.  The C type is the C data type that gets passed over the gateway
 between C++ and Haskell, because these types are the common denominator between
 C++ and Haskell.  When passing values back and forth between C++ and Haskell,
 generally, primitive types are converted to equivalent types on both ends, and
-pointer types in C++ are represented by corresponding pointer types in Haskell.
+pointer types in C++ are represented by corresponding handle types in Haskell.
 Other types have special rules.  Conversion code is generated on both sides of
 the gateway to perform the necessary conversions.
 
@@ -374,14 +382,23 @@ but are modifiers that are only useful in certain situations.
 - 'voidT': C++ uses @void@.  The C type is unspecified.  Haskell uses @()@.
 
 - 'boolT', 'intT', 'floatT', 'doubleT': C++ and C use @bool@, @int@, @float@,
-@double@.  Haskell uses 'Bool', 'Int', 'Float', 'Double'.
+@double@.  Haskell uses 'Bool', 'Int', 'Float', 'Double'.  The common Haskell
+types are used here for convenience, but note that their sizes may differ from
+the C++ types.  Coersion here performs bounds checking and will throw an
+exception if a value cannot be converted properly.
+
+- 'boolT'', 'intT'', 'floatT'', 'doubleT'': C++ and C use @bool@, @int@,
+@float@, @double@ as above.  Haskell uses 'CBool', 'CInt', 'CFloat', 'CDouble'.
+In comparison to the above, the Haskell types here are identical to the C/C++
+types, so no type conversion is performed, but fewer Haskell functions take
+these types as arguments, so they may be more awkward to use.
 
 - 'charT', 'ucharT', and other primitive numeric types: Identical C++ and C
 types; Haskell uses built-in foreign data types.  See
 "Foreign.Hoppy.Generator.Types" for more info.
 
-- 'enumT': C++ uses the enum type.  C uses @int@.  Haskell uses a generated data
-type for the enum.
+- 'enumT': C++ uses the enum type.  C uses the numeric type underlying the enum;
+see 'enumNumericType'.  Haskell uses a generated data type for the enum.
 
 - 'ptrT': C++ and C use the raw pointer type.  The Haskell type depends on the
 pointed-to type.  If it's an object pointer, then Haskell uses the generated
@@ -392,7 +409,8 @@ a 'Ptr' to the C type of the pointed type.
 - 'refT': C++ uses the reference type.  Everything else is the same as 'ptrT'.
 
 - 'fnT': Function types aren't useful raw, and need to be wrapped in 'ptrT' to
-be useable in parameter and return types.
+be useable in parameter and return types.  To specifying additional information
+about parameters, use 'fnT''.
 
 - 'callbackT': C++ uses the callback's generated functor class.  C uses an
 internal implementation pointer.  Haskell uses a function in @IO@ of the Haskell
@@ -409,7 +427,10 @@ Haskell uses a type configured for the class.
 - 'constT': Wraps types in @const@.
 
 Many of these types (enumerations, object types, functions, callbacks) are
-discussed in later sections.
+discussed in later sections.  The above list is incomplete and only mentions the
+most commonly used types.  See "Foreign.Hoppy.Generator.Types" for more.  You
+can also construct your own numeric types with 'makeNumericType', and more
+generally with 'ConversionSpec'.
 
 -}
 {- $getting-started-wrapping-up-the-string-binding
@@ -677,9 +698,9 @@ using this function that are worth knowing about; see the function documentation
 for more info.
 
 If you want to pass an object to the collector immediately upon creation, chain
-its constructor call with @('toGc' '=<<')@.  This is not done by default because
-we don't support revoking the collector's watch over an object, and there are
-times when you want to work with manually managed objects.
+its constructor call with @('toGc' '=<<')@.  Hoppy does not do this by default
+because we don't support revoking the collector's watch over an object, and
+there are times when you want to work with manually managed objects.
 
 'toGcT' may be used when defining a function to make an object being passed into
 Haskell be managed by the garbage collector explicitly.  But rather than using
@@ -1051,6 +1072,18 @@ defined as follows:
 @
 alignment :: 'CppEnum'
 alignment =
+  'makeAutoEnum' ('ident' \"Alignment\") Nothing False
+  [ "LeftAlign"
+  , "CenterAlign"
+  , "RightAlign"
+  ]
+@
+
+or declared with manual enum values specified:
+
+@
+alignment :: 'CppEnum'
+alignment =
   'makeEnum' ('ident' \"Alignment\") Nothing
   [ (0, [\"left\", \"align\"])
   , (1, [\"center\", \"align\"])
@@ -1065,9 +1098,19 @@ data Alignment =
     Alignment_LeftAlign
   | Alignment_CenterAlign
   | Alignment_RightAlign
+  | Alignment_Unknown Int
 @
 
-with instances for 'Bounded', 'Enum', 'Eq', 'Ord', and 'Show'.
+with instances for a Hoppy 'Foreign.Hoppy.Runtime.CppEnum' typeclass, in
+addition to the standard 'Eq', 'Ord', and 'Show' typeclasses.
+
+A 'Bits' instance is also generated by default.  This can be disabled with
+'enumSetHasBitOperations'.
+
+The \"Unknown\" entry is used to represent enum values that weren't declared in
+the Hoppy interface, e.g. when a value is passed from C++ to Haskell.  This
+entry's name can be changed with 'enumSetUnknownValueEntry', or disabled with
+'enumSetNoUnknownValueEntry'.
 
 -}
 {- $generators-hs-module-structure-functions

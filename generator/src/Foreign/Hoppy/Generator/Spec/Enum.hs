@@ -46,7 +46,7 @@ module Foreign.Hoppy.Generator.Spec.Enum (
   enumGetOverriddenEntryName,
   IsEnumUnknownValueEntry (..),
   enumUnknownValueEntry, enumSetUnknownValueEntry, enumSetNoUnknownValueEntry,
-  enumUnknownValueEntryDefaultPrefix,
+  enumUnknownValueEntryDefault,
   enumHasBitOperations, enumSetHasBitOperations,
   -- * C++ generator
   cppGetEvaluatedEnumData,
@@ -109,8 +109,7 @@ data CppEnum = CppEnum
   , enumUnknownValueEntry :: Maybe EnumEntryWords
     -- ^ A name (a list of words, a la the fields in 'EnumValueMap') for an
     -- optional fallback enum "entry" in generated bindings for holding unknown
-    -- values.  This defaults to
-    -- @Just ([\"Unknown\"] ++ 'splitIntoWords' ('fromExtName' ('enumExtName' e)))@.
+    -- values.  See 'enumUnknownValueEntryDefault'.
     --
     -- When this is a @Just@, then the generated foreign binding gets an extra
     -- entry that takes an argument holding an arbitrary numeric value (an extra
@@ -173,10 +172,9 @@ instance HasAddendum CppEnum where
 enumSetNumericType :: Maybe Type -> CppEnum -> CppEnum
 enumSetNumericType maybeType enum = enum { enumNumericType = maybeType }
 
--- | The default value for 'enumUnknownValueEntry' that is prefixed to enums'
--- external names.
-enumUnknownValueEntryDefaultPrefix :: EnumEntryWords
-enumUnknownValueEntryDefaultPrefix = ["Unknown"]
+-- | The default value for 'enumUnknownValueEntry'.  This is @[\"Unknown\"]@.
+enumUnknownValueEntryDefault :: EnumEntryWords
+enumUnknownValueEntryDefault = ["Unknown"]
 
 -- | Creates a binding for a C++ enum.
 --
@@ -210,7 +208,7 @@ makeEnum identifier maybeExtName entries =
      mempty
      mempty
      (fromExtName extName ++ "_")
-     (Just $ enumUnknownValueEntryDefaultPrefix ++ splitIntoWords (fromExtName extName))
+     (Just enumUnknownValueEntryDefault)
      True
 
 -- | Creates a binding for a C++ enum.
@@ -254,7 +252,7 @@ makeAutoEnum identifier maybeExtName scoped entries =
      mempty
      mempty
      (fromExtName extName ++ "_")
-     (Just $ enumUnknownValueEntryDefaultPrefix ++ splitIntoWords (fromExtName extName))
+     (Just enumUnknownValueEntryDefault)
      True
 
 -- | Represents a mapping to an automatically evaluated C++ enum entry.
