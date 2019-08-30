@@ -132,7 +132,7 @@ ucharT =
 -- | C++ @wchar_t@, Haskell 'Foreign.C.CWchar'.
 wcharT :: Type
 wcharT =
-  makeNumericType "wchar_t" (reqInclude $ includeStd "cwchar")
+  makeNumericType "wchar_t" mempty
   (do LH.addImports hsImportForForeignC
       return $ HsTyCon $ UnQual $ HsIdent "HoppyFC.CWchar")
   Nothing BinaryCompatible BinaryCompatible

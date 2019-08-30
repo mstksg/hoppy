@@ -20,10 +20,28 @@
 module Main (main) where
 
 import Control.Monad ((>=>), forM_, when)
+import Data.Char (chr)
 import Foreign (peek)
-import Foreign.C (castCCharToChar, withCString, withCStringLen)
+import Foreign.C (
+  CWchar (CWchar),
+  castCCharToChar,
+  withCString,
+  withCStringLen,
+  withCWString,
+  withCWStringLen,
+  )
 import Foreign.Hoppy.Runtime (
-  HasContents, assign, decode, encode, fromContents, toContents, toGc, withCppObj, withScopedPtr)
+  HasContents,
+  assign,
+  coerceIntegral,
+  decode,
+  encode,
+  fromContents,
+  toContents,
+  toGc,
+  withCppObj,
+  withScopedPtr,
+  )
 import Foreign.Hoppy.Test.Std
 import Foreign.Hoppy.Test.Stl
 import System.Exit (exitFailure)
@@ -48,6 +66,7 @@ tests :: Test
 tests =
   TestList
   [ stringTests
+  , wstringTests
   , "containers" ~: TestList
     [ listIntTests
     , vectorTests
@@ -83,6 +102,45 @@ stringTests =
     withCppObj "Hello" $ \(s :: StdString) -> do
     assign s "planet!"
     decode s >>= (@?= "planet!")
+  ]
+
+wstringTests :: Test
+wstringTests =
+  "wstrings" ~: TestList
+  [ "encoding" ~:
+    withScopedPtr (encode "Hello, world!" :: IO StdWstring) $ \p -> do
+    stdWstring_size p >>= (@?= 13)
+    forM_ (zip [0..] "Hello, world!") $ \(i, c) -> do
+      CWchar wc <- stdWstring_get p i
+      chr (coerceIntegral wc) @?= c
+
+  , "encoding NUL" ~:
+    withScopedPtr (encode "A\NULB" :: IO StdWstring) $ \p -> do
+    stdWstring_size p >>= (@?= 3)
+    forM_ (zip [0..] "A\NULB") $ \(i, c) -> do
+      CWchar wc <- stdWstring_get p i
+      chr (coerceIntegral wc) @?= c
+
+  , "decoding" ~:
+    withCWString "Hello, world!" $ \cs ->
+    withScopedPtr (stdWstring_newFromCWString cs) $ \s ->
+    decode s >>= (@?= "Hello, world!")
+
+  , "decoding NUL" ~:
+    withCWStringLen "A\NULB" $ \cs ->
+    withScopedPtr (stdWstring_newFromCWStringLen cs) $ \s ->
+    decode s >>= (@?= "A\NULB")
+
+  , "assignment" ~:
+    withCppObj "Hello" $ \(s :: StdWstring) -> do
+    assign s "planet!"
+    decode s >>= (@?= "planet!")
+
+  , "non-Latin characters" ~: do
+    withScopedPtr (encode "日本語") $ \(s :: StdWstring) ->
+      decode s >>= (@?= "日本語")
+    withScopedPtr (encode "ภาษาไทย") $ \(s :: StdWstring) ->
+      decode s >>= (@?= "ภาษาไทย")
   ]
 
 listIntTests :: Test
