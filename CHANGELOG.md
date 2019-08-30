@@ -117,6 +117,8 @@ and changes to its API.
   displaying information for debugging purposes, suhc as enum information
   determined from the C++ compiler.
 
+- `wchar_t` and `wstring` have been added to the standard library bindings.
+
 - The Nix expressions, which had long been languishing, have been brought up to
   date, and now make use of Nix overlays.  The example now includes Nix
   expressions.

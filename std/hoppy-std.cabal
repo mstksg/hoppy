@@ -35,6 +35,7 @@ library
     , Foreign.Hoppy.Generator.Std.UnorderedMap
     , Foreign.Hoppy.Generator.Std.UnorderedSet
     , Foreign.Hoppy.Generator.Std.Vector
+    , Foreign.Hoppy.Generator.Std.Wstring
   other-modules:
       Foreign.Hoppy.Generator.Std.Internal
     , Paths_hoppy_std

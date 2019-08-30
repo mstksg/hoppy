@@ -32,6 +32,7 @@ module Foreign.Hoppy.Generator.Types (
   boolT',
   charT,
   ucharT,
+  wcharT,
   shortT,
   ushortT,
   intT,
@@ -126,6 +127,14 @@ ucharT =
   makeNumericType "unsigned char" mempty
   (do LH.addImports hsImportForForeignC
       return $ HsTyCon $ UnQual $ HsIdent "HoppyFC.CUChar")
+  Nothing BinaryCompatible BinaryCompatible
+
+-- | C++ @wchar_t@, Haskell 'Foreign.C.CWchar'.
+wcharT :: Type
+wcharT =
+  makeNumericType "wchar_t" (reqInclude $ includeStd "cwchar")
+  (do LH.addImports hsImportForForeignC
+      return $ HsTyCon $ UnQual $ HsIdent "HoppyFC.CWchar")
   Nothing BinaryCompatible BinaryCompatible
 
 -- | C++ @short int@, Haskell 'Foreign.C.CShort'.

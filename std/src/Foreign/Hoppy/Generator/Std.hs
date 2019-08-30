@@ -23,6 +23,7 @@ module Foreign.Hoppy.Generator.Std (
 
 import Foreign.Hoppy.Generator.Spec
 import Foreign.Hoppy.Generator.Std.String (c_string)
+import Foreign.Hoppy.Generator.Std.Wstring (c_wstring)
 
 {-# ANN module "HLint: ignore Use camelCase" #-}
 
@@ -42,4 +43,6 @@ data ValueConversion =
 mod_std :: Module
 mod_std = moduleModify' (makeModule "std" "std.hpp" "std.cpp") $
   moduleAddExports
-  [ Export c_string ]
+  [ Export c_string
+  , Export c_wstring
+  ]
