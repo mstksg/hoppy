@@ -45,7 +45,6 @@ module Foreign.Hoppy.Generator.Spec.Function (
   sayHsExportFn,
   sayHsArgProcessing,
   sayHsCallAndProcessReturn,
-  fnToHsTypeAndUse,
   ) where
 
 import Control.Monad (forM_, unless, when)
@@ -487,16 +486,16 @@ sayHsExportFn mode extName foreignName purity params retType exceptionHandlers =
     LH.SayExportForeignImports ->
       LH.withErrorContext ("generating imports for function " ++ show extName) $ do
         -- Print a "foreign import" statement.
-        hsCType <- fnToHsTypeAndUse LH.HsCSide purity paramTypes retType effectiveHandlers
+        hsCType <- fnToHsTypeAndUse LH.HsCSide purity params retType effectiveHandlers
         LH.saysLn ["foreign import ccall \"", LC.externalNameToCpp extName, "\" ", hsFnImportedName,
-                    " :: ", LH.prettyPrint hsCType]
+                    " :: ", renderFnHsType hsCType]
 
     LH.SayExportDecls -> LH.withErrorContext ("generating function " ++ show extName) $ do
       -- Print the type signature.
       LH.ln
       LH.addExport hsFnName
-      hsHsType <- fnToHsTypeAndUse LH.HsHsSide purity paramTypes retType effectiveHandlers
-      LH.saysLn [hsFnName, " :: ", LH.prettyPrint hsHsType]
+      hsHsType <- fnToHsTypeAndUse LH.HsHsSide purity params retType effectiveHandlers
+      LH.saysLn [hsFnName, " :: ", renderFnHsTypeWithNames hsHsType]
 
       case purity of
         Nonpure -> return ()
@@ -748,25 +747,47 @@ sayHsCallAndProcessReturn dir t callWords =
 
   where sayCall = LH.saysLn $ "(" : callWords ++ [")"]
 
+-- | The Haskell type of a 'Function', as computed by 'fnToHsTypeAndUse'.  This
+-- combines a 'HsQualType' with a list of parameter names.
+data FnHsType = FnHsType
+  { fnHsQualType :: HsQualType
+  , fnHsParamNameMaybes :: [Maybe String]
+  }
+
 -- | Implements special logic on top of 'LH.cppTypeToHsTypeAndUse', that
 -- computes the Haskell __qualified__ type for a function, including typeclass
--- constraints.
-fnToHsTypeAndUse :: LH.HsTypeSide
-                 -> Purity
-                 -> [Type]
-                 -> Type
-                 -> ExceptionHandlers
-                 -> LH.Generator HsQualType
-fnToHsTypeAndUse side purity paramTypes returnType exceptionHandlers = do
+-- constraints, and bundles it with parameter names.
+fnToHsTypeAndUse ::
+     LH.HsTypeSide
+  -> Purity
+  -> [Parameter]
+  -> Type
+  -> ExceptionHandlers
+     -- ^ These should be the effective exception handlers for the function, as
+     -- returned by
+     -- @'LH.getEffectiveExceptionHandlers' . 'fnExceptionHandlers'@,
+     -- not just the function's exception handlers directly from
+     -- @fnExceptionHandlers@.
+  -> LH.Generator FnHsType
+fnToHsTypeAndUse side purity params returnType exceptionHandlers = do
   let catches = not $ null $ exceptionHandlersList exceptionHandlers
+      getsExcParams = catches && side == LH.HsCSide
 
-  params <- mapM contextForParam $
-            (if catches && side == LH.HsCSide
-             then (++ [("excId", ptrT intT), ("excPtr", ptrT $ ptrT voidT)])
-             else id) $
-            zip (map LH.toArgName [1..]) paramTypes
-  let context = concatMap (\(HsQualType ctx _) -> ctx) params :: HsContext
-      hsParams = map (\(HsQualType _ t) -> t) params
+      paramTypes =
+        (if getsExcParams then (++ [ptrT intT, ptrT $ ptrT voidT]) else id) $
+        map parameterType params
+
+      paramNameMaybes =
+        (if getsExcParams then (++ [Just "excId", Just "excPtr"]) else id) $
+        map parameterName params
+
+      defaultParamNames = map LH.toArgName [1..]
+
+      defaultedParamNames = zipWith fromMaybe defaultParamNames paramNameMaybes
+
+  paramQualTypes <- mapM contextForParam $ zip defaultedParamNames paramTypes
+  let context = concatMap (\(HsQualType ctx _) -> ctx) paramQualTypes :: HsContext
+      hsParams = map (\(HsQualType _ t) -> t) paramQualTypes
 
   -- Determine the 'HsHsSide' return type for the function.  Do the conversion
   -- to a Haskell type, and wrap the result in 'IO' if the function is impure.
@@ -778,7 +799,10 @@ fnToHsTypeAndUse side purity paramTypes returnType exceptionHandlers = do
       LH.addImports hsImportForPrelude
       return $ HsTyApp (HsTyCon $ UnQual $ HsIdent "HoppyP.IO") hsReturnInitial
 
-  return $ HsQualType context $ foldr HsTyFun hsReturnForPurity hsParams
+  return FnHsType
+    { fnHsQualType = HsQualType context $ foldr HsTyFun hsReturnForPurity hsParams
+    , fnHsParamNameMaybes = paramNameMaybes
+    }
 
   where contextForParam :: (String, Type) -> LH.Generator HsQualType
         contextForParam (s, t) = case t of
@@ -827,3 +851,55 @@ fnToHsTypeAndUse side purity paramTypes returnType exceptionHandlers = do
             valueClassName <- Class.toHsValueClassName cls
             let t' = HsTyVar $ HsIdent s
             return $ HsQualType [(UnQual $ HsIdent valueClassName, [t'])] t'
+
+-- | Renders a 'FnHsType' as a Haskell type, ignoring parameter names.  This
+-- implementation uses haskell-src.
+renderFnHsType :: FnHsType -> String
+renderFnHsType = LH.prettyPrint . fnHsQualType
+
+-- | Renders a 'FnHsType' as a Haskell type, including Haddock for parameter
+-- names.
+--
+-- Unfortunately, we have to implement this ourselves, because haskell-src
+-- doesn't support comments, and haskell-src-exts's comments implementation
+-- relies on using specific source spans, and we don't want all that complexity
+-- here.  So instead we render it ourselves, inserting "{- ^ ... -}" tags where
+-- appropriate.
+renderFnHsTypeWithNames :: FnHsType -> String
+renderFnHsTypeWithNames fnHsType =
+  concat $ renderedContextStrs ++ renderedParamStrs
+
+  where HsQualType assts unqualType = fnHsQualType fnHsType
+        paramNameMaybes = fnHsParamNameMaybes fnHsType
+
+        renderedContextStrs :: [String]
+        renderedContextStrs =
+          if null assts
+          then []
+          else "(" : intersperse ", " (map renderAsst assts) ++ [") => "]
+
+        renderAsst :: (HsQName, [HsType]) -> String
+        renderAsst asst = case asst of
+          (UnQual (HsIdent typeclass), [HsTyVar (HsIdent typeVar)]) ->
+            concat [typeclass, " ", typeVar]
+          _ -> error $ "renderAsst: Unexpected argument: " ++ show asst
+
+        renderedParamStrs :: [String]
+        renderedParamStrs = renderParams unqualType paramNameMaybes
+
+        renderParams :: HsType -> [Maybe String] -> [String]
+        renderParams fnType' paramNameMaybes' = case (fnType', paramNameMaybes') of
+          -- If there's a parameter name, then generate a Haddock comment
+          -- showing the name.
+          (HsTyFun a b, (Just name):restNames) ->
+            "(" : LH.prettyPrint a : ") {- ^ " : name : " -} -> " : renderParams b restNames
+
+          -- If there's no parameter name, then don't generate any documentation
+          -- for it, but continue to recur in case there are other parameters
+          -- with names.
+          (HsTyFun a b, Nothing:restNames) ->
+            "(" : LH.prettyPrint a : ") -> " : renderParams b restNames
+
+          -- If we've reached the end of the TyFun chain, then we don't need to
+          -- recur further.  We can use 'prettyPrint' to render the rest.
+          _ -> "(" : LH.prettyPrint fnType' : [")"]

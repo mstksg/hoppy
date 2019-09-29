@@ -114,7 +114,7 @@ module Foreign.Hoppy.Generator.Spec.Base (
   -- * Functions and parameters
   Constness (..), constNegate,
   Purity (..),
-  Parameter, parameterType, parameterName, parameterDocumentation,
+  Parameter, parameterType, parameterName,
   IsParameter (..), toParameters,
   np, (~:),
   -- * Conversions
@@ -1211,16 +1211,19 @@ data Purity = Nonpure  -- ^ Side-affects are possible.
             | Pure  -- ^ Side-affects will not happen.
             deriving (Eq, Show)
 
--- | A parameter to a function, including a type and an optional name and
--- documentation string.
+-- | A parameter to a function, including a type and an optional name.  A name
+-- can be conveniently associated with a type with the @('~:')@ operator.
 --
 -- Two @Parameter@s are equal if their types are equal.
 data Parameter = Parameter
   { parameterType :: Type
+    -- ^ The parameter's data type.
   , parameterName :: Maybe String
-  , parameterDocumentation :: Maybe String
+    -- ^ An optional variable name to describe the parameter.  This name should
+    -- follow the same rules as 'ExtName' for its contents.
   } deriving (Show)
 
+-- | Objects that can be coerced to function parameter definitions.
 class Show a => IsParameter a where
   toParameter :: a -> Parameter
 
@@ -1232,7 +1235,6 @@ instance IsParameter Type where
     Parameter
     { parameterType = t
     , parameterName = Nothing
-    , parameterDocumentation = Nothing
     }
 
 onParameterType :: (Type -> Type) -> (Parameter -> Parameter)
@@ -1245,11 +1247,22 @@ onParameterType f p = p { parameterType = f $ parameterType p }
 np :: [Parameter]
 np = []
 
+-- | Converts a list of parameter-like objects to parameters.
 toParameters :: IsParameter a => [a] -> [Parameter]
 toParameters = map toParameter
 
+-- | Associates a name string with a type to create a 'Parameter' that
+-- can be given as a function or method parameter, instead of a raw 'Type'.  The
+-- name given here will be included as documentation in the generated code.
+--
+-- An empty string given for the name means not to associate a name with the
+-- parameter.  This is useful to leave some parameters unnamed in a parameter
+-- list while naming other parameters, since the list must either contain all
+-- 'Type's or all 'Parameter's.
 (~:) :: IsParameter a => String -> a -> Parameter
-(~:) name param = (toParameter param) { parameterName = Just name }
+(~:) name param =
+  (toParameter param) { parameterName = if null name then Nothing else Just name }
+infixr 0 ~:
 
 -- | Defines the process for converting a value in one direction between C++ and
 -- a foreign language.  The type parameter varies depending on the actual

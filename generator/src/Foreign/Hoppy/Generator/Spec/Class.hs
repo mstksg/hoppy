@@ -1816,8 +1816,8 @@ getMethodEffectiveParams :: Class -> Method -> [Parameter]
 getMethodEffectiveParams cls method =
   (case methodImpl method of
      RealMethod {} -> case methodApplicability method of
-       MNormal -> (toParameter (ptrT $ objT cls) :)
-       MConst -> (toParameter (ptrT $ constT $ objT cls) :)
+       MNormal -> (("this" ~: ptrT $ objT cls) :)
+       MConst -> (("this" ~: ptrT $ constT $ objT cls) :)
        MStatic -> id
      FnMethod {} -> id) $
   methodParams method
