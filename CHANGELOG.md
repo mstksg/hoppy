@@ -91,9 +91,9 @@ and changes to its API.
 
 - [API change] Function parameters can now be named (issue #12).
 
-  Names and documentation strings can now be attached to function parameters.
-  Currently this isn't used anywhere, but in the future it will be used to
-  generate documentation for generated bindings.
+  Names can now be attached to function parameters.  These names are used as
+  type variable names and Haddock documentation generated code, so that binding
+  users can see these names rather than just arg1, arg2, and so on, as before.
 
   Unfortunately, this causes some unpleasant API breakage.
 
