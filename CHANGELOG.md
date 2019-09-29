@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## *-0.6.0 (2019-09-29)
+
 This release is a significant refactoring of Hoppy, featuring many new features
 and changes to its API.
 
