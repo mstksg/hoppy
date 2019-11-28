@@ -22,10 +22,12 @@
 with import ./nixpkgs.nix nixpkgsArgs;
 let
 
-  # Build against explicit GHC versions.
-  versionedHaskells = {
-    inherit (haskell.packages) ghc822 ghc844 ghc864;
-  };
+  # Build against explicit GHC versions.  Build against all available GHC
+  # versions by matching against /^ghc[0-9]+$/.  We explicitly don't want
+  # ghc*Binary, ghcHEAD, ghcjs.
+  versionedHaskells =
+    lib.filterAttrs (name: pkg: builtins.match "ghc[0-9]+" name != null)
+      haskell.packages;
 
   # If the latest GHC version (as provided by haskellPackages) isn't in the
   # above list, then include it explicitly.
