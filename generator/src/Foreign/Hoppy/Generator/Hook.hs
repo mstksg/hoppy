@@ -22,6 +22,7 @@ module Foreign.Hoppy.Generator.Hook (
   -- * Enum evaluation
   EnumEvaluator,
   EnumEvaluatorArgs (..),
+  EnumEvaluatorEntry (..),
   EnumEvaluatorResult (..),
   evaluateEnumsWithCompiler,
   evaluateEnumsWithDefaultCompiler,
@@ -39,6 +40,7 @@ import Control.Monad.State (MonadState, execStateT, modify')
 import Control.Monad.Writer (execWriter, tell)
 import Data.ByteString.Lazy (ByteString, hPut)
 import Data.ByteString.Builder (stringUtf8, toLazyByteString)
+import Data.List (splitAt)
 import qualified Data.Map as M
 import Data.Maybe (isJust, listToMaybe, mapMaybe)
 import qualified Data.Set as S
@@ -50,6 +52,7 @@ import Foreign.Hoppy.Generator.Language.Cpp (renderIdentifier)
 import Foreign.Hoppy.Generator.Spec.Base
 import Foreign.Hoppy.Generator.Types (intT, llongT, longT, uintT, ullongT, ulongT)
 import Foreign.Hoppy.Generator.Util (withTempFile)
+import Foreign.Hoppy.Generator.Version (CppVersion (Cpp2011), activeCppVersion)
 import Foreign.Storable (Storable, sizeOf)
 import System.Exit (ExitCode (ExitFailure, ExitSuccess), exitFailure)
 import System.IO (hClose, hPutStrLn, stderr)
@@ -88,8 +91,8 @@ data EnumEvaluatorArgs = EnumEvaluatorArgs
     -- being evaluated.
   , enumEvaluatorArgsSizeofIdentifiers :: [Identifier]
     -- ^ The list of identifiers that we need to compute sizeof() for.
-  , enumEvaluatorArgsEntryIdentifiers :: [Identifier]
-    -- ^ The list of identifiers to calculate values for.
+  , enumEvaluatorArgsEntries :: [EnumEvaluatorEntry]
+    -- ^ The list of entries to calculate values for.
   , enumEvaluatorArgsKeepOutputsOnFailure :: Bool
     -- ^ Whether to leave temporary build inputs and outputs on disk in case the
     -- calculation fails.  If failure does occur and this is true, then the
@@ -97,13 +100,27 @@ data EnumEvaluatorArgs = EnumEvaluatorArgs
     -- (this is taken care of by the @calculateEnumValues*@ functions here.)
   }
 
+-- | An entry in an enumeration.  This also tracks whether the entry came from a
+-- scoped enum, for assertion reasons.
+data EnumEvaluatorEntry = EnumEvaluatorEntry
+  { enumEvaluatorEntryScoped :: EnumScoped
+    -- ^ Whether the entry comes from a scoped enum.
+  , enumEvaluatorEntryIdentifier :: Identifier
+    -- ^ The identifier referring to the entry.
+  }
+  deriving (Eq)
+
+instance Ord EnumEvaluatorEntry where
+  compare (EnumEvaluatorEntry _ i1) (EnumEvaluatorEntry _ i2) =
+    compare (OrdIdentifier i1) (OrdIdentifier i2)
+
 -- | Raw outputs parsed from the output of an enum evaluator.
 data EnumEvaluatorResult = EnumEvaluatorResult
   { enumEvaluatorResultSizes :: ![Int]
     -- ^ The sizeof() for each identifier in 'enumEvaluatorArgsSizeofIdentifiers'.
     -- The lengths of these two lists must match.
   , enumEvaluatorResultValues :: ![Integer]
-    -- ^ The numeric value for each identifier in 'enumEvaluatorArgsEntryIdentifiers'.
+    -- ^ The numeric value for each identifier in 'enumEvaluatorArgsEntries'.
     -- The lengths of these two lists must match.
   } deriving (Show)
 
@@ -178,7 +195,11 @@ makeCppSourceToEvaluateEnums :: EnumEvaluatorArgs -> ByteString
 makeCppSourceToEvaluateEnums args =
   toLazyByteString $ stringUtf8 $ unlines $
   [ "#include <iostream>"
-  , ""
+  ] ++
+  (if any isScoped $ enumEvaluatorArgsEntries args
+    then [ "#include <type_traits>" ]  -- We've asserted that we have C++11 in this case.
+    else []) ++
+  [ ""
   ] ++ [concatMap includeToString $
         S.elems $ reqsIncludes $ enumEvaluatorArgsReqs args] ++
   [ ""
@@ -190,10 +211,15 @@ makeCppSourceToEvaluateEnums args =
          in "  std::cout << sizeof(" ++ rendered ++ ") << ' ' << " ++
             doubleQuote rendered ++ " << '\\n';") ++
   [ "  std::cout << \"#values\\n\";"
-  ] ++ for (enumEvaluatorArgsEntryIdentifiers args)
-       (\identifier ->
+  ] ++ for (enumEvaluatorArgsEntries args)
+       (\(EnumEvaluatorEntry scoped identifier) ->
          let rendered = renderIdentifier identifier
-         in "  std::cout << (" ++ rendered ++ ") << ' ' << " ++
+             numericExpr = case scoped of
+               EnumUnscoped -> rendered
+               EnumScoped ->
+                 "static_cast<std::underlying_type<decltype(" ++ rendered ++ ")>::type>(" ++
+                 rendered ++ ")"
+         in "  std::cout << (" ++ numericExpr ++ ") << ' ' << " ++
             doubleQuote rendered ++ " << '\\n';") ++
   [ ""
   , "  return 0;"
@@ -212,7 +238,7 @@ interpretOutputToEvaluateEnums args out =
   expectLine "#sizes"
   readSizes $ enumEvaluatorArgsSizeofIdentifiers args
   expectLine "#values"
-  readValues $ enumEvaluatorArgsEntryIdentifiers args
+  readValues $ map (\(EnumEvaluatorEntry _ i) -> i) $ enumEvaluatorArgsEntries args
   expectEof
   modify' $ \EnumEvaluatorResult
              { enumEvaluatorResultSizes = sizes
@@ -296,11 +322,12 @@ internalEvaluateEnumsForInterface' iface keepBuildFailures = do
       -- Maybe Identifier: The enum's identifier, if we need to evaluate it.
       -- Reqs: Requirements to reference the enum.
       -- EnumValueMap: Entries, so that we can evaluate the auto ones.
-      enumExports :: [(ExtName, Maybe Type, Maybe Identifier, Reqs, EnumValueMap)]
+      enumExports :: [(ExtName, Maybe Type, EnumScoped, Maybe Identifier, Reqs, EnumValueMap)]
       enumExports = flip mapMaybe (M.elems allExports) $ \export ->
         flip fmap (getExportEnumInfo export) $ \(info :: EnumInfo) ->
           (enumInfoExtName info,
            enumInfoNumericType info,
+           enumInfoScoped info,
            case (enumInfoNumericType info, validateEnumTypes) of
              (Just _, False) -> Nothing  -- Don't need to evaluate sizeof().
              _ -> Just $ enumInfoIdentifier info,  -- Need to evaluate sizeof().
@@ -311,21 +338,42 @@ internalEvaluateEnumsForInterface' iface keepBuildFailures = do
       -- so.
       sumReqs :: Reqs
       sizeofIdentifiersToEvaluate :: [OrdIdentifier]
-      entryIdentifiersToEvaluate :: [OrdIdentifier]
-      (sumReqs, sizeofIdentifiersToEvaluate, entryIdentifiersToEvaluate) =
-        (\(a, b, c) -> (a, b, S.toList $ S.fromList $ map OrdIdentifier c)) $
-        execWriter $ forM_ enumExports $ \(_, _, maybeIdent, reqs, entries) -> do
+      entriesToEvaluate :: [EnumEvaluatorEntry]
+      (sumReqs, sizeofIdentifiersToEvaluate, entriesToEvaluate) =
+        -- Deduplicate entries by passing them through a set.
+        (\(a, b, c) -> (a, b, S.toList $ S.fromList c)) $
+        execWriter $ forM_ enumExports $ \(_, _, scoped, maybeIdent, reqs, entries) -> do
           tell (reqs,
                 maybe [] (\i -> [OrdIdentifier i]) maybeIdent,
                 [])
           forM_ (M.toList $ enumValueMapValues entries) $ \(_, value) -> case value of
             EnumValueManual _ -> return ()
-            EnumValueAuto identifier -> tell (mempty, [], [identifier])
+            EnumValueAuto identifier -> tell (mempty, [], [EnumEvaluatorEntry scoped identifier])
+
+  -- We currently only support evaluation of scoped enum entries in C++11
+  -- and later, because we use std::underlying_type to perform the
+  -- conversion of those entries to integral types, rather than doing
+  -- e.g. two compilations, first determining their size.
+  when (activeCppVersion < Cpp2011) $ do
+    let scopedEnumsWithAutoEntries :: [ExtName] = flip mapMaybe enumExports $
+          \(extName, _, _, _, _, entries) ->
+            if any isAuto $ M.elems $ enumValueMapValues entries
+            then Just extName
+            else Nothing
+        (namesToShow, namesToSkip) = splitAt 10 scopedEnumsWithAutoEntries
+    unless (null scopedEnumsWithAutoEntries) $ do
+      hPutStrLn stderr $
+        "internalEvaluateEnumsForInterface': Automatic evaluation of enum values is not " ++
+        "requires at least " ++ show Cpp2011 ++ ", but we are compiling for " ++
+        show activeCppVersion ++ ", aborting.  Enums requesting evaluation are " ++
+        show namesToShow ++
+        (if not $ null namesToSkip then " (and more)" else "") ++ "."
+      exitFailure
 
   -- Evaluate the identifiers we are curious about, using the hook provided by
   -- the interface.
   evaluatorResult :: EnumEvaluatorResult <-
-    case (sizeofIdentifiersToEvaluate, entryIdentifiersToEvaluate) of
+    case (sizeofIdentifiersToEvaluate, entriesToEvaluate) of
       ([], []) -> return emptyEnumEvaluatorResult
       _ -> do
         let hooks = interfaceHooks iface
@@ -334,8 +382,7 @@ internalEvaluateEnumsForInterface' iface keepBuildFailures = do
                    , enumEvaluatorArgsReqs = sumReqs
                    , enumEvaluatorArgsSizeofIdentifiers =
                        map ordIdentifier sizeofIdentifiersToEvaluate
-                   , enumEvaluatorArgsEntryIdentifiers =
-                       map ordIdentifier entryIdentifiersToEvaluate
+                   , enumEvaluatorArgsEntries = entriesToEvaluate
                    , enumEvaluatorArgsKeepOutputsOnFailure = keepBuildFailures
                    }
         hookEvaluateEnums hooks args >>=
@@ -344,7 +391,11 @@ internalEvaluateEnumsForInterface' iface keepBuildFailures = do
                 "internalEvaluateEnumsForInterface': Failed to build and run program.  Aborting."
               exitFailure)
 
-  let evaluatedIdentifierSizes :: M.Map OrdIdentifier Int
+  let entryIdentifiersToEvaluate :: [OrdIdentifier]
+      entryIdentifiersToEvaluate =
+        map (OrdIdentifier . enumEvaluatorEntryIdentifier) entriesToEvaluate
+
+      evaluatedIdentifierSizes :: M.Map OrdIdentifier Int
       evaluatedIdentifierSizes =
         M.fromList $ zip sizeofIdentifiersToEvaluate $ enumEvaluatorResultSizes evaluatorResult
 
@@ -382,7 +433,8 @@ internalEvaluateEnumsForInterface' iface keepBuildFailures = do
   -- Build a map containing the evaluated type and numeric values for all of
   -- the enums in the interface.
   evaluatedDataMap :: M.Map ExtName EvaluatedEnumData <-
-    fmap M.fromList $ forM enumExports $ \(extName, maybeNumericType, maybeIdent, _, values) -> do
+    fmap M.fromList $ forM enumExports $
+    \(extName, maybeNumericType, _, maybeIdent, _, values) -> do
       -- Build a map containing all of the numeric values in the enum.
       numMap :: M.Map [String] Integer <-
         fmap M.fromList $ forM (M.toList $ enumValueMapValues values) $ \(label, value) -> do
@@ -483,3 +535,11 @@ pickNumericType bytes low high =
   numBytes info == bytes &&
   numMinBound info <= low &&
   numMaxBound info >= high
+
+isAuto :: EnumValue -> Bool
+isAuto (EnumValueAuto _) = True
+isAuto (EnumValueManual _) = False
+
+isScoped :: EnumEvaluatorEntry -> Bool
+isScoped (EnumEvaluatorEntry EnumScoped _) = True
+isScoped (EnumEvaluatorEntry EnumUnscoped _) = False

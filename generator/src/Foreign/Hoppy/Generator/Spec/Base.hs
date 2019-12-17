@@ -152,6 +152,7 @@ module Foreign.Hoppy.Generator.Spec.Base (
   addAddendumHaskell,
   -- * Enum support
   EnumInfo (..),
+  EnumScoped (..),
   EnumEntryWords,
   EnumValueMap (..),
   EnumValue (..),
@@ -1616,9 +1617,18 @@ data EnumInfo = EnumInfo
     -- 'interfaceValidateEnumTypes').
   , enumInfoReqs :: Reqs
     -- ^ Requirements for accessing the enum.
+  , enumInfoScoped :: EnumScoped
+    -- ^ Whether the enum is scoped or unscoped.
   , enumInfoValues :: EnumValueMap
     -- ^ The entries in the enum.
   }
+
+-- | Indicates whether an enum is unscoped (@enum@) or scoped (@enum class@ or
+-- @enum struct@).
+data EnumScoped =
+    EnumUnscoped  -- ^ Indicates an unscoped enum (@enum).
+  | EnumScoped  -- ^ Indicates a scoped enum (@enum class@ or @enum struct@).
+  deriving (Eq, Ord, Show)
 
 -- | A list of words that comprise the name of an enum entry.  Each string in
 -- this list is treated as a distinct word for the purpose of performing case

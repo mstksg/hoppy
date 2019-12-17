@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Fix for autodetection of scoped enum values (issue #43).  For now,
+  autodetection for scoped enums only works with C++11 and up.
+
 ## *-0.6.0 (2019-09-29)
 
 This release is a significant refactoring of Hoppy, featuring many new features

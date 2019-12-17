@@ -93,6 +93,8 @@ data CppEnum = CppEnum
     -- using a C++ compiler.  If this is present however, Hoppy will use it, and
     -- additionally validate it against what the C++ compiler thinks, if
     -- validation is enabled (see 'interfaceValidateEnumTypes').
+  , enumScoped :: EnumScoped
+    -- ^ Whether the enum is scoped or unscoped.
   , enumValues :: EnumValueMap
     -- ^ The numeric values and names of the enum entires.
   , enumReqs :: Reqs
@@ -154,6 +156,7 @@ instance Exportable CppEnum where
     , enumInfoIdentifier = enumIdentifier e
     , enumInfoNumericType = enumNumericType e
     , enumInfoReqs = enumReqs e
+    , enumInfoScoped = enumScoped e
     , enumInfoValues = enumValues e
     }
 
@@ -198,6 +201,7 @@ makeEnum identifier maybeExtName entries =
      extName
      identifier
      Nothing
+     EnumUnscoped  -- Assume this is an unscoped enum.
      (let entries' = for entries $ \(num, words') -> (words', EnumValueManual num)
           entryNames = map fst entries'
       in EnumValueMap
@@ -235,6 +239,7 @@ makeAutoEnum identifier maybeExtName scoped entries =
      extName
      identifier
      Nothing
+     (if scoped then EnumScoped else EnumUnscoped)
      (let namespaceForValues =
             if scoped
             then identifier
