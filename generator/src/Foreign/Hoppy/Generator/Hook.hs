@@ -103,7 +103,7 @@ data EnumEvaluatorArgs = EnumEvaluatorArgs
 -- | An entry in an enumeration.  This also tracks whether the entry came from a
 -- scoped enum, for assertion reasons.
 data EnumEvaluatorEntry = EnumEvaluatorEntry
-  { enumEvaluatorEntryScoped :: EnumScoped
+  { enumEvaluatorEntryScoped :: Scoped
     -- ^ Whether the entry comes from a scoped enum.
   , enumEvaluatorEntryIdentifier :: Identifier
     -- ^ The identifier referring to the entry.
@@ -196,7 +196,7 @@ makeCppSourceToEvaluateEnums args =
   toLazyByteString $ stringUtf8 $ unlines $
   [ "#include <iostream>"
   ] ++
-  (if any isScoped $ enumEvaluatorArgsEntries args
+  (if any isEntryScoped $ enumEvaluatorArgsEntries args
     then [ "#include <type_traits>" ]  -- We've asserted that we have C++11 in this case.
     else []) ++
   [ ""
@@ -215,8 +215,8 @@ makeCppSourceToEvaluateEnums args =
        (\(EnumEvaluatorEntry scoped identifier) ->
          let rendered = renderIdentifier identifier
              numericExpr = case scoped of
-               EnumUnscoped -> rendered
-               EnumScoped ->
+               Unscoped -> rendered
+               Scoped ->
                  "static_cast<std::underlying_type<decltype(" ++ rendered ++ ")>::type>(" ++
                  rendered ++ ")"
          in "  std::cout << (" ++ numericExpr ++ ") << ' ' << " ++
@@ -322,7 +322,7 @@ internalEvaluateEnumsForInterface' iface keepBuildFailures = do
       -- Maybe Identifier: The enum's identifier, if we need to evaluate it.
       -- Reqs: Requirements to reference the enum.
       -- EnumValueMap: Entries, so that we can evaluate the auto ones.
-      enumExports :: [(ExtName, Maybe Type, EnumScoped, Maybe Identifier, Reqs, EnumValueMap)]
+      enumExports :: [(ExtName, Maybe Type, Scoped, Maybe Identifier, Reqs, EnumValueMap)]
       enumExports = flip mapMaybe (M.elems allExports) $ \export ->
         flip fmap (getExportEnumInfo export) $ \(info :: EnumInfo) ->
           (enumInfoExtName info,
@@ -540,6 +540,5 @@ isAuto :: EnumValue -> Bool
 isAuto (EnumValueAuto _) = True
 isAuto (EnumValueManual _) = False
 
-isScoped :: EnumEvaluatorEntry -> Bool
-isScoped (EnumEvaluatorEntry EnumScoped _) = True
-isScoped (EnumEvaluatorEntry EnumUnscoped _) = False
+isEntryScoped :: EnumEvaluatorEntry -> Bool
+isEntryScoped (EnumEvaluatorEntry scoped _) = isScoped scoped

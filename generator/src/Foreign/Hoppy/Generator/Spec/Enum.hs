@@ -93,7 +93,7 @@ data CppEnum = CppEnum
     -- using a C++ compiler.  If this is present however, Hoppy will use it, and
     -- additionally validate it against what the C++ compiler thinks, if
     -- validation is enabled (see 'interfaceValidateEnumTypes').
-  , enumScoped :: EnumScoped
+  , enumScoped :: Scoped
     -- ^ Whether the enum is scoped or unscoped.
   , enumValues :: EnumValueMap
     -- ^ The numeric values and names of the enum entires.
@@ -201,7 +201,7 @@ makeEnum identifier maybeExtName entries =
      extName
      identifier
      Nothing
-     EnumUnscoped  -- Assume this is an unscoped enum.
+     Unscoped  -- Assume this is an unscoped enum.
      (let entries' = for entries $ \(num, words') -> (words', EnumValueManual num)
           entryNames = map fst entries'
       in EnumValueMap
@@ -225,7 +225,7 @@ makeAutoEnum ::
   -> Maybe ExtName
   -- ^ An optional external name; will be automatically derived from the
   -- identifier if absent.
-  -> EnumScoped
+  -> Scoped
   -- ^ Is the enum scoped (@enum class@ or @enum struct@)?  That is, are its
   -- entries scoped underneath its name, rather than being at the same level as
   -- its name (as with just @enum@).
@@ -241,8 +241,8 @@ makeAutoEnum identifier maybeExtName scoped entries =
      Nothing
      scoped
      (let namespaceForValues = case scoped of
-            EnumScoped -> identifier
-            EnumUnscoped -> makeIdentifier $ butLast $ identifierParts identifier
+            Scoped -> identifier
+            Unscoped -> makeIdentifier $ butLast $ identifierParts identifier
           entries' =
             map (fmap (\name -> namespaceForValues `mappend` ident name) .
                  toAutoEnumValue)

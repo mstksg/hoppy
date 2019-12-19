@@ -111,6 +111,8 @@ module Foreign.Hoppy.Generator.Spec.Base (
   Type (..),
   normalizeType,
   stripConst,
+  Scoped (..),
+  isScoped,
   -- * Functions and parameters
   Constness (..), constNegate,
   Purity (..),
@@ -152,7 +154,6 @@ module Foreign.Hoppy.Generator.Spec.Base (
   addAddendumHaskell,
   -- * Enum support
   EnumInfo (..),
-  EnumScoped (..),
   EnumEntryWords,
   EnumValueMap (..),
   EnumValue (..),
@@ -1191,6 +1192,20 @@ stripConst t = case t of
   Internal_TConst t' -> stripConst t'
   _ -> t
 
+-- | Indicates whether an entity is scoped or unscoped.
+--
+-- This is used to distinguish unscoped enums (@enum@) or scoped ones (@enum
+-- class@ or @enum struct@).
+data Scoped =
+    Unscoped  -- ^ Indicates an unscoped entity (e.g. an enum).
+  | Scoped  -- ^ Indicates a scoped entity (e.g. an enum).
+  deriving (Eq, Ord, Show)
+
+-- | Returns true if a 'Scoped' value is scoped, and false if it is unscoped.
+isScoped :: Scoped -> Bool
+isScoped Unscoped = False
+isScoped Scoped = True
+
 -- | Whether or not @const@ is applied to an entity.
 data Constness = Nonconst | Const
                deriving (Bounded, Enum, Eq, Show)
@@ -1617,18 +1632,11 @@ data EnumInfo = EnumInfo
     -- 'interfaceValidateEnumTypes').
   , enumInfoReqs :: Reqs
     -- ^ Requirements for accessing the enum.
-  , enumInfoScoped :: EnumScoped
+  , enumInfoScoped :: Scoped
     -- ^ Whether the enum is scoped or unscoped.
   , enumInfoValues :: EnumValueMap
     -- ^ The entries in the enum.
   }
-
--- | Indicates whether an enum is unscoped (@enum@) or scoped (@enum class@ or
--- @enum struct@).
-data EnumScoped =
-    EnumUnscoped  -- ^ Indicates an unscoped enum (@enum).
-  | EnumScoped  -- ^ Indicates a scoped enum (@enum class@ or @enum struct@).
-  deriving (Eq, Ord, Show)
 
 -- | A list of words that comprise the name of an enum entry.  Each string in
 -- this list is treated as a distinct word for the purpose of performing case
