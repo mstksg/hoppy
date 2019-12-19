@@ -225,7 +225,7 @@ makeAutoEnum ::
   -> Maybe ExtName
   -- ^ An optional external name; will be automatically derived from the
   -- identifier if absent.
-  -> Bool
+  -> EnumScoped
   -- ^ Is the enum scoped (@enum class@ or @enum struct@)?  That is, are its
   -- entries scoped underneath its name, rather than being at the same level as
   -- its name (as with just @enum@).
@@ -239,11 +239,10 @@ makeAutoEnum identifier maybeExtName scoped entries =
      extName
      identifier
      Nothing
-     (if scoped then EnumScoped else EnumUnscoped)
-     (let namespaceForValues =
-            if scoped
-            then identifier
-            else makeIdentifier $ butLast $ identifierParts identifier
+     scoped
+     (let namespaceForValues = case scoped of
+            EnumScoped -> identifier
+            EnumUnscoped -> makeIdentifier $ butLast $ identifierParts identifier
           entries' =
             map (fmap (\name -> namespaceForValues `mappend` ident name) .
                  toAutoEnumValue)

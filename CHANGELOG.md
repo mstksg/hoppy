@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- [API change] There is a new `EnumScoped` which is now expected as an argument
+  to `makeAutoEnum` rather than a boolean to indicate the scopedness of an enum.
+
 - Fix for autodetection of scoped enum values (issue #43).  For now,
   autodetection for scoped enums only works with C++11 and up.
 

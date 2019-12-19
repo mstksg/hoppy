@@ -1072,7 +1072,7 @@ defined as follows:
 @
 alignment :: 'CppEnum'
 alignment =
-  'makeAutoEnum' ('ident' \"Alignment\") Nothing False
+  'makeAutoEnum' ('ident' \"Alignment\") Nothing 'EnumUnscoped'
   [ "LeftAlign"
   , "CenterAlign"
   , "RightAlign"
