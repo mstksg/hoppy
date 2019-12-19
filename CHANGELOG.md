@@ -1,6 +1,6 @@
 # Hoppy Changelog
 
-## Unreleased
+## Unreleased - 0.7.0
 
 - [API change] There is a new `Scoped` which is now expected as an argument to
   `makeAutoEnum` rather than a boolean to indicate the scopedness of an enum.

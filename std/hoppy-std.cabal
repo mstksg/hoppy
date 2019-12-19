@@ -1,5 +1,5 @@
 name: hoppy-std
-version: 0.6.0
+version: 0.7.0
 synopsis: C++ FFI generator - Standard library bindings
 homepage: http://khumba.net/projects/hoppy
 license: Apache-2.0
@@ -43,7 +43,7 @@ library
       base >=4.7 && <5
     , filepath >=1.0 && <1.5
     , haskell-src >=1.0 && <1.1
-    , hoppy-generator >=0.6 && <0.7
+    , hoppy-generator >=0.7 && <0.8
   hs-source-dirs: src
   ghc-options: -W -fwarn-incomplete-patterns -fwarn-unused-do-bind
   default-language: Haskell2010
