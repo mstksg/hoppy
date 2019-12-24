@@ -2,8 +2,12 @@
 
 ## Unreleased - 0.7.0
 
-- [API change] There is a new `Scoped` which is now expected as an argument to
-  `makeAutoEnum` rather than a boolean to indicate the scopedness of an enum.
+- [API change] There is a new `Scoped` boolean data type to indicate whether an
+  enum is a scoped enum (e.g. `enum class`) or an unscoped enum (the old
+  `enum`).  This type is now expected as an argument to `makeAutoEnum` rather
+  than a raw boolean.  It turns out to be necessary to store this on enums
+  themslves, so it makes sense to improve the `makeAutoEnum` parameter at the
+  same time.
 
 - Fix for autodetection of scoped enum values (issue #43).  For now,
   autodetection for scoped enums only works with C++11 and up.
