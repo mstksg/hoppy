@@ -1,6 +1,8 @@
 # Hoppy Changelog
 
-## Unreleased - 0.7.0
+## Unreleased - 0.7.1
+
+## *-0.7.0 (2019-12-23)
 
 - [API change] There is a new `Scoped` boolean data type to indicate whether an
   enum is a scoped enum (e.g. `enum class`) or an unscoped enum (the old

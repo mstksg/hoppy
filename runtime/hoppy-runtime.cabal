@@ -1,5 +1,5 @@
 name: hoppy-runtime
-version: 0.7.0
+version: 0.7.1
 synopsis: C++ FFI generator - Runtime support
 homepage: http://khumba.net/projects/hoppy
 license: Apache-2.0
