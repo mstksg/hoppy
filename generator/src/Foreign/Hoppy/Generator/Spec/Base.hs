@@ -111,12 +111,13 @@ module Foreign.Hoppy.Generator.Spec.Base (
   Type (..),
   normalizeType,
   stripConst,
+  stripToGc,
   Scoped (..),
   isScoped,
   -- * Functions and parameters
   Constness (..), constNegate,
   Purity (..),
-  Parameter, parameterType, parameterName,
+  Parameter, parameterType, onParameterType, parameterName,
   IsParameter (..), toParameters,
   np, (~:),
   -- * Conversions
@@ -1192,6 +1193,12 @@ stripConst t = case t of
   Internal_TConst t' -> stripConst t'
   _ -> t
 
+-- | Strips a leading 'Internal_TToGc' off of a type.
+stripToGc :: Type -> Type
+stripToGc t = case t of
+  Internal_TToGc t' -> t'
+  _ -> t
+
 -- | Indicates whether an entity is scoped or unscoped.
 --
 -- This is used to distinguish unscoped enums (@enum@) or scoped ones (@enum
@@ -1253,6 +1260,7 @@ instance IsParameter Type where
     , parameterName = Nothing
     }
 
+-- | Maps a function over a parameter's type.
 onParameterType :: (Type -> Type) -> (Parameter -> Parameter)
 onParameterType f p = p { parameterType = f $ parameterType p }
 
