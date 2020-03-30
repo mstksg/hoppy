@@ -47,7 +47,6 @@ import Data.Monoid (mconcat, mempty)
 import qualified Data.Set as S
 import Foreign.Hoppy.Generator.Common
 import Foreign.Hoppy.Generator.Spec
-import Foreign.Hoppy.Generator.Spec.Class (toHsDataTypeName)
 import Foreign.Hoppy.Generator.Language.Haskell
 import System.FilePath ((<.>), pathSeparator)
 

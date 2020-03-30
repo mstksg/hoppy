@@ -15,6 +15,8 @@
 -- You should have received a copy of the GNU Affero General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+{-# LANGUAGE CPP #-}
+
 -- | Hooks for controlling various parts of generators.
 module Foreign.Hoppy.Generator.Hook (
   Hooks (..),
@@ -40,7 +42,9 @@ import Control.Monad.State (MonadState, execStateT, modify')
 import Control.Monad.Writer (execWriter, tell)
 import Data.ByteString.Lazy (ByteString, hPut)
 import Data.ByteString.Builder (stringUtf8, toLazyByteString)
+#if !MIN_VERSION_base(4,12,0)
 import Data.List (splitAt)
+#endif
 import qualified Data.Map as M
 import Data.Maybe (isJust, listToMaybe, mapMaybe)
 import qualified Data.Set as S

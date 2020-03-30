@@ -2,6 +2,21 @@
 
 ## Unreleased - 0.7.1
 
+- Added support for GHC 8.8.* and 8.10.1 (issue #44).  Updates for the
+  [MonadFail](https://prime.haskell.org/wiki/Libraries/Proposals/MonadFail)
+  proposal were needed, as well as some other updates for newly-detected
+  redundant imports.  Cabal up to 3.2 is now supported.
+
+  As part of these changes, many non-PVP-compliant imports from hoppy-std to
+  Foreign.Hoppy.Generator.Spec were fixed.
+
+  I also had to tweak the test coverage of the Nix builds: haskell-src needs its
+  dependency versions ignored when building with ghc-8.6.4, and it won't build
+  without further work against ghc-8.4.4, so I've removed ghc-8.4.4 from the
+  automatic Nix tests.  (I'm currently building these against the Nixpkgs
+  unstable channel to verify all these, since I'm experiencing issues building
+  haskell-src against various GHCs on the nixos-19.09 channel.)
+
 ## *-0.7.0 (2019-12-23)
 
 - [API change] There is a new `Scoped` boolean data type to indicate whether an

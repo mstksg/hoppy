@@ -47,6 +47,9 @@ import Control.Applicative ((<$>))
 #endif
 import Control.Exception (evaluate)
 import Control.Monad (when)
+#if !MIN_VERSION_base(4,13,0)
+import Control.Monad.Fail (MonadFail)
+#endif
 import Data.Char (toLower, toUpper)
 import qualified Data.List as L
 import qualified Data.Map as M
@@ -69,7 +72,7 @@ fromEitherM :: Monad m => (e -> m a) -> Either e a -> m a
 fromEitherM = flip either return
 
 -- | @maybeFail s x = maybe (fail s) x@
-maybeFail :: Monad m => String -> Maybe a -> m a
+maybeFail :: MonadFail m => String -> Maybe a -> m a
 maybeFail = fromMaybeM . fail
 
 -- | @whileJust_ gen act@ runs @act@ on values generated from @gen@ until @gen@

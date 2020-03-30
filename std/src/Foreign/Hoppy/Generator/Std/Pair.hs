@@ -29,7 +29,19 @@ module Foreign.Hoppy.Generator.Std.Pair (
 #if !MIN_VERSION_base(4,8,0)
 import Data.Monoid (mconcat)
 #endif
-import Foreign.Hoppy.Generator.Spec
+import Foreign.Hoppy.Generator.Spec (
+  Export (Export),
+  Purity (Nonpure),
+  Reqs,
+  Type,
+  addReqs,
+  ident1T,
+  ident2,
+  includeStd,
+  np,
+  reqInclude,
+  toExtName,
+  )
 import Foreign.Hoppy.Generator.Spec.Class (
   Class,
   MethodApplicability (MConst, MNormal),
@@ -37,6 +49,10 @@ import Foreign.Hoppy.Generator.Spec.Class (
   makeFnMethod,
   mkCtor,
   mkMethod,
+  )
+import Foreign.Hoppy.Generator.Spec.ClassFeature (
+  ClassFeature (Assignable, Copyable),
+  classAddFeatures,
   )
 import Foreign.Hoppy.Generator.Std.Internal (includeHelper)
 import Foreign.Hoppy.Generator.Types

@@ -40,7 +40,26 @@ import Foreign.Hoppy.Generator.Language.Haskell (
   sayLn,
   saysLn,
   )
-import Foreign.Hoppy.Generator.Spec
+import Foreign.Hoppy.Generator.Spec (
+  Constness (Const, Nonconst),
+  Export (Export),
+  Operator (OpEq),
+  Purity (Nonpure),
+  Reqs,
+  Type,
+  addAddendumHaskell,
+  addReqs,
+  hsImport1,
+  hsImportForPrelude,
+  hsImportForRuntime,
+  ident1T,
+  ident2,
+  identT',
+  includeStd,
+  np,
+  reqInclude,
+  toExtName,
+  )
 import Foreign.Hoppy.Generator.Spec.Class (
   Class,
   MethodApplicability (MNormal),
@@ -54,6 +73,10 @@ import Foreign.Hoppy.Generator.Spec.Class (
   toHsCastMethodName,
   toHsDataTypeName,
   toHsClassEntityName,
+  )
+import Foreign.Hoppy.Generator.Spec.ClassFeature (
+  ClassFeature (Assignable, Copyable),
+  classAddFeatures,
   )
 import Foreign.Hoppy.Generator.Std (ValueConversion (ConvertPtr, ConvertValue))
 import Foreign.Hoppy.Generator.Std.Internal (includeHelper)

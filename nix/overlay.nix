@@ -26,6 +26,15 @@ let
 
   haskellOverrides = haskellLib: hself: hsuper:
     let buildStrictly = import ./build-strictly.nix haskellLib; in
+    {
+      # haskell-src complains when built with ghc865:
+      #   Setup: Encountered missing dependencies:
+      #   array >=0.5.4.0 && <0.6, base >=4.13.0.0 && <4.14
+      # but ignoring dependency versions, it builds just fine.
+      haskell-src = hsuper.haskell-src.override {
+        mkDerivation = args: hsuper.mkDerivation ({ jailbreak = true; } // args);
+      };
+    } //
     builtins.mapAttrs (name: pkg: buildStrictly pkg) {
       hoppy-generator = hsuper.callPackage ../generator haskellOptions;
       hoppy-std = hsuper.callPackage ../std haskellOptions;

@@ -23,7 +23,18 @@ module Foreign.Hoppy.Generator.Std.String (c_string) where
 import Data.Monoid (mconcat)
 #endif
 import Foreign.Hoppy.Generator.Language.Haskell (addExport, addImports, indent, sayLn)
-import Foreign.Hoppy.Generator.Spec
+import Foreign.Hoppy.Generator.Spec (
+  addAddendumHaskell,
+  addReqIncludes,
+  hsImport1,
+  hsImportForForeignC,
+  hsImportForPrelude,
+  hsImportForRuntime,
+  ident1,
+  includeStd,
+  np,
+  toExtName,
+  )
 import Foreign.Hoppy.Generator.Spec.Class (
   Class,
   ClassHaskellConversion (..),
@@ -33,6 +44,10 @@ import Foreign.Hoppy.Generator.Spec.Class (
   mkConstMethod,
   mkConstMethod',
   mkMethod',
+  )
+import Foreign.Hoppy.Generator.Spec.ClassFeature (
+  ClassFeature (Assignable, Comparable, Copyable, Equatable),
+  classAddFeatures,
   )
 import Foreign.Hoppy.Generator.Types
 import Language.Haskell.Syntax (

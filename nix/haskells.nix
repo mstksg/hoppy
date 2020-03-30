@@ -22,11 +22,25 @@
 with import ./nixpkgs.nix nixpkgsArgs;
 let
 
+  # ghc844 on Nixpkgs unstable channel (2020-03-29) fails to build haskell-src:
+  #
+  #   Warning: haskell-src.cabal:0:0: Unsupported cabal-version. See
+  #   https://github.com/haskell/cabal/issues/4899.
+  #   CallStack (from HasCallStack):
+  #     die', called at libraries/Cabal/Cabal/Distribution/PackageDescription/Parsec.hs:110:13
+  #         in Cabal-2.2.0.1:Distribution.PackageDescription.Parsec
+  #     <snip>
+  #   Setup: Failed parsing "./haskell-src.cabal".
+  blacklistedHaskells = [ "ghc844" ];
+
+  isBlacklisted = name: builtins.elem name blacklistedHaskells;
+
   # Build against explicit GHC versions.  Build against all available GHC
   # versions by matching against /^ghc[0-9]+$/.  We explicitly don't want
-  # ghc*Binary, ghcHEAD, ghcjs.
+  # ghc*Binary, ghcHEAD, ghcjs, and anything in the blacklist above.
   versionedHaskells =
-    lib.filterAttrs (name: pkg: builtins.match "ghc[0-9]+" name != null)
+    lib.filterAttrs
+      (name: pkg: builtins.match "ghc[0-9]+" name != null && !(isBlacklisted name))
       haskell.packages;
 
   # If the latest GHC version (as provided by haskellPackages) isn't in the
