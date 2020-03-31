@@ -1,6 +1,8 @@
 # Hoppy Changelog
 
-## Unreleased - 0.7.1
+## Unreleased
+
+## hoppy-generator-0.7.1, hoppy-std-0.7.1 (2020-03-30)
 
 - Added support for GHC 8.8.* and 8.10.1 (issue #44).  Updates for the
   [MonadFail](https://prime.haskell.org/wiki/Libraries/Proposals/MonadFail)
