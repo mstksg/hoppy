@@ -5,7 +5,7 @@ author: Bryan Gardiner <bog@khumba.net>
 maintainer: Bryan Gardiner <bog@khumba.net>
 copyright: Copyright 2015-2020 Bryan Gardiner
 build-type: Custom
-cabal-version: >=1.10
+cabal-version: 2.0
 
 extra-source-files:
   Makefile
@@ -24,7 +24,9 @@ library
       Foreign.Hoppy.Example.Internal.EmptyCpp
   build-depends:
       base
-    , hoppy-example-generator
+    , hoppy-example-generator >=0.1 && <0.2
     , hoppy-runtime >=0.7 && <0.8
+  build-tool-depends:
+      hoppy-example-generator:hoppy-example-generator
   default-language: Haskell2010
   ghc-options: -W -fwarn-incomplete-patterns -fwarn-unused-do-bind

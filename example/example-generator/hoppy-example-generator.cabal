@@ -5,7 +5,7 @@ author: Bryan Gardiner <bog@khumba.net>
 maintainer: Bryan Gardiner <bog@khumba.net>
 copyright: Copyright 2015-2020 Bryan Gardiner
 build-type: Simple
-cabal-version: >=1.10
+cabal-version: 2.0
 
 -- This library component is here so that the C++ and Haskell gateway packages
 -- can build-depends on it.  Really, the gateway packages should setup-depends
