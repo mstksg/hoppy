@@ -265,8 +265,16 @@ data Interface = Interface
     -- it.  This defaults to using @std::shared_ptr@ from @\<memory\>@, but can
     -- be changed if necessary via 'interfaceSetSharedPtr'.
   , interfaceCompiler :: Maybe SomeCompiler
-    -- ^ The compiler to use when building code for the interface.  This can be
-    -- overridden or disabled.  This defaults to 'defaultCompiler'.
+    -- ^ The C++ compiler for the generator itself to use when building
+    -- temporary code for the interface.  This can be overridden or disabled.
+    -- This defaults to 'defaultCompiler'.
+    --
+    -- __This is separate__ from the @./configure && make@ compilation process
+    -- used by @Foreign.Hoppy.Runtime.Setup.cppMain@ to build generated C++
+    -- bindings (see hoppy-runtime).  This compiler is used to evaluate enums'
+    -- numeric values when the generator is called, and is not used otherwise.
+    -- See 'Foreign.Hoppy.Generator.Spec.Enum.makeAutoEnum' and
+    -- "Foreign.Hoppy.Generator.Hooks".
   , interfaceHooks :: Hooks
     -- ^ Hooks allowing the interface to execute code at various points during
     -- the code generator's execution.  This defaults to 'defaultHooks'.
@@ -514,10 +522,14 @@ newtype Include = Include
   } deriving (Eq, Ord, Show)
 
 -- | Creates an @#include \<...\>@ directive.
+--
+-- This can be added to most types of C++ entities with 'addReqIncludes'.
 includeStd :: String -> Include
 includeStd path = Include $ "#include <" ++ path ++ ">\n"
 
 -- | Creates an @#include "..."@ directive.
+--
+-- This can be added to most types of C++ entities with 'addReqIncludes'.
 includeLocal :: String -> Include
 includeLocal path = Include $ "#include \"" ++ path ++ "\"\n"
 

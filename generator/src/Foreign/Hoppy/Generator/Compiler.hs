@@ -132,7 +132,12 @@ instance Compiler CustomCompiler where
   compileProgram = ccCompile
 
 -- | The default compiler, used by an 'Foreign.Hoppy.Generator.Spec.Interface'
--- that doesn't specify its own.  This is:
+-- that doesn't specify its own.  This will be 'gppCompiler', however if the
+-- environment variables @CXX@ or @CXXFLAGS@ are set and nonempty, they will be
+-- used.  @CXX@ will override the path to the compiler used, and @CXXFLAGS@ will
+-- be split on spaces and appended to the compiler's argument list.
+--
+-- Specifically, this is defined as:
 --
 -- @'unsafePerformIO' $ 'overrideCompilerFromEnvironment' 'gppCompiler'@
 defaultCompiler :: SimpleCompiler
