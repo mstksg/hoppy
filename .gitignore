@@ -17,6 +17,7 @@
 
 *~
 dist
+dist-newstyle
 dist-sandbox-*
 .cabal-sandbox
 
