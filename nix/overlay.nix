@@ -25,15 +25,39 @@ let
     else {};
 
   haskellOverrides = haskellLib: hself: hsuper:
-    let buildStrictly = import ./build-strictly.nix haskellLib; in
+    let buildStrictly = import ./build-strictly.nix haskellLib;
+        jailbreak = drv: drv.override {
+          mkDerivation = args: hsuper.mkDerivation ({ jailbreak = true; } // args);
+        };
+    in
     {
       # haskell-src complains when built with ghc865:
       #   Setup: Encountered missing dependencies:
       #   array >=0.5.4.0 && <0.6, base >=4.13.0.0 && <4.14
-      # but ignoring dependency versions, it builds just fine.
-      haskell-src = hsuper.haskell-src.override {
-        mkDerivation = args: hsuper.mkDerivation ({ jailbreak = true; } // args);
-      };
+      # but ignoring dependency versions, it builds just fine, so we need to set
+      # the jailbreak flag to ignore dependency versions for haskell-src.
+      #
+      # We also need guarantee we're running at least haskell-src-1.0.3.1.  The
+      # NixOS 20.03 channel provides 1.0.3.0, which doesn't have the necessary
+      # MonadFail changes for newer GHCs.  The replacement expression in this
+      # case is derived from the one in hackage-packages.nix in Nixpkgs.
+      haskell-src = jailbreak (
+        let ver = (builtins.parseDrvName hsuper.haskell-src.name).version; in
+        if builtins.compareVersions ver "1.0.3.1" >= 0
+        then hsuper.haskell-src
+        else hsuper.callPackage
+          ({ stdenv, mkDerivation, array, base, happy, pretty, syb }:
+            mkDerivation {
+              pname = "haskell-src";
+              version = "1.0.3.1";
+              sha256 = "0cjigvshk4b8wqdk0v0hz9ag1kyjjsmqsy4a1m3n28ac008cg746";
+              libraryHaskellDepends = [ array base pretty syb ];
+              libraryToolDepends = [ happy ];
+              description = "Support for manipulating Haskell source code";
+              license = stdenv.lib.licenses.bsd3;
+            }
+          ) {}
+      );
     } //
     builtins.mapAttrs (name: pkg: buildStrictly pkg) {
       hoppy-generator = hsuper.callPackage ../generator haskellOptions;
