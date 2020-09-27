@@ -112,43 +112,66 @@ initialAppState ifaces = AppState
 type Caches = Map String InterfaceCache
 
 data InterfaceCache = InterfaceCache
-  { generatedCpp :: Maybe Cpp.Generation
-  , generatedHaskell :: Maybe Haskell.Generation
+  { cacheGeneratedCpp :: Maybe Cpp.Generation
+  , cacheGeneratedHaskell :: Maybe Haskell.Generation
+  , cacheComputedData :: Maybe ComputedInterfaceData
   }
 
 emptyCache :: InterfaceCache
-emptyCache = InterfaceCache Nothing Nothing
+emptyCache = InterfaceCache Nothing Nothing Nothing
 
 getGeneratedCpp ::
   AppState
   -> Interface
   -> InterfaceCache
-  -> IO (Interface, InterfaceCache, Either String Cpp.Generation)
-getGeneratedCpp state iface cache = case generatedCpp cache of
-  Just gen -> return (iface, cache, Right gen)
-  _ -> do
-    iface' <- evaluateEnums state iface
-    case Cpp.generate iface' of
-      l@(Left _) -> return (iface', cache, l)
-      r@(Right gen) -> return (iface', cache { generatedCpp = Just gen }, r)
+  -> IO (InterfaceCache, Either String Cpp.Generation)
+getGeneratedCpp state iface cache = case cacheGeneratedCpp cache of
+  Just gen -> return (cache, Right gen)
+  Nothing -> do
+    cache' <- generateComputedData state iface cache
+    computedData <- flip fromMaybeM (cacheComputedData cache') $ do
+      hPutStrLn stderr $
+        "getGeneratedCpp: Expected computed data to already exist for " ++ show iface ++ "."
+      exitFailure
+    case Cpp.generate iface computedData of
+      l@(Left _) -> return (cache', l)
+      r@(Right gen) -> return (cache' { cacheGeneratedCpp = Just gen }, r)
 
 getGeneratedHaskell ::
   AppState
   -> Interface
   -> InterfaceCache
-  -> IO (Interface, InterfaceCache, Either String Haskell.Generation)
-getGeneratedHaskell state iface cache = case generatedHaskell cache of
-  Just gen -> return (iface, cache, Right gen)
-  _ -> do
-    iface' <- evaluateEnums state iface
-    case Haskell.generate iface' of
-      l@(Left _) -> return (iface', cache, l)
-      r@(Right gen) -> return (iface', cache { generatedHaskell = Just gen }, r)
+  -> IO (InterfaceCache, Either String Haskell.Generation)
+getGeneratedHaskell state iface cache = case cacheGeneratedHaskell cache of
+  Just gen -> return (cache, Right gen)
+  Nothing -> do
+    cache' <- generateComputedData state iface cache
+    computedData <- flip fromMaybeM (cacheComputedData cache') $ do
+      hPutStrLn stderr $
+        "getGeneratedHaskell: Expected computed data to already exist for " ++ show iface ++ "."
+      exitFailure
+    case Haskell.generate iface computedData of
+      l@(Left _) -> return (cache', l)
+      r@(Right gen) -> return (cache' { cacheGeneratedHaskell = Just gen }, r)
 
-evaluateEnums :: AppState -> Interface -> IO Interface
-evaluateEnums state iface =
-  internalEvaluateEnumsForInterface iface $
-  appKeepTempOutputsOnFailure state
+-- | Ensures that the cached computed data for an interface been calculated,
+-- doing so if it hasn't.
+--
+-- This ensures that the 'ComputedInterfaceData' for an 'Interface' has been
+-- calculated.  This is only computed once for an interface, and is stored in
+-- the interface's 'InterfaceCache'.  This function returns the resulting cache
+-- with the computed data populated.
+generateComputedData :: AppState -> Interface -> InterfaceCache -> IO InterfaceCache
+generateComputedData state iface cache = case cacheComputedData cache of
+  Just _ -> return cache
+  Nothing -> do
+    evaluatedEnumMap <- internalEvaluateEnumsForInterface iface $ appKeepTempOutputsOnFailure state
+    return cache
+      { cacheComputedData = Just ComputedInterfaceData
+        { computedInterfaceName = interfaceName iface
+        , evaluatedEnumMap = evaluatedEnumMap
+        }
+      }
 
 -- | This provides a simple @main@ function for a generator.  Define your @main@
 -- as:
@@ -310,15 +333,16 @@ processArgs stateVar args =
           forM_ (moduleExports m) $ \export ->
           forM_ (getAllExtNames export) $ \extName ->
           putStrLn $ "extname module=" ++ moduleName m ++ " name=" ++ fromExtName extName
-        return (iface, cache, ())
+        return (cache, ())
       (DumpExtNames:) <$> processArgs stateVar rest
 
     "--dump-enums":rest -> do
       withCurrentCache stateVar $ \state iface cache -> do
-        iface' <- evaluateEnums state iface
-        allEvaluatedData <- flip fromMaybeM (interfaceEvaluatedEnumData iface') $ do
+        cache' <- generateComputedData state iface cache
+        computed <- flip fromMaybeM (cacheComputedData cache') $ do
           hPutStrLn stderr $ "--dump-enums expected to have evaluated enum data, but doesn't."
           exitFailure
+        let allEvaluatedData = evaluatedEnumMap computed
         forM_ (M.toList allEvaluatedData) $ \(extName, evaluatedData) -> do
           m <- flip fromMaybeM (M.lookup extName $ interfaceNamesToModules iface) $ do
             hPutStrLn stderr $
@@ -331,11 +355,11 @@ processArgs stateVar args =
             " type=" ++ typeStr
           forM_ (M.toList $ evaluatedEnumValueMap evaluatedData) $ \(words', number) ->
             putStrLn $ "entry value=" ++ show number ++ " name=" ++ show words'
-        return (iface', cache, ())
+        return (cache', ())
       (DumpEnums:) <$> processArgs stateVar rest
 
     "--keep-temp-outputs-on-failure":rest -> do
-      modifyMVar_ stateVar $ \state -> return $ state { appKeepTempOutputsOnFailure = True }
+      modifyMVar_ stateVar $ \state -> return state { appKeepTempOutputsOnFailure = True }
       (KeepTempOutputsOnFailure:) <$> processArgs stateVar rest
 
     arg:_ -> do
@@ -350,16 +374,14 @@ writeGeneratedFile baseDir subpath contents = do
 
 withCurrentCache ::
   MVar AppState
-  -> (AppState -> Interface -> InterfaceCache -> IO (Interface, InterfaceCache, a))
+  -> (AppState -> Interface -> InterfaceCache -> IO (InterfaceCache, a))
   -> IO a
 withCurrentCache stateVar fn = modifyMVar stateVar $ \state -> do
   let iface = appCurrentInterface state
       name = interfaceName iface
   let cache = fromMaybe emptyCache $ M.lookup name $ appCaches state
-  (iface', cache', result) <- fn state iface cache
-  return ( state { appInterfaces = M.insert name iface' $ appInterfaces state
-                 , appCaches = M.insert name cache' $ appCaches state
-                 }
+  (cache', result) <- fn state iface cache
+  return ( state { appCaches = M.insert name cache' $ appCaches state }
          , result
          )
 

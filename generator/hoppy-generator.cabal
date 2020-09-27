@@ -27,6 +27,7 @@ library
     , Foreign.Hoppy.Generator.Spec.Callback
     , Foreign.Hoppy.Generator.Spec.ClassFeature
     , Foreign.Hoppy.Generator.Spec.Class
+    , Foreign.Hoppy.Generator.Spec.Computed
     , Foreign.Hoppy.Generator.Spec.Enum
     , Foreign.Hoppy.Generator.Spec.Function
     , Foreign.Hoppy.Generator.Spec.Variable

@@ -51,15 +51,15 @@ newtype Generation = Generation
   }
 
 -- | Runs the C++ code generator against an interface.
-generate :: Interface -> Either ErrorMsg Generation
-generate iface =
+generate :: Interface -> ComputedInterfaceData -> Either ErrorMsg Generation
+generate iface computed =
   fmap (Generation . M.fromList) $
   execWriterT $
   forM_ (M.elems $ interfaceModules iface) $ \m -> do
     let headerGuard = concat ["HOPPY_MODULE_", interfaceName iface, "_", moduleName m]
-    header <- lift $ execGenerator iface m (Just headerGuard) sayModuleHeader
+    header <- lift $ execGenerator iface computed m (Just headerGuard) sayModuleHeader
     tell [(moduleHppPath m, header)]
-    source <- lift $ execGenerator iface m Nothing sayModuleSource
+    source <- lift $ execGenerator iface computed m Nothing sayModuleSource
     tell [(moduleCppPath m, source)]
 
 sayModuleHeader :: Generator ()

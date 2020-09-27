@@ -54,6 +54,7 @@ import Foreign.Hoppy.Generator.Common.Consume (MonadConsume, evalConsume, next)
 import Foreign.Hoppy.Generator.Compiler (Compiler, SomeCompiler (SomeCompiler), compileProgram)
 import Foreign.Hoppy.Generator.Language.Cpp (renderIdentifier)
 import Foreign.Hoppy.Generator.Spec.Base
+import Foreign.Hoppy.Generator.Spec.Computed (EvaluatedEnumData (..))
 import Foreign.Hoppy.Generator.Types (intT, llongT, longT, uintT, ullongT, ulongT)
 import Foreign.Hoppy.Generator.Util (withTempFile)
 import Foreign.Hoppy.Generator.Version (CppVersion (Cpp2011), activeCppVersion)
@@ -304,14 +305,8 @@ interpretOutputToEvaluateEnums args out =
 -- | Collects all of the enum values that need calculating in an interface, runs
 -- the hook to evaluate them, and stores the result in the interface.  This
 -- won't recalculate enum data if it's already been calculated.
-internalEvaluateEnumsForInterface :: Interface -> Bool -> IO Interface
-internalEvaluateEnumsForInterface iface keepBuildFailures =
-  case interfaceEvaluatedEnumData iface of
-    Just _ -> return iface
-    Nothing -> internalEvaluateEnumsForInterface' iface keepBuildFailures
-
-internalEvaluateEnumsForInterface' :: Interface -> Bool -> IO Interface
-internalEvaluateEnumsForInterface' iface keepBuildFailures = do
+internalEvaluateEnumsForInterface :: Interface -> Bool -> IO (M.Map ExtName EvaluatedEnumData)
+internalEvaluateEnumsForInterface iface keepBuildFailures = do
   let validateEnumTypes = interfaceValidateEnumTypes iface
 
       -- Collect all exports in the interface.
@@ -492,7 +487,7 @@ internalEvaluateEnumsForInterface' iface keepBuildFailures = do
             }
       return (extName, result)
 
-  return iface { interfaceEvaluatedEnumData = Just evaluatedDataMap }
+  return evaluatedDataMap
 
 newtype OrdIdentifier = OrdIdentifier { ordIdentifier :: Identifier }
   deriving (Eq, Show)

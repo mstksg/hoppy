@@ -64,6 +64,12 @@ import Data.Function (on)
 import qualified Data.Map as M
 import Foreign.Hoppy.Generator.Common (butLast, capitalize, for)
 import Foreign.Hoppy.Generator.Spec.Base
+import Foreign.Hoppy.Generator.Spec.Computed (
+  EvaluatedEnumData,
+  evaluatedEnumType,
+  evaluatedEnumValueMap,
+  getEvaluatedEnumData,
+  )
 import qualified Foreign.Hoppy.Generator.Language.Cpp as LC
 import qualified Foreign.Hoppy.Generator.Language.Haskell as LH
 import Foreign.Hoppy.Generator.Override (addOverrideMap, overriddenMapLookup, plainMap)
@@ -507,15 +513,15 @@ sayHsExport mode enum =
 -- | Reads evaluated data for the named enum from the C++ generator environment.
 cppGetEvaluatedEnumData :: HasCallStack => ExtName -> LC.Generator EvaluatedEnumData
 cppGetEvaluatedEnumData extName = do
-  iface <- LC.askInterface
-  return $ interfaceGetEvaluatedEnumData iface extName
+  computed <- LC.askComputedInterfaceData
+  return $ getEvaluatedEnumData computed extName
 
 -- | Reads evaluated data for the named enum from the Haskell generator
 -- environment.
 hsGetEvaluatedEnumData :: HasCallStack => ExtName -> LH.Generator EvaluatedEnumData
 hsGetEvaluatedEnumData extName = do
-  iface <- LH.askInterface
-  return $ interfaceGetEvaluatedEnumData iface extName
+  computed <- LH.askComputedInterfaceData
+  return $ getEvaluatedEnumData computed extName
 
 -- | Returns the Haskell name for an enum.
 --
