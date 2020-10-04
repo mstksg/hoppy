@@ -21,11 +21,20 @@ module Foreign.Hoppy.Generator.Spec.Computed (
   EvaluatedEnumData (..),
   EvaluatedEnumValueMap,
   getEvaluatedEnumData,
+  -- * Numeric types
+  NumericTypeInfo,
+  numType, numBytes, numMinBound, numMaxBound,
+  findNumericTypeInfo,
+  pickNumericType,
   ) where
 
 import qualified Data.Map as M
 import Data.Map (Map)
+import Data.Maybe (listToMaybe)
+import Foreign.C (CInt, CLong, CLLong, CUInt, CULong, CULLong)
 import Foreign.Hoppy.Generator.Spec.Base (ExtName, Type)
+import Foreign.Hoppy.Generator.Types (intT, llongT, longT, uintT, ullongT, ulongT)
+import Foreign.Storable (Storable, sizeOf)
 import GHC.Stack (HasCallStack)
 
 -- | Holds "computed data" for an interface.  This is data that is calculated by
@@ -40,12 +49,12 @@ data ComputedInterfaceData = ComputedInterfaceData
 -- | Information about the enum that has been completed beyond what the
 -- interface definition provides, possibly by building actual C++ code.
 data EvaluatedEnumData = EvaluatedEnumData
-  { evaluatedEnumType :: Type
+  { evaluatedEnumNumericType :: NumericTypeInfo
     -- ^ The numeric type that C++ uses to hold the enum's values, or an
     -- equivalently-sized type.
   , evaluatedEnumValueMap :: EvaluatedEnumValueMap
     -- ^ Calculated values for all of the enum's entries.
-  }
+  } deriving (Read, Show)
 
 -- | Contains the numeric values for each of the entries in a C++ enum.
 type EvaluatedEnumValueMap = Map [String] Integer
@@ -61,3 +70,62 @@ getEvaluatedEnumData computed extName = case M.lookup extName (evaluatedEnumMap 
   Nothing -> error $ "interfaceGetEvaluatedEnumData: No data found for " ++
              show extName ++ " in interface '" ++ computedInterfaceName computed ++ "'."
   Just info -> info
+
+-- | Bound information about numeric types.
+data NumericTypeInfo = NumericTypeInfo
+  { numType :: Type
+    -- ^ The numeric data type described by the record.
+  , numBytes :: Int
+    -- ^ The number of bytes in a value of the type.
+  , numMinBound :: Integer
+    -- ^ The lowest (most negative) value representable by the type.
+  , numMaxBound :: Integer
+    -- ^ The highest (most positive) value representable by the type.
+  }
+
+instance Show NumericTypeInfo where
+  show info = show (numBytes info, numMinBound info, numMaxBound info)
+
+instance Read NumericTypeInfo where
+  readsPrec p s =
+    case readsPrec p s of
+      [((bytes, minBound, maxBound), rest)] ->
+        case pickNumericType bytes minBound maxBound of
+          Just info -> [(info, rest)]
+          Nothing -> []
+      [] -> []
+      other ->
+        error $ "Read NumericTypeInfo: Unexpected readsPrec result: " ++ show other
+
+-- | Numeric types usable to hold enum values.  These are ordered by decreasing
+-- precedence (increasing word size).
+numericTypeInfo :: [NumericTypeInfo]
+numericTypeInfo =
+  [ mk intT (undefined :: CInt)
+  , mk uintT (undefined :: CUInt)
+  , mk longT (undefined :: CLong)
+  , mk ulongT (undefined :: CULong)
+  , mk llongT (undefined :: CLLong)
+  , mk ullongT (undefined :: CULLong)
+  ]
+  where mk :: forall a. (Bounded a, Integral a, Storable a) => Type -> a -> NumericTypeInfo
+        mk t _ = NumericTypeInfo
+                 { numType = t
+                 , numBytes = sizeOf (undefined :: a)
+                 , numMinBound = toInteger (minBound :: a)
+                 , numMaxBound = toInteger (maxBound :: a)
+                 }
+
+-- | Searches the list of known numeric types usable for enum values, and
+-- returns the record for the given type.
+findNumericTypeInfo :: Type -> Maybe NumericTypeInfo
+findNumericTypeInfo t = listToMaybe $ filter (\i -> numType i == t) numericTypeInfo
+
+-- | Selects the preferred numeric type for holding numeric values in the given
+-- range.
+pickNumericType :: Int -> Integer -> Integer -> Maybe NumericTypeInfo
+pickNumericType bytes low high =
+  listToMaybe $ flip filter numericTypeInfo $ \info ->
+  numBytes info == bytes &&
+  numMinBound info <= low &&
+  numMaxBound info >= high

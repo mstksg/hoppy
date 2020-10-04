@@ -33,6 +33,7 @@
 -- @
 module Foreign.Hoppy.Generator.Main (
   Action (..),
+  EnumEvalCacheMode (..),
   defaultMain,
   defaultMain',
   run,
@@ -55,7 +56,7 @@ import qualified Foreign.Hoppy.Generator.Language.Cpp as Cpp
 import qualified Foreign.Hoppy.Generator.Language.Cpp.Internal as Cpp
 import qualified Foreign.Hoppy.Generator.Language.Haskell.Internal as Haskell
 import Foreign.Hoppy.Generator.Spec
-import System.Directory (createDirectoryIfMissing, doesDirectoryExist)
+import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist)
 import System.Environment (getArgs)
 import System.Exit (exitFailure, exitSuccess)
 import System.FilePath ((</>), takeDirectory)
@@ -83,13 +84,40 @@ data Action =
     -- interface.
   | DumpEnums
     -- ^ Dumps to stdout information about all enums in the current interface.
+  | EnumEvalCachePath (Maybe FilePath)
+    -- ^ Specifies the path to a enum evaluation cache file to use.
+  | EnumEvalCacheMode EnumEvalCacheMode
+    -- ^ Specifies the behaviour with respect to how the enum evaluation cache
+    -- cache file is used.
 
 data AppState = AppState
   { appInterfaces :: Map String Interface
   , appCurrentInterfaceName :: String
   , appCaches :: Caches
   , appKeepTempOutputsOnFailure :: Bool
+  , appEnumEvalCachePath :: Maybe FilePath
+  , appEnumEvalCacheMode :: EnumEvalCacheMode
   }
+
+-- | Controls the behaviour of a generatior with respect to the enum cache file,
+-- when a file path provided (@--enum-eval-cache-path@).
+--
+-- If enum evaluation is required, based on the presence of the cache file and
+-- which of these modes is selected, then the compiler will be called and the
+-- results will be written to the cache file
+--
+-- If an enum cache file path is not provided, then this mode is ignored, and
+-- enum evaluation is attempted if a generator requires it.
+data EnumEvalCacheMode =
+    RefreshEnumCache
+    -- ^ The default.  Ignore the presence of an existing cache file, and
+    -- evaluate enums freshly, updating the cache file with new contents.
+  | EnumCacheMustExist
+    -- ^ Require the cache file to exist.  If it does not, enum evaluation will
+    -- not be attempted; the generator will exit unsuccessfully instead.
+  | UseEnumCacheIfPresent
+    -- ^ If the cache file already exists, it will be loaded and used.
+    -- Otherwise, enums will be evaluated, and a new cache file will be written.
 
 appCurrentInterface :: AppState -> Interface
 appCurrentInterface state =
@@ -107,6 +135,8 @@ initialAppState ifaces = AppState
   , appCurrentInterfaceName = interfaceName $ head ifaces
   , appCaches = M.empty
   , appKeepTempOutputsOnFailure = False
+  , appEnumEvalCachePath = Nothing
+  , appEnumEvalCacheMode = RefreshEnumCache
   }
 
 type Caches = Map String InterfaceCache
@@ -165,13 +195,53 @@ generateComputedData :: AppState -> Interface -> InterfaceCache -> IO InterfaceC
 generateComputedData state iface cache = case cacheComputedData cache of
   Just _ -> return cache
   Nothing -> do
-    evaluatedEnumMap <- internalEvaluateEnumsForInterface iface $ appKeepTempOutputsOnFailure state
+    evaluatedEnumMap <- generateEnumData state iface
     return cache
       { cacheComputedData = Just ComputedInterfaceData
         { computedInterfaceName = interfaceName iface
         , evaluatedEnumMap = evaluatedEnumMap
         }
       }
+
+-- | Generates evaluated enum data for storing in the interface cache.
+--
+-- If there is a cache path provided, and the file exists, then it is loaded and
+-- used.  Otherwise, if there is a cache path provided and the file doesn't
+-- exist, but a cache path is set to be required ('appEnumEvalCacheRequire'),
+-- then generation aborts.  Otherwise, the enum evaluation hook is called to
+-- evaluate the enums (see "Foreign.Hoppy.Generator.Hook"), and if a cache path
+-- is provided, then the result is serialized and written to the path.
+generateEnumData :: AppState -> Interface -> IO (Map ExtName EvaluatedEnumData)
+generateEnumData state iface =
+  case appEnumEvalCachePath state of
+    Nothing -> doEnumEval
+    Just path -> do
+      cached <- doesFileExist path
+      case (appEnumEvalCacheMode state, cached) of
+        (RefreshEnumCache, _) -> evalAndWriteFile path
+        (UseEnumCacheIfPresent, False) -> evalAndWriteFile path
+        (UseEnumCacheIfPresent, True) -> useFile path
+        (EnumCacheMustExist, True) -> useFile path
+        (EnumCacheMustExist, False) -> do
+          hPutStrLn stderr $
+            "generateEnumData: Error, enum evaluation cache expected for " ++
+            show iface ++ ", but none found at path '" ++ path ++ "'."
+          exitFailure
+
+  where useFile path = deserializeEnumData <$> readFile path
+        evalAndWriteFile path = do
+          result <- doEnumEval
+          writeFileIfDifferent path $ serializeEnumData result
+          return result
+        doEnumEval = do
+          internalEvaluateEnumsForInterface iface
+            (appKeepTempOutputsOnFailure state)
+
+serializeEnumData :: Map ExtName EvaluatedEnumData -> String
+serializeEnumData = show . M.mapKeys fromExtName
+
+deserializeEnumData :: String -> Map ExtName EvaluatedEnumData
+deserializeEnumData = M.mapKeys toExtName . read
 
 -- | This provides a simple @main@ function for a generator.  Define your @main@
 -- as:
@@ -205,6 +275,9 @@ defaultMain' interfaceResults = do
 -- The recognized arguments are listed below.  The exact forms shown are
 -- required; the @--long-arg=value@ style is not supported.
 --
+-- Arguments are processed in the order given, this means that settings must
+-- come before action arguments.
+--
 -- - __@--help@:__ Displays a menu listing the valid commands.
 --
 -- - __@--list-interfaces@:__ Lists the interfaces compiled into the generator.
@@ -216,6 +289,18 @@ defaultMain' interfaceResults = do
 --
 -- - __@--gen-hs \<outdir\>@:__ Generates Haskell bindings under the given
 --   top-level source directory.
+--
+-- - __@--enum-eval-cache-path \<cachefile\>@:__ Specifies a cache file to use
+--   for the results of enum evaluation.  If the cache file already exists, then
+--   it may be loaded to save calling the compiler, depending on the cache mode
+--   (@--enum-eval-cache-mode@).  Because enum evaluation results are required
+--   when generating both the C++ and Haskell interfaces and these are normally
+--   separate packages, this allows the C++ package's evaluation work to be
+--   shared with the Haskell package.
+--
+-- - __@--enum-eval-cache-mode \<refresh|must-exist|use-if-present\>@:__
+--   Controls the specific behaviour of the generator with respect to the enum
+--   evaluation cache file.  See 'EnumEvalCacheMode'.
 run :: [Interface] -> [String] -> IO [Action]
 run interfaces args = do
   stateVar <- newMVar $ initialAppState interfaces
@@ -233,24 +318,34 @@ usage stateVar = do
   mapM_ putStrLn
     [ "Hoppy binding generator"
     , ""
+    , "Arguments: [ option... ] [ action... ]"
+    , "  Arguments are processed in the order seen, so put options before the"
+    , "  arguments they apply to.  Normally, pass --gen-* last."
+    , ""
     , "Interfaces: " ++ intercalate ", " interfaceNames
     , ""
-    , "Supported options:"
+    , "Supported actions:"
     , "  --help                      Displays this menu."
-    , "  --interface <iface>         Sets the interface used for subsequent options."
     , "  --list-interfaces           Lists the interfaces compiled into this binary."
     , "  --list-cpp-files            Lists generated file paths in C++ bindings."
     , "  --list-hs-files             Lists generated file paths in Haskell bindings."
     , "  --gen-cpp <outdir>          Generate C++ bindings in a directory."
     , "  --gen-hs <outdir>           Generate Haskell bindings under the given"
     , "                              top-level source directory."
-    , "  --keep-temp-outputs-on-failure"
-    , "                              Keeps on disk any temporary programs that fail"
-    , "                              to build.  Pass this before --gen-* commands."
     , "  --dump-ext-names            Lists the current interface's external names."
     , "  --dump-enums                Lists the current interface's enum data."
     , ""
-    , "Arguments are processed in the order seen."
+    , "Supported options:"
+    , "  --interface <iface>         Sets the interface used for subsequent options."
+    , "  --keep-temp-outputs-on-failure"
+    , "                              Keeps on disk any temporary programs that fail"
+    , "                              to build.  Pass this before --gen-* commands."
+    , "  --enum-eval-cache-path <path>"
+    , "  --enum-eval-cache-mode <refresh|must-exist|use-if-present>"
+    , "          Controls the behaviour of the enum evaluation result caching."
+    , "          Caching is disabled if no path is given.  With 'refresh', enums"
+    , "          are always evaluated freshly and the cache file is updated."
+    , "          With 'must-exist', the cache file must already exist."
     ]
 
 processArgs :: MVar AppState -> [String] -> IO [Action]
@@ -350,7 +445,7 @@ processArgs stateVar args =
             exitFailure
           let typeStr =
                 Cpp.chunkContents $ Cpp.execChunkWriter $
-                Cpp.sayType Nothing $ evaluatedEnumType evaluatedData
+                Cpp.sayType Nothing $ numType $ evaluatedEnumNumericType evaluatedData
           putStrLn $ "enum name=" ++ fromExtName extName ++ " module=" ++ moduleName m ++
             " type=" ++ typeStr
           forM_ (M.toList $ evaluatedEnumValueMap evaluatedData) $ \(words', number) ->
@@ -361,6 +456,23 @@ processArgs stateVar args =
     "--keep-temp-outputs-on-failure":rest -> do
       modifyMVar_ stateVar $ \state -> return state { appKeepTempOutputsOnFailure = True }
       (KeepTempOutputsOnFailure:) <$> processArgs stateVar rest
+
+    "--enum-eval-cache-path":path:rest -> do
+      let path' = if path == "" then Nothing else Just path
+      modifyMVar_ stateVar $ \state -> return state { appEnumEvalCachePath = path' }
+      (EnumEvalCachePath path':) <$> processArgs stateVar rest
+
+    "--enum-eval-cache-mode":arg:rest -> do
+      mode <- case arg of
+        "use-if-present" -> return UseEnumCacheIfPresent
+        "must-exist" -> return EnumCacheMustExist
+        "refresh" -> return RefreshEnumCache
+        _ -> do
+          hPutStrLn stderr $
+            "--enum-eval-cache-mode received unexpected argument, got: '" ++ arg ++ "'"
+          exitFailure
+      modifyMVar_ stateVar $ \state -> return state { appEnumEvalCacheMode = mode }
+      (EnumEvalCacheMode mode:) <$> processArgs stateVar rest
 
     arg:_ -> do
       hPutStrLn stderr $ "Invalid option or missing argument for '" ++ arg ++ "'."

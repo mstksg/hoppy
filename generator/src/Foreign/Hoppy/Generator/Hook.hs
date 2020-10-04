@@ -31,6 +31,8 @@ module Foreign.Hoppy.Generator.Hook (
   makeCppSourceToEvaluateEnums,
   interpretOutputToEvaluateEnums,
   -- * Internal
+  NumericTypeInfo (..),
+  pickNumericType,
   internalEvaluateEnumsForInterface,
   ) where
 
@@ -46,19 +48,22 @@ import Data.ByteString.Builder (stringUtf8, toLazyByteString)
 import Data.List (splitAt)
 #endif
 import qualified Data.Map as M
-import Data.Maybe (isJust, listToMaybe, mapMaybe)
+import Data.Maybe (isJust, mapMaybe)
 import qualified Data.Set as S
-import Foreign.C (CInt, CLong, CLLong, CUInt, CULong, CULLong)
 import Foreign.Hoppy.Generator.Common (doubleQuote, for, fromMaybeM, pluralize)
 import Foreign.Hoppy.Generator.Common.Consume (MonadConsume, evalConsume, next)
 import Foreign.Hoppy.Generator.Compiler (Compiler, SomeCompiler (SomeCompiler), compileProgram)
 import Foreign.Hoppy.Generator.Language.Cpp (renderIdentifier)
 import Foreign.Hoppy.Generator.Spec.Base
-import Foreign.Hoppy.Generator.Spec.Computed (EvaluatedEnumData (..))
-import Foreign.Hoppy.Generator.Types (intT, llongT, longT, uintT, ullongT, ulongT)
+import Foreign.Hoppy.Generator.Spec.Computed (
+  EvaluatedEnumData (..),
+  NumericTypeInfo,
+  findNumericTypeInfo,
+  numBytes,
+  pickNumericType,
+  )
 import Foreign.Hoppy.Generator.Util (withTempFile)
 import Foreign.Hoppy.Generator.Version (CppVersion (Cpp2011), activeCppVersion)
-import Foreign.Storable (Storable, sizeOf)
 import System.Exit (ExitCode (ExitFailure, ExitSuccess), exitFailure)
 import System.IO (hClose, hPutStrLn, stderr)
 import System.Process (readProcessWithExitCode)
@@ -362,7 +367,7 @@ internalEvaluateEnumsForInterface iface keepBuildFailures = do
         (namesToShow, namesToSkip) = splitAt 10 scopedEnumsWithAutoEntries
     unless (null scopedEnumsWithAutoEntries) $ do
       hPutStrLn stderr $
-        "internalEvaluateEnumsForInterface': Automatic evaluation of enum values is not " ++
+        "internalEvaluateEnumsForInterface': Automatic evaluation of enum values " ++
         "requires at least " ++ show Cpp2011 ++ ", but we are compiling for " ++
         show activeCppVersion ++ ", aborting.  Enums requesting evaluation are " ++
         show namesToShow ++
@@ -482,7 +487,7 @@ internalEvaluateEnumsForInterface iface keepBuildFailures = do
         pickNumericType bytes low high
 
       let result = EvaluatedEnumData
-            { evaluatedEnumType = numericType
+            { evaluatedEnumNumericType = numericType
             , evaluatedEnumValueMap = numMap
             }
       return (extName, result)
@@ -495,45 +500,6 @@ newtype OrdIdentifier = OrdIdentifier { ordIdentifier :: Identifier }
 instance Ord OrdIdentifier where
   compare (OrdIdentifier i1) (OrdIdentifier i2) =
     compare (renderIdentifier i1) (renderIdentifier i2)
-
--- | Bound information about numeric types.
-data NumericTypeInfo = NumericTypeInfo
-  { numType :: Type
-  , numBytes :: Int
-  , numMinBound :: Integer
-  , numMaxBound :: Integer
-  }
-
--- | Numeric types usable to hold enum values.  These are ordered by decreasing
--- precedence (increasing word size).
-numericTypeInfo :: [NumericTypeInfo]
-numericTypeInfo =
-  [ mk intT (undefined :: CInt)
-  , mk uintT (undefined :: CUInt)
-  , mk longT (undefined :: CLong)
-  , mk ulongT (undefined :: CULong)
-  , mk llongT (undefined :: CLLong)
-  , mk ullongT (undefined :: CULLong)
-  ]
-  where mk :: forall a. (Bounded a, Integral a, Storable a) => Type -> a -> NumericTypeInfo
-        mk t _ = NumericTypeInfo
-                 { numType = t
-                 , numBytes = sizeOf (undefined :: a)
-                 , numMinBound = toInteger (minBound :: a)
-                 , numMaxBound = toInteger (maxBound :: a)
-                 }
-
-findNumericTypeInfo :: Type -> Maybe NumericTypeInfo
-findNumericTypeInfo t = listToMaybe $ filter (\i -> numType i == t) numericTypeInfo
-
--- | Selects the preferred numeric type for holding numeric values in the given
--- range.
-pickNumericType :: Int -> Integer -> Integer -> Maybe Type
-pickNumericType bytes low high =
-  fmap numType $ listToMaybe $ flip filter numericTypeInfo $ \info ->
-  numBytes info == bytes &&
-  numMinBound info <= low &&
-  numMaxBound info >= high
 
 isAuto :: EnumValue -> Bool
 isAuto (EnumValueAuto _) = True

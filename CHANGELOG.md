@@ -5,6 +5,11 @@
 - Updated the example bindings to support Cabal Nix-style builds with v2-build.
   This uses the `build-tool-depends` field which requires Cabal 2.0 or higher.
 
+- Added support for caching the results of enum evaluation, when it takes place
+  during generation of a C++ gateway package, so that generation of the Haskell
+  package can reuse the result and not have to run C++ compilation a second time
+  (issue #41, bug #45).
+
 ## hoppy-generator-0.7.1, hoppy-std-0.7.1 (2020-03-30)
 
 - Added support for GHC 8.8.* and 8.10.1 (issue #44).  Updates for the

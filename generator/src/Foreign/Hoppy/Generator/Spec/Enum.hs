@@ -66,9 +66,10 @@ import Foreign.Hoppy.Generator.Common (butLast, capitalize, for)
 import Foreign.Hoppy.Generator.Spec.Base
 import Foreign.Hoppy.Generator.Spec.Computed (
   EvaluatedEnumData,
-  evaluatedEnumType,
+  evaluatedEnumNumericType,
   evaluatedEnumValueMap,
   getEvaluatedEnumData,
+  numType,
   )
 import qualified Foreign.Hoppy.Generator.Language.Cpp as LC
 import qualified Foreign.Hoppy.Generator.Language.Haskell as LH
@@ -372,7 +373,8 @@ makeConversion e =
           makeConversionSpecHaskell
             (HsTyCon . UnQual . HsIdent <$> toHsEnumTypeName e)
             (Just $ do evaluatedData <- hsGetEvaluatedEnumData $ enumExtName e
-                       LH.cppTypeToHsTypeAndUse LH.HsCSide $ evaluatedEnumType evaluatedData)
+                       LH.cppTypeToHsTypeAndUse LH.HsCSide $
+                         numType $ evaluatedEnumNumericType evaluatedData)
             (CustomConversion $ do
                LH.addImports $ mconcat [hsImport1 "Prelude" "(.)",
                                         hsImportForPrelude,
@@ -399,7 +401,8 @@ sayHsExport mode enum =
     LH.SayExportDecls -> do
       hsTypeName <- toHsEnumTypeName enum
       evaluatedData <- hsGetEvaluatedEnumData $ enumExtName enum
-      numericType <- LH.cppTypeToHsTypeAndUse LH.HsCSide $ evaluatedEnumType evaluatedData
+      numericType <- LH.cppTypeToHsTypeAndUse LH.HsCSide $
+        numType $ evaluatedEnumNumericType evaluatedData
       let evaluatedValueMap = evaluatedEnumValueMap evaluatedData
       evaluatedValues <- forM (enumValueMapNames $ enumValues enum) $ \name ->
         case M.lookup name evaluatedValueMap of
@@ -497,7 +500,8 @@ sayHsExport mode enum =
     LH.SayExportBoot -> do
       hsTypeName <- toHsEnumTypeName enum
       evaluatedData <- hsGetEvaluatedEnumData $ enumExtName enum
-      numericType <- LH.cppTypeToHsTypeAndUse LH.HsCSide $ evaluatedEnumType evaluatedData
+      numericType <- LH.cppTypeToHsTypeAndUse LH.HsCSide $
+        numType $ evaluatedEnumNumericType evaluatedData
       LH.addImports $ mconcat [hsImportForPrelude, hsImportForRuntime]
       LH.addExport hsTypeName
       LH.ln
