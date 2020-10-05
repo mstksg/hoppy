@@ -108,6 +108,13 @@ data AppState = AppState
 --
 -- If an enum cache file path is not provided, then this mode is ignored, and
 -- enum evaluation is attempted if a generator requires it.
+--
+-- Change detection is not currently supported.  There is no ability to detect
+-- whether the cache file is up to date and contains all of the enum entries for
+-- the current state of the enums defined in an interface.  The cache file is
+-- meant to be refreshed with 'RefreshEnumCache' when building the C++ binding
+-- package, and installed with them so that the Haskell binding package can use
+-- 'EnumCacheMustExist'.
 data EnumEvalCacheMode =
     RefreshEnumCache
     -- ^ The default.  Ignore the presence of an existing cache file, and
@@ -115,9 +122,6 @@ data EnumEvalCacheMode =
   | EnumCacheMustExist
     -- ^ Require the cache file to exist.  If it does not, enum evaluation will
     -- not be attempted; the generator will exit unsuccessfully instead.
-  | UseEnumCacheIfPresent
-    -- ^ If the cache file already exists, it will be loaded and used.
-    -- Otherwise, enums will be evaluated, and a new cache file will be written.
 
 appCurrentInterface :: AppState -> Interface
 appCurrentInterface state =
@@ -219,8 +223,6 @@ generateEnumData state iface =
       cached <- doesFileExist path
       case (appEnumEvalCacheMode state, cached) of
         (RefreshEnumCache, _) -> evalAndWriteFile path
-        (UseEnumCacheIfPresent, False) -> evalAndWriteFile path
-        (UseEnumCacheIfPresent, True) -> useFile path
         (EnumCacheMustExist, True) -> useFile path
         (EnumCacheMustExist, False) -> do
           hPutStrLn stderr $
@@ -298,7 +300,7 @@ defaultMain' interfaceResults = do
 --   separate packages, this allows the C++ package's evaluation work to be
 --   shared with the Haskell package.
 --
--- - __@--enum-eval-cache-mode \<refresh|must-exist|use-if-present\>@:__
+-- - __@--enum-eval-cache-mode \<refresh|must-exist\>@:__
 --   Controls the specific behaviour of the generator with respect to the enum
 --   evaluation cache file.  See 'EnumEvalCacheMode'.
 run :: [Interface] -> [String] -> IO [Action]
@@ -341,7 +343,7 @@ usage stateVar = do
     , "                              Keeps on disk any temporary programs that fail"
     , "                              to build.  Pass this before --gen-* commands."
     , "  --enum-eval-cache-path <path>"
-    , "  --enum-eval-cache-mode <refresh|must-exist|use-if-present>"
+    , "  --enum-eval-cache-mode <refresh|must-exist>"
     , "          Controls the behaviour of the enum evaluation result caching."
     , "          Caching is disabled if no path is given.  With 'refresh', enums"
     , "          are always evaluated freshly and the cache file is updated."
@@ -464,7 +466,6 @@ processArgs stateVar args =
 
     "--enum-eval-cache-mode":arg:rest -> do
       mode <- case arg of
-        "use-if-present" -> return UseEnumCacheIfPresent
         "must-exist" -> return EnumCacheMustExist
         "refresh" -> return RefreshEnumCache
         _ -> do
