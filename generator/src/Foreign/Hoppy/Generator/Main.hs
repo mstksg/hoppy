@@ -36,6 +36,7 @@ module Foreign.Hoppy.Generator.Main (
   EnumEvalCacheMode (..),
   defaultMain,
   defaultMain',
+  ensureInterfaces,
   run,
   ) where
 
@@ -56,7 +57,7 @@ import qualified Foreign.Hoppy.Generator.Language.Cpp as Cpp
 import qualified Foreign.Hoppy.Generator.Language.Cpp.Internal as Cpp
 import qualified Foreign.Hoppy.Generator.Language.Haskell.Internal as Haskell
 import Foreign.Hoppy.Generator.Spec
-import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist)
+import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, removeFile)
 import System.Environment (getArgs)
 import System.Exit (exitFailure, exitSuccess)
 import System.FilePath ((</>), takeDirectory)
@@ -76,6 +77,10 @@ data Action =
     -- ^ Generates C++ wrappers for an interface in the given location.
   | GenHaskell FilePath
     -- ^ Generates Haskell bindings for an interface in the given location.
+  | CleanCpp FilePath
+    -- ^ Removes the generated files in C++ bindings.
+  | CleanHs FilePath
+    -- ^ Removes the generated files in Haskell bindings.
   | KeepTempOutputsOnFailure
     -- ^ Instructs the generator to keep on disk any temporary programs or files
     -- created, in case of failure.
@@ -260,15 +265,21 @@ defaultMain interfaceResult = defaultMain' [interfaceResult]
 -- | This is a version of 'defaultMain' that accepts multiple interfaces.
 defaultMain' :: [Either String Interface] -> IO ()
 defaultMain' interfaceResults = do
-  interfaces <- forM interfaceResults $ \case
-    Left errorMsg -> do
-      hPutStrLn stderr $ "Error initializing interface: " ++ errorMsg
-      exitFailure
-    Right iface -> return iface
-
+  interfaces <- ensureInterfaces interfaceResults
   args <- getArgs
   _ <- run interfaces args
   return ()
+
+-- | Ensures that all of the entries in a list of results coming from
+-- 'interface' are successful, and returns the list of 'Interface' values.  If
+-- any results are unsuccessful, then an error message is printed, and the
+-- program exits with an error ('exitFailure').
+ensureInterfaces :: [Either String Interface] -> IO [Interface]
+ensureInterfaces interfaceResults = forM interfaceResults $ \case
+  Left errorMsg -> do
+    hPutStrLn stderr $ "Error initializing interface: " ++ errorMsg
+    exitFailure
+  Right iface -> return iface
 
 -- | @run interfaces args@ runs the driver with the command-line arguments from
 -- @args@ against the listed interfaces, and returns the list of actions
@@ -334,6 +345,8 @@ usage stateVar = do
     , "  --gen-cpp <outdir>          Generate C++ bindings in a directory."
     , "  --gen-hs <outdir>           Generate Haskell bindings under the given"
     , "                              top-level source directory."
+    , "  --clean-cpp <outdir>        Removes generated file paths in C++ bindings."
+    , "  --clean-hs <outdir>         Removes generated file paths in Haskell bindings."
     , "  --dump-ext-names            Lists the current interface's external names."
     , "  --dump-enums                Lists the current interface's enum data."
     , ""
@@ -420,9 +433,37 @@ processArgs stateVar args =
           hPutStrLn stderr $ "--gen-hs: Failed to generate: " ++ errorMsg
           exitFailure
         Right gen -> do
-          forM_ (M.toList $ Haskell.generatedFiles gen) $
-            uncurry $ writeGeneratedFile baseDir
+          forM_ (M.toList $ Haskell.generatedFiles gen) $ \(subpath, contents) ->
+            writeGeneratedFile baseDir subpath contents
           (GenHaskell baseDir:) <$> processArgs stateVar rest
+
+    "--clean-cpp":baseDir:rest -> do
+      baseDirExists <- doesDirectoryExist baseDir
+      when baseDirExists $ do
+        genResult <- withCurrentCache stateVar $ getGeneratedCpp $ Just baseDir
+        case genResult of
+          Left errorMsg -> do
+            hPutStrLn stderr $ "--clean-cpp: Failed to evaluate interface: " ++ errorMsg
+            exitFailure
+          Right gen -> do
+            -- TODO Remove empty directories.
+            forM_ (M.keys $ Cpp.generatedFiles gen) $ \path ->
+              removeFile $ baseDir </> path
+      (CleanCpp baseDir:) <$> processArgs stateVar rest
+
+    "--clean-hs":baseDir:rest -> do
+      baseDirExists <- doesDirectoryExist baseDir
+      when baseDirExists $ do
+        genResult <- withCurrentCache stateVar $ getGeneratedHaskell
+        case genResult of
+          Left errorMsg -> do
+            hPutStrLn stderr $ "--clean-hs: Failed to evaluate interface: " ++ errorMsg
+            exitFailure
+          Right gen -> do
+            -- TODO Remove empty directories.
+            forM_ (M.keys $ Haskell.generatedFiles gen) $ \path ->
+              removeFile $ baseDir </> path
+      (CleanHs baseDir:) <$> processArgs stateVar rest
 
     "--dump-ext-names":rest -> do
       withCurrentCache stateVar $ \_ iface cache -> do
@@ -476,7 +517,7 @@ processArgs stateVar args =
       (EnumEvalCacheMode mode:) <$> processArgs stateVar rest
 
     arg:_ -> do
-      hPutStrLn stderr $ "Invalid option or missing argument for '" ++ arg ++ "'."
+      hPutStrLn stderr $ "Invalid option, or missing argument for '" ++ arg ++ "'."
       exitFailure
 
 writeGeneratedFile :: FilePath -> FilePath -> String -> IO ()

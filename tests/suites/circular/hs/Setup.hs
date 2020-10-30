@@ -18,13 +18,13 @@
 module Main (main) where
 
 import Foreign.Hoppy.Setup (ProjectConfig (..), hsMain)
+import qualified Foreign.Hoppy.Test.Interfaces.Circular as Circular
 
 main =
   hsMain
   ProjectConfig
-  { generatorExecutableName = "hoppy-tests-generator"
+  { interfaceResult = Circular.interfaceResult
   , cppPackageName = "hoppy-tests-circular-cpp"
   , cppSourcesDir = "cpp"
   , hsSourcesDir = "src"
-  , interfaceName = Just "circular"
   }

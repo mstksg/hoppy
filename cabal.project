@@ -20,3 +20,10 @@ packages:
     std
     runtime
     docs
+    tests/generator
+    tests/suites/basic/cpp
+    tests/suites/basic/hs
+    tests/suites/circular/cpp
+    tests/suites/circular/hs
+    tests/suites/stl/cpp
+    tests/suites/stl/hs

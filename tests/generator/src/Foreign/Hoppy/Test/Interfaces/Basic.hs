@@ -30,14 +30,12 @@ import Language.Haskell.Syntax (
   HsQName (UnQual),
   HsType (HsTyCon),
   )
-import Foreign.Hoppy.Test.Interfaces.Compiler (testCompiler)
 
 {-# ANN module "HLint: ignore Use camelCase" #-}
 
 interfaceResult :: Either String Interface
 interfaceResult =
   interface "basic" modules >>=
-  pure . interfaceSetCompiler testCompiler >>=
   pure . interfaceSetExceptionSupportModule testModule >>=
   interfaceAddHaskellModuleBase ["Foreign", "Hoppy", "Test"]
 

@@ -4,7 +4,7 @@ license: AGPL-3
 author: Bryan Gardiner <bog@khumba.net>
 maintainer: Bryan Gardiner <bog@khumba.net>
 copyright: Copyright 2015-2020 Bryan Gardiner
-build-type: Simple
+build-type: Custom
 cabal-version: >=1.10
 
 custom-setup
@@ -12,6 +12,7 @@ custom-setup
       base
     , Cabal
     , hoppy-runtime
+    , hoppy-tests-generator
 
 library
   other-extensions:
@@ -24,7 +25,6 @@ library
       base >=4.7 && <5
     , hoppy-runtime
     , hoppy-tests-circular-cpp
-    , hoppy-tests-generator
   hs-source-dirs: src
   exposed-modules:
       Foreign.Hoppy.Test.Flob
@@ -37,7 +37,8 @@ test-suite tests-circular
   type: exitcode-stdio-1.0
   main-is: Main.hs
   default-language: Haskell2010
-  ghc-options: -W -fwarn-incomplete-patterns -fwarn-unused-do-bind
+  ghc-options: -W -fwarn-incomplete-patterns -fwarn-unused-do-bind -dynamic
+  extra-libraries: hoppy-tests-circular
   build-depends:
       base >=4.7 && <5
     , hoppy-runtime

@@ -9,22 +9,13 @@ cabal-version: >=1.10
 
 library
   hs-source-dirs: src
-  other-modules:
-      Foreign.Hoppy.Test.EmptyGenerator
-  build-depends:
-      base
-  default-language: Haskell2010
-  ghc-options: -W -fwarn-incomplete-patterns -fwarn-unused-do-bind
-
-executable hoppy-tests-generator
-  main-is: Main.hs
-  other-modules:
+  exposed-modules:
       Foreign.Hoppy.Test.Interfaces.Basic
     , Foreign.Hoppy.Test.Interfaces.Circular
-    , Foreign.Hoppy.Test.Interfaces.Circular.Flob
-    , Foreign.Hoppy.Test.Interfaces.Circular.Flub
-    , Foreign.Hoppy.Test.Interfaces.Compiler
     , Foreign.Hoppy.Test.Interfaces.Stl
+  other-modules:
+      Foreign.Hoppy.Test.Interfaces.Circular.Flob
+    , Foreign.Hoppy.Test.Interfaces.Circular.Flub
   build-depends:
       base >=4.7 && <5
     , filepath >= 1.4 && <1.5

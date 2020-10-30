@@ -60,7 +60,7 @@ module Foreign.Hoppy.Setup (
   hsUserHooks,
   ) where
 
-import Control.Monad (forM_, unless, when)
+import Control.Monad (unless, when)
 import Data.List (isInfixOf)
 import Distribution.InstalledPackageInfo (libraryDirs)
 #if MIN_VERSION_Cabal(2,0,0)
@@ -85,7 +85,6 @@ import Distribution.Simple.LocalBuildInfo (
   )
 import Distribution.Simple.PackageIndex (lookupPackageName)
 import Distribution.Simple.Program (
-  getProgramOutput,
   runDbProgram,
   runProgram,
   )
@@ -137,17 +136,19 @@ import Distribution.Simple.Utils (die')
 #else
 import Distribution.Simple.Utils (die)
 #endif
-import Distribution.Simple.Utils (info)
+import Distribution.Simple.Utils (installOrdinaryFile)
 import Distribution.Verbosity (Verbosity, normal)
-import System.Directory (createDirectoryIfMissing, doesFileExist, removeFile)
+import Foreign.Hoppy.Generator.Main (run)
+import Foreign.Hoppy.Generator.Spec (Interface)
+import System.Directory (createDirectoryIfMissing, doesFileExist)
 import System.FilePath ((</>), takeDirectory)
-
-data Language = Cpp | Haskell
 
 -- | Configuration parameters for a project using Hoppy.
 data ProjectConfig = ProjectConfig
-  { generatorExecutableName :: FilePath
-    -- ^ The name of the executable program in the generator package.
+  { interfaceResult :: Either String Interface
+    -- ^ The interface to run the generator with.  This result is returned from
+    -- @Foreign.Hoppy.Generator.Spec.interface@ and some may have failed; the
+    -- string is a message indicating the problem.
   , cppPackageName :: String
     -- ^ The name of the C++ gateway package.
   , cppSourcesDir :: FilePath
@@ -156,19 +157,24 @@ data ProjectConfig = ProjectConfig
   , hsSourcesDir :: FilePath
     -- ^ The directory into which to generate Haskell sources, under the Haskell
     -- gateway package root.
-  , interfaceName :: Maybe String
-    -- ^ If the generator contains multiple interfaces, then this can be used to
-    -- select one.  If present, it is passed as an argument to @--interface@
-    -- when invoking the generator.  If absent, the default interface is used.
   }
 
-getGeneratorProgram :: ProjectConfig -> Program
-getGeneratorProgram project = simpleProgram $ generatorExecutableName project
+-- | The name of the file we'll use to hold the enum evaluation cache.
+enumEvalCacheFileName :: FilePath
+enumEvalCacheFileName = "hoppy-enum-eval-cache"
 
-getInterfaceArg :: ProjectConfig -> [String]
-getInterfaceArg project = case interfaceName project of
-  Just name -> ["--interface", name]
-  Nothing -> []
+-- | Extracts the 'Interface' from a 'ProjectConfig', checking its
+-- 'interfaceResult' and aborting the program if the result is unsuccessful.
+getInterface :: ProjectConfig -> Verbosity -> IO Interface
+getInterface project verbosity = case interfaceResult project of
+  Left errorMsg ->
+#if MIN_VERSION_Cabal(2,0,0)
+    die' verbosity $
+#else
+    die $
+#endif
+    "Error initializing interface: " ++ errorMsg
+  Right iface -> return iface
 
 -- | A @main@ implementation to be used in the @Setup.hs@ of a C++ gateway
 -- package.
@@ -196,11 +202,11 @@ cppMain project = defaultMainWithHooks $ cppUserHooks project
 cppUserHooks :: ProjectConfig -> UserHooks
 cppUserHooks project =
   simpleUserHooks
-  { hookedPrograms = [generatorProgram, makeProgram]
+  { hookedPrograms = [makeProgram]
 
   , postConf = \args flags pkgDesc localBuildInfo -> do
       let verbosity = fromFlagOrDefault normal $ configVerbosity flags
-      cppConfigure project verbosity localBuildInfo generatorProgram
+      cppConfigure project verbosity localBuildInfo
       postConf simpleUserHooks args flags pkgDesc localBuildInfo
 
   , buildHook = \pkgDesc localBuildInfo hooks flags -> do
@@ -224,7 +230,7 @@ cppUserHooks project =
   , regHook = \pkgDesc localBuildInfo hooks flags -> do
       regHook simpleUserHooks pkgDesc localBuildInfo hooks flags
       let verbosity = fromFlagOrDefault normal $ regVerbosity flags
-      cppRegister verbosity pkgDesc localBuildInfo flags
+      cppRegister verbosity localBuildInfo flags
 
   , cleanHook = \pkgDesc z hooks flags -> do
       cleanHook simpleUserHooks pkgDesc z hooks flags
@@ -232,19 +238,21 @@ cppUserHooks project =
       cppClean project verbosity
   }
 
-  where generatorProgram = getGeneratorProgram project
-
 makeProgram :: Program
 makeProgram = simpleProgram "make"
 
-cppConfigure :: ProjectConfig -> Verbosity -> LocalBuildInfo -> Program -> IO ()
-cppConfigure project verbosity localBuildInfo generatorProgram = do
+cppConfigure :: ProjectConfig -> Verbosity -> LocalBuildInfo -> IO ()
+cppConfigure project verbosity localBuildInfo = do
   -- Invoke the generator to create C++ code.
-  let programDb = withPrograms localBuildInfo
-      sourcesDir = cppSourcesDir project
+  let sourcesDir = cppSourcesDir project
+  iface <- getInterface project verbosity
   createDirectoryIfMissing True sourcesDir
-  runDbProgram verbosity generatorProgram programDb $
-    getInterfaceArg project ++ ["--gen-cpp", sourcesDir]
+  createDirectoryIfMissing True $ buildDir localBuildInfo
+  _ <- run [iface]
+           [ "--enum-eval-cache-mode", "refresh"
+           , "--enum-eval-cache-path", buildDir localBuildInfo </> enumEvalCacheFileName
+           , "--gen-cpp", sourcesDir
+           ]
 
   -- When there is a configure script, then run it.
   maybeConfigureProgram <- findConfigure
@@ -287,8 +295,18 @@ cppInstall verbosity pkgDesc localBuildInfo dest = do
   createDirectoryIfMissing True libDir
   runDbProgram verbosity makeProgram programDb ["install", "libdir=" ++ libDir]
 
-cppRegister :: Verbosity -> PackageDescription -> LocalBuildInfo -> RegisterFlags -> IO ()
-cppRegister verbosity _pkgDesc localBuildInfo flags = do
+  -- We're doing an old-style install, so copy the enum eval cache file from the
+  -- build directory to the library directory where the Haskell side of the
+  -- bindings will find it.
+  let enumEvalCacheFilePath = buildDir localBuildInfo </> enumEvalCacheFileName
+  enumEvalCacheExists <- doesFileExist enumEvalCacheFilePath
+  when enumEvalCacheExists $
+    installOrdinaryFile verbosity
+                        enumEvalCacheFilePath
+                        (libDir </> enumEvalCacheFileName)
+
+cppRegister :: Verbosity -> LocalBuildInfo -> RegisterFlags -> IO ()
+cppRegister verbosity localBuildInfo flags = do
   hasMakefile <- doesFileExist "Makefile"
   unless hasMakefile $
 #if MIN_VERSION_Cabal(2,0,0)
@@ -305,7 +323,8 @@ cppRegister verbosity _pkgDesc localBuildInfo flags = do
 
 cppClean :: ProjectConfig -> Verbosity -> IO ()
 cppClean project verbosity = do
-  removeGeneratedFiles Cpp project verbosity
+  iface <- getInterface project verbosity
+  _ <- run [iface] ["--clean-cpp", cppSourcesDir project]
 
   hasMakefile <- doesFileExist "Makefile"
   unless hasMakefile $
@@ -359,12 +378,10 @@ hsMain project = defaultMainWithHooks $ hsUserHooks project
 hsUserHooks :: ProjectConfig -> UserHooks
 hsUserHooks project =
   simpleUserHooks
-  { hookedPrograms = [generatorProgram]
-
-  , postConf = \args flags pkgDesc localBuildInfo -> do
+  { postConf = \args flags pkgDesc localBuildInfo -> do
       postConf simpleUserHooks args flags pkgDesc localBuildInfo
       let verbosity = fromFlagOrDefault normal $ configVerbosity flags
-      hsConfigure project verbosity localBuildInfo generatorProgram
+      hsConfigure project verbosity localBuildInfo
 
   , preBuild = \_ _ -> addLibDir
   , preTest = \_ _ -> addLibDir
@@ -379,16 +396,15 @@ hsUserHooks project =
       hsClean project verbosity
   }
 
-  where generatorProgram = getGeneratorProgram project
-
 hsCppLibDirFile :: FilePath
 hsCppLibDirFile = "dist/build/hoppy-cpp-libdir"
 
-hsConfigure :: ProjectConfig -> Verbosity -> LocalBuildInfo -> Program -> IO ()
-hsConfigure project verbosity localBuildInfo generatorProgram = do
+hsConfigure :: ProjectConfig -> Verbosity -> LocalBuildInfo -> IO ()
+hsConfigure project verbosity localBuildInfo = do
+  iface <- getInterface project verbosity
   libDir <- lookupCppLibDir
   storeCppLibDir libDir
-  generateSources
+  generateSources iface libDir
 
   where lookupCppLibDir = do
           -- Look for an installed -cpp package.
@@ -427,12 +443,15 @@ hsConfigure project verbosity localBuildInfo generatorProgram = do
           createDirectoryIfMissing True $ takeDirectory hsCppLibDirFile
           writeFile hsCppLibDirFile libDir
 
-        generateSources = do
-          let programDb = withPrograms localBuildInfo
-              sourcesDir = hsSourcesDir project
+        generateSources iface libDir = do
+          let sourcesDir = hsSourcesDir project
           createDirectoryIfMissing True sourcesDir
-          runDbProgram verbosity generatorProgram programDb $
-            getInterfaceArg project ++ ["--gen-hs", sourcesDir]
+          _ <- run [iface]
+                   [ "--enum-eval-cache-mode", "must-exist"
+                   , "--enum-eval-cache-path", libDir </> enumEvalCacheFileName
+                   , "--gen-hs", sourcesDir
+                   ]
+          return ()
 
 addLibDir :: IO HookedBuildInfo
 addLibDir = do
@@ -440,22 +459,7 @@ addLibDir = do
   return (Just emptyBuildInfo {extraLibDirs = [libDir]}, [])
 
 hsClean :: ProjectConfig -> Verbosity -> IO ()
-hsClean = removeGeneratedFiles Haskell
-
--- TODO Remove empty directories.
-removeGeneratedFiles :: Language -> ProjectConfig -> Verbosity -> IO ()
-removeGeneratedFiles language project verbosity = do
-  let (listArg, sourcesDir) = case language of
-        Cpp -> ("--list-cpp-files", cppSourcesDir)
-        Haskell -> ("--list-hs-files", hsSourcesDir)
-  generatorProgram <- findSystemProgram verbosity $ generatorExecutableName project
-  generatedFiles <-
-    lines <$> getProgramOutput verbosity
-                               generatorProgram
-                               (getInterfaceArg project ++ [listArg])
-  forM_ generatedFiles $ \file -> do
-    let path = sourcesDir project </> file
-    exists <- doesFileExist path
-    when exists $ do
-      info verbosity $ "Removing " ++ path ++ "."
-      removeFile path
+hsClean project verbosity = do
+  iface <- getInterface project verbosity
+  _ <- run [iface] ["--clean-hs", hsSourcesDir project]
+  return ()
