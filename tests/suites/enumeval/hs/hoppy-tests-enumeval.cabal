@@ -1,0 +1,45 @@
+name: hoppy-tests-enumeval
+version: 0.1.0
+license: AGPL-3
+author: Bryan Gardiner <bog@khumba.net>
+maintainer: Bryan Gardiner <bog@khumba.net>
+copyright: Copyright 2015-2020 Bryan Gardiner
+build-type: Custom
+cabal-version: >=1.10
+
+custom-setup
+  setup-depends:
+      base
+    , Cabal
+    , hoppy-runtime
+    , hoppy-tests-generator
+
+library
+  other-extensions:
+      FlexibleInstances
+    , MultiParamTypeClasses
+    , OverlappingInstances
+    , TypeSynonymInstances
+    , UndecidableInstances
+  build-depends:
+      base >=4.7 && <5
+    , hoppy-runtime
+    , hoppy-tests-enumeval-cpp
+  hs-source-dirs: src
+  exposed-modules:
+      Foreign.Hoppy.Test.Enumeval
+  default-language: Haskell2010
+  ghc-options: -W -fwarn-incomplete-patterns -fwarn-unused-do-bind
+  extra-libraries: hoppy-tests-enumeval
+
+test-suite tests-enumeval
+  type: exitcode-stdio-1.0
+  main-is: Main.hs
+  default-language: Haskell2010
+  ghc-options: -W -fwarn-incomplete-patterns -fwarn-unused-do-bind -dynamic
+  extra-libraries: hoppy-tests-enumeval
+  build-depends:
+      base >=4.7 && <5
+    , hoppy-runtime
+    , hoppy-tests-enumeval
+    , HUnit

@@ -1,0 +1,29 @@
+name: hoppy-tests-enumeval-cpp
+version: 0.1.0
+license: AGPL-3
+author: Bryan Gardiner <bog@khumba.net>
+maintainer: Bryan Gardiner <bog@khumba.net>
+copyright: Copyright 2015-2020 Bryan Gardiner
+build-type: Custom
+cabal-version: >=1.10
+
+extra-source-files:
+  Makefile
+  cpp/enums.hpp
+
+custom-setup
+  setup-depends:
+      base
+    , Cabal
+    , hoppy-runtime
+    , hoppy-tests-generator
+
+library
+  hs-source-dirs: src
+  exposed-modules:
+      Foreign.Hoppy.Test.Enumeval.EmptyCpp
+  build-depends:
+      base
+    , hoppy-runtime
+  default-language: Haskell2010
+  ghc-options: -W -fwarn-incomplete-patterns -fwarn-unused-do-bind

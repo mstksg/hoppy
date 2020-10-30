@@ -48,11 +48,16 @@ import Data.ByteString.Builder (stringUtf8, toLazyByteString)
 import Data.List (splitAt)
 #endif
 import qualified Data.Map as M
-import Data.Maybe (isJust, mapMaybe)
+import Data.Maybe (isJust, mapMaybe, maybeToList)
 import qualified Data.Set as S
 import Foreign.Hoppy.Generator.Common (doubleQuote, for, fromMaybeM, pluralize)
 import Foreign.Hoppy.Generator.Common.Consume (MonadConsume, evalConsume, next)
-import Foreign.Hoppy.Generator.Compiler (Compiler, SomeCompiler (SomeCompiler), compileProgram)
+import Foreign.Hoppy.Generator.Compiler (
+  Compiler,
+  SomeCompiler (SomeCompiler),
+  compileProgram,
+  prependIncludePath,
+  )
 import Foreign.Hoppy.Generator.Language.Cpp (renderIdentifier)
 import Foreign.Hoppy.Generator.Spec.Base
 import Foreign.Hoppy.Generator.Spec.Computed (
@@ -96,6 +101,8 @@ type EnumEvaluator = EnumEvaluatorArgs -> IO (Maybe EnumEvaluatorResult)
 data EnumEvaluatorArgs = EnumEvaluatorArgs
   { enumEvaluatorArgsInterface :: Interface
     -- ^ The interface that enum values are being calculated for.
+  , enumEvaluatorArgsPrependedIncludeDirs :: [FilePath]
+    -- ^ Additional paths to prepend to the C++ include path during compilation.
   , enumEvaluatorArgsReqs :: Reqs
     -- ^ Requirements (includes, etc.) needed to reference the enum identifiers
     -- being evaluated.
@@ -156,17 +163,21 @@ evaluateEnumsWithDefaultCompiler args = do
 -- | Evaluate enums using a specified compiler.
 evaluateEnumsWithCompiler :: Compiler a => a -> EnumEvaluator
 evaluateEnumsWithCompiler compiler args =
+  let compiler' = case enumEvaluatorArgsPrependedIncludeDirs args of
+        [] -> compiler
+        dirs -> prependIncludePath dirs compiler
+  in
   withTempFile "hoppy-enum.cpp" removeBuildFailures $ \cppPath cppHandle ->
   withTempFile "hoppy-enum" removeBuildFailures $ \binPath binHandle -> do
   hPut cppHandle program
   hClose cppHandle
   hClose binHandle
-  success <- compileProgram compiler cppPath binPath
+  success <- compileProgram compiler' cppPath binPath
   result <- case success of
     False -> do
       hPutStrLn stderr $
         "evaluateEnumsWithCompiler: Failed to build program " ++ show cppPath ++
-        " to evaluate enums with " ++ show compiler ++ "." ++ removeBuildFailuresNote
+        " to evaluate enums with " ++ show compiler' ++ "." ++ removeBuildFailuresNote
       return Nothing
     True -> runAndGetOutput binPath
   let remove = isJust result || removeBuildFailures
@@ -310,8 +321,12 @@ interpretOutputToEvaluateEnums args out =
 -- | Collects all of the enum values that need calculating in an interface, runs
 -- the hook to evaluate them, and stores the result in the interface.  This
 -- won't recalculate enum data if it's already been calculated.
-internalEvaluateEnumsForInterface :: Interface -> Bool -> IO (M.Map ExtName EvaluatedEnumData)
-internalEvaluateEnumsForInterface iface keepBuildFailures = do
+internalEvaluateEnumsForInterface ::
+     Interface
+  -> Maybe FilePath
+  -> Bool
+  -> IO (M.Map ExtName EvaluatedEnumData)
+internalEvaluateEnumsForInterface iface maybeCppDir keepBuildFailures = do
   let validateEnumTypes = interfaceValidateEnumTypes iface
 
       -- Collect all exports in the interface.
@@ -383,6 +398,7 @@ internalEvaluateEnumsForInterface iface keepBuildFailures = do
         let hooks = interfaceHooks iface
             args = EnumEvaluatorArgs
                    { enumEvaluatorArgsInterface = iface
+                   , enumEvaluatorArgsPrependedIncludeDirs = maybeToList maybeCppDir
                    , enumEvaluatorArgsReqs = sumReqs
                    , enumEvaluatorArgsSizeofIdentifiers =
                        map ordIdentifier sizeofIdentifiersToEvaluate

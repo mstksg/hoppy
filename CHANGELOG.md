@@ -18,6 +18,12 @@
   See "Support for `setup-tool-depends`" here:
   https://github.com/haskell/cabal/issues/4648
 
+- [API change] CustomCompiler now has an additional `ccHeaderSearchPath` field.
+  It can default to an empty list.  This is to support the new
+  `prependIncludePath` method added to the `Compiler` typeclass.  The
+  `ccCompile` field has an extra argument as well: the compiler being invoked,
+  so that it has access to this search path.
+
 - Updated the example bindings to support Cabal Nix-style builds with v2-build.
   Also Hoppy tests are now runnable via `cabal v2-test`.  To support this, both
   the example and the tests now call their generators as a library.
@@ -29,6 +35,11 @@
 
   Bindings using `Hoppy.Foreign.Runtime.Setup` now cache enum results
   automatically.
+
+- Hoppy's enum evaluation machinery now includes the sources directory of a C++
+  gateway package on the header search path automatically during its
+  compilation, so that bindings can reference enums declared in the C++ gateway
+  package itself (issue #45).
 
 - The generator now has additional `--clean-cpp` and `--clean-hs` options.
   These both take an argument, like `--gen-cpp` and `--gen-hs`, but remove

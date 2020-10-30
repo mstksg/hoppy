@@ -160,14 +160,15 @@ emptyCache :: InterfaceCache
 emptyCache = InterfaceCache Nothing Nothing Nothing
 
 getGeneratedCpp ::
-  AppState
+     Maybe FilePath
+  -> AppState
   -> Interface
   -> InterfaceCache
   -> IO (InterfaceCache, Either String Cpp.Generation)
-getGeneratedCpp state iface cache = case cacheGeneratedCpp cache of
+getGeneratedCpp maybeCppDir state iface cache = case cacheGeneratedCpp cache of
   Just gen -> return (cache, Right gen)
   Nothing -> do
-    cache' <- generateComputedData state iface cache
+    cache' <- generateComputedData maybeCppDir state iface cache
     computedData <- flip fromMaybeM (cacheComputedData cache') $ do
       hPutStrLn stderr $
         "getGeneratedCpp: Expected computed data to already exist for " ++ show iface ++ "."
@@ -184,7 +185,7 @@ getGeneratedHaskell ::
 getGeneratedHaskell state iface cache = case cacheGeneratedHaskell cache of
   Just gen -> return (cache, Right gen)
   Nothing -> do
-    cache' <- generateComputedData state iface cache
+    cache' <- generateComputedData Nothing state iface cache
     computedData <- flip fromMaybeM (cacheComputedData cache') $ do
       hPutStrLn stderr $
         "getGeneratedHaskell: Expected computed data to already exist for " ++ show iface ++ "."
@@ -200,11 +201,16 @@ getGeneratedHaskell state iface cache = case cacheGeneratedHaskell cache of
 -- calculated.  This is only computed once for an interface, and is stored in
 -- the interface's 'InterfaceCache'.  This function returns the resulting cache
 -- with the computed data populated.
-generateComputedData :: AppState -> Interface -> InterfaceCache -> IO InterfaceCache
-generateComputedData state iface cache = case cacheComputedData cache of
+generateComputedData ::
+     Maybe FilePath
+  -> AppState
+  -> Interface
+  -> InterfaceCache
+  -> IO InterfaceCache
+generateComputedData maybeCppDir state iface cache = case cacheComputedData cache of
   Just _ -> return cache
   Nothing -> do
-    evaluatedEnumMap <- generateEnumData state iface
+    evaluatedEnumMap <- generateEnumData state iface maybeCppDir
     return cache
       { cacheComputedData = Just ComputedInterfaceData
         { computedInterfaceName = interfaceName iface
@@ -220,8 +226,8 @@ generateComputedData state iface cache = case cacheComputedData cache of
 -- then generation aborts.  Otherwise, the enum evaluation hook is called to
 -- evaluate the enums (see "Foreign.Hoppy.Generator.Hook"), and if a cache path
 -- is provided, then the result is serialized and written to the path.
-generateEnumData :: AppState -> Interface -> IO (Map ExtName EvaluatedEnumData)
-generateEnumData state iface =
+generateEnumData :: AppState -> Interface -> Maybe FilePath -> IO (Map ExtName EvaluatedEnumData)
+generateEnumData state iface maybeCppDir =
   case appEnumEvalCachePath state of
     Nothing -> doEnumEval
     Just path -> do
@@ -241,7 +247,7 @@ generateEnumData state iface =
           writeFileIfDifferent path $ serializeEnumData result
           return result
         doEnumEval = do
-          internalEvaluateEnumsForInterface iface
+          internalEvaluateEnumsForInterface iface maybeCppDir
             (appKeepTempOutputsOnFailure state)
 
 serializeEnumData :: Map ExtName EvaluatedEnumData -> String
@@ -384,7 +390,7 @@ processArgs stateVar args =
       (ListInterfaces:) <$> processArgs stateVar rest
 
     "--list-cpp-files":rest -> do
-      genResult <- withCurrentCache stateVar getGeneratedCpp
+      genResult <- withCurrentCache stateVar $ getGeneratedCpp Nothing
       case genResult of
         Left errorMsg -> do
           hPutStrLn stderr $ "--list-cpp-files: Failed to generate: " ++ errorMsg
@@ -410,7 +416,7 @@ processArgs stateVar args =
           "--gen-cpp: Please create this directory so that I can generate files in it: " ++
           baseDir
         exitFailure
-      genResult <- withCurrentCache stateVar getGeneratedCpp
+      genResult <- withCurrentCache stateVar $ getGeneratedCpp $ Just baseDir
       case genResult of
         Left errorMsg -> do
           hPutStrLn stderr $ "--gen-cpp: Failed to generate: " ++ errorMsg
@@ -476,7 +482,8 @@ processArgs stateVar args =
 
     "--dump-enums":rest -> do
       withCurrentCache stateVar $ \state iface cache -> do
-        cache' <- generateComputedData state iface cache
+        -- TODO 'Nothing' is less than ideal here.
+        cache' <- generateComputedData Nothing state iface cache
         computed <- flip fromMaybeM (cacheComputedData cache') $ do
           hPutStrLn stderr $ "--dump-enums expected to have evaluated enum data, but doesn't."
           exitFailure

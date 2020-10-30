@@ -15,20 +15,16 @@
 -- You should have received a copy of the GNU Affero General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-packages:
-    generator
-    std
-    runtime
-    docs
-    example/example-generator
-    example/example-cpp
-    example/example
-    tests/generator
-    tests/suites/basic/cpp
-    tests/suites/basic/hs
-    tests/suites/circular/cpp
-    tests/suites/circular/hs
-    tests/suites/enumeval/cpp
-    tests/suites/enumeval/hs
-    tests/suites/stl/cpp
-    tests/suites/stl/hs
+module Main (main) where
+
+import Foreign.Hoppy.Setup (ProjectConfig (..), cppMain)
+import qualified Foreign.Hoppy.Test.Interfaces.Enumeval as Enumeval
+
+main =
+  cppMain
+  ProjectConfig
+  { interfaceResult = Enumeval.interfaceResult
+  , cppPackageName = "hoppy-tests-enumeval-cpp"
+  , cppSourcesDir = "cpp"
+  , hsSourcesDir = "src"
+  }

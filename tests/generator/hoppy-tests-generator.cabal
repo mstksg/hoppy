@@ -12,6 +12,7 @@ library
   exposed-modules:
       Foreign.Hoppy.Test.Interfaces.Basic
     , Foreign.Hoppy.Test.Interfaces.Circular
+    , Foreign.Hoppy.Test.Interfaces.Enumeval
     , Foreign.Hoppy.Test.Interfaces.Stl
   other-modules:
       Foreign.Hoppy.Test.Interfaces.Circular.Flob
