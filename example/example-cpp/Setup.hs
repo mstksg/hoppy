@@ -17,13 +17,13 @@
 module Main (main) where
 
 import Foreign.Hoppy.Setup (ProjectConfig (..), cppMain)
+import qualified Foreign.Hoppy.Example.Generator as Generator
 
 main =
   cppMain
   ProjectConfig
-  { generatorExecutableName = "hoppy-example-generator"
+  { interfaceResult = Generator.interfaceResult
   , cppPackageName = "hoppy-example-cpp"
   , cppSourcesDir = "cpp"
   , hsSourcesDir = "src"
-  , interfaceName = Nothing
   }

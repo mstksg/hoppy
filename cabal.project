@@ -20,6 +20,9 @@ packages:
     std
     runtime
     docs
+    example/example-generator
+    example/example-cpp
+    example/example
     tests/generator
     tests/suites/basic/cpp
     tests/suites/basic/hs
