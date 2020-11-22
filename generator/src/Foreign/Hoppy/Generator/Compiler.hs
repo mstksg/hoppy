@@ -51,6 +51,10 @@ class Show a => Compiler a where
   -- error, and false is returned.
   compileProgram :: a -> FilePath -> FilePath -> IO Bool
 
+  -- | Modifies the compiler to prepend the given paths to the header search
+  -- path.
+  prependIncludePath :: [FilePath] -> a -> a
+
 -- | An existential data type for 'Compiler's.
 data SomeCompiler = forall a. Compiler a => SomeCompiler a
 
@@ -59,6 +63,8 @@ instance Show SomeCompiler where
 
 instance Compiler SomeCompiler where
   compileProgram (SomeCompiler c) = compileProgram c
+
+  prependIncludePath paths (SomeCompiler c) = SomeCompiler $ prependIncludePath paths c
 
 -- | A compiler that can compile a source file into a binary with a single
 -- program invocation.
@@ -86,6 +92,12 @@ instance Compiler SimpleCompiler where
                (scProgram compiler)
                (scArguments compiler)
                (M.fromList [("in", inPath), ("out", outPath)])
+
+  prependIncludePath paths compiler =
+    compiler { scArguments =
+                 concatMap (\path -> ["-I", path]) paths ++
+                 scArguments compiler
+             }
 
 -- | Adds arguments to the start of a compiler's argument list.
 prependArguments :: [String] -> SimpleCompiler -> SimpleCompiler
@@ -119,17 +131,33 @@ data CustomCompiler = CustomCompiler
   { ccLabel :: String
     -- ^ A label to display when the compiler is 'show'n.  The string is
     -- @\"\<CustomCompiler \" ++ label ++ \">\"@.
-  , ccCompile :: FilePath -> FilePath -> IO Bool
+
+  , ccCompile :: CustomCompiler -> FilePath -> FilePath -> IO Bool
     -- ^ Given a source file path and an output path, compiles the source file,
     -- producing a binary at the output path.  Returns true on success.  Logs to
     -- standard error and returns false on failure.
+    --
+    -- This should inspect the compiler argument to make use of its
+    -- 'ccHeaderSearchPath'.
+    --
+    -- The first argument is the 'CustomCompiler' object that this function was
+    -- pulled out of.  This is passed in explicitly by 'compileProgram' because
+    -- due to the presence of 'prependIncludePath' it's not always possible to
+    -- have access to the final compiler object ahead of time.
+
+  , ccHeaderSearchPath :: [FilePath]
+    -- ^ Paths to be searched for C++ header files, in addition to the
+    -- compiler's default search directories.
   }
 
 instance Show CustomCompiler where
   show c = "<CustomCompiler " ++ ccLabel c ++ ">"
 
 instance Compiler CustomCompiler where
-  compileProgram = ccCompile
+  compileProgram c = ccCompile c c
+
+  prependIncludePath paths c =
+    c { ccHeaderSearchPath = paths ++ ccHeaderSearchPath c }
 
 -- | The default compiler, used by an 'Foreign.Hoppy.Generator.Spec.Interface'
 -- that doesn't specify its own.  This will be 'gppCompiler', however if the

@@ -15,4 +15,16 @@
 -- You should have received a copy of the GNU Affero General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-module Foreign.Hoppy.Test.EmptyGenerator () where
+module Main (main) where
+
+import Foreign.Hoppy.Setup (ProjectConfig (..), hsMain)
+import qualified Foreign.Hoppy.Test.Interfaces.Enumeval as Enumeval
+
+main =
+  hsMain
+  ProjectConfig
+  { interfaceResult = Enumeval.interfaceResult
+  , cppPackageName = "hoppy-tests-enumeval-cpp"
+  , cppSourcesDir = "cpp"
+  , hsSourcesDir = "src"
+  }

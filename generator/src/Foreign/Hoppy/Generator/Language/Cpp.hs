@@ -24,7 +24,7 @@ module Foreign.Hoppy.Generator.Language.Cpp (
   Env,
   execGenerator,
   addIncludes, addInclude, addReqsM,
-  askInterface, askModule, abort,
+  askInterface, askComputedInterfaceData, askModule, abort,
   -- * Names
   makeCppName,
   externalNameToCpp,
@@ -70,6 +70,7 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import Foreign.Hoppy.Generator.Common
 import Foreign.Hoppy.Generator.Spec.Base
+import Foreign.Hoppy.Generator.Spec.Computed (ComputedInterfaceData)
 import {-# SOURCE #-} Foreign.Hoppy.Generator.Spec.Class (classIdentifier, classReqs)
 import Foreign.Hoppy.Generator.Types
 
@@ -81,14 +82,21 @@ type Generator = ReaderT Env (WriterT [Chunk] (Either ErrorMsg))
 -- | Context information for generating C++ code.
 data Env = Env
   { envInterface :: Interface
+  , envComputedInterfaceData :: ComputedInterfaceData
   , envModule :: Module
   }
 
 -- | Runs a generator action and returns its output, or an error message if
 -- unsuccessful.
-execGenerator :: Interface -> Module -> Maybe String -> Generator a -> Either ErrorMsg String
-execGenerator iface m maybeHeaderGuardName action = do
-  chunk <- execChunkWriterT $ runReaderT action $ Env iface m
+execGenerator ::
+     Interface
+  -> ComputedInterfaceData
+  -> Module
+  -> Maybe String
+  -> Generator a
+  -> Either ErrorMsg String
+execGenerator iface computed m maybeHeaderGuardName action = do
+  chunk <- execChunkWriterT $ runReaderT action $ Env iface computed m
   let contents = chunkContents chunk
       includes = chunkIncludes chunk
   return $ chunkContents $ execChunkWriter $ do
@@ -125,6 +133,10 @@ addReqsM = tell . (:[]) . includesChunk . reqsIncludes
 -- | Returns the currently generating interface.
 askInterface :: MonadReader Env m => m Interface
 askInterface = fmap envInterface ask
+
+-- | Returns the computed data for the currently generating interface.
+askComputedInterfaceData :: Generator ComputedInterfaceData
+askComputedInterfaceData = fmap envComputedInterfaceData ask
 
 -- | Returns the currently generating module.
 askModule :: MonadReader Env m => m Module

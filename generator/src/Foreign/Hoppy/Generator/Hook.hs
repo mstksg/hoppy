@@ -31,6 +31,8 @@ module Foreign.Hoppy.Generator.Hook (
   makeCppSourceToEvaluateEnums,
   interpretOutputToEvaluateEnums,
   -- * Internal
+  NumericTypeInfo (..),
+  pickNumericType,
   internalEvaluateEnumsForInterface,
   ) where
 
@@ -46,18 +48,27 @@ import Data.ByteString.Builder (stringUtf8, toLazyByteString)
 import Data.List (splitAt)
 #endif
 import qualified Data.Map as M
-import Data.Maybe (isJust, listToMaybe, mapMaybe)
+import Data.Maybe (isJust, mapMaybe, maybeToList)
 import qualified Data.Set as S
-import Foreign.C (CInt, CLong, CLLong, CUInt, CULong, CULLong)
 import Foreign.Hoppy.Generator.Common (doubleQuote, for, fromMaybeM, pluralize)
 import Foreign.Hoppy.Generator.Common.Consume (MonadConsume, evalConsume, next)
-import Foreign.Hoppy.Generator.Compiler (Compiler, SomeCompiler (SomeCompiler), compileProgram)
+import Foreign.Hoppy.Generator.Compiler (
+  Compiler,
+  SomeCompiler (SomeCompiler),
+  compileProgram,
+  prependIncludePath,
+  )
 import Foreign.Hoppy.Generator.Language.Cpp (renderIdentifier)
 import Foreign.Hoppy.Generator.Spec.Base
-import Foreign.Hoppy.Generator.Types (intT, llongT, longT, uintT, ullongT, ulongT)
+import Foreign.Hoppy.Generator.Spec.Computed (
+  EvaluatedEnumData (..),
+  NumericTypeInfo,
+  findNumericTypeInfo,
+  numBytes,
+  pickNumericType,
+  )
 import Foreign.Hoppy.Generator.Util (withTempFile)
 import Foreign.Hoppy.Generator.Version (CppVersion (Cpp2011), activeCppVersion)
-import Foreign.Storable (Storable, sizeOf)
 import System.Exit (ExitCode (ExitFailure, ExitSuccess), exitFailure)
 import System.IO (hClose, hPutStrLn, stderr)
 import System.Process (readProcessWithExitCode)
@@ -90,6 +101,8 @@ type EnumEvaluator = EnumEvaluatorArgs -> IO (Maybe EnumEvaluatorResult)
 data EnumEvaluatorArgs = EnumEvaluatorArgs
   { enumEvaluatorArgsInterface :: Interface
     -- ^ The interface that enum values are being calculated for.
+  , enumEvaluatorArgsPrependedIncludeDirs :: [FilePath]
+    -- ^ Additional paths to prepend to the C++ include path during compilation.
   , enumEvaluatorArgsReqs :: Reqs
     -- ^ Requirements (includes, etc.) needed to reference the enum identifiers
     -- being evaluated.
@@ -150,17 +163,21 @@ evaluateEnumsWithDefaultCompiler args = do
 -- | Evaluate enums using a specified compiler.
 evaluateEnumsWithCompiler :: Compiler a => a -> EnumEvaluator
 evaluateEnumsWithCompiler compiler args =
+  let compiler' = case enumEvaluatorArgsPrependedIncludeDirs args of
+        [] -> compiler
+        dirs -> prependIncludePath dirs compiler
+  in
   withTempFile "hoppy-enum.cpp" removeBuildFailures $ \cppPath cppHandle ->
   withTempFile "hoppy-enum" removeBuildFailures $ \binPath binHandle -> do
   hPut cppHandle program
   hClose cppHandle
   hClose binHandle
-  success <- compileProgram compiler cppPath binPath
+  success <- compileProgram compiler' cppPath binPath
   result <- case success of
     False -> do
       hPutStrLn stderr $
         "evaluateEnumsWithCompiler: Failed to build program " ++ show cppPath ++
-        " to evaluate enums with " ++ show compiler ++ "." ++ removeBuildFailuresNote
+        " to evaluate enums with " ++ show compiler' ++ "." ++ removeBuildFailuresNote
       return Nothing
     True -> runAndGetOutput binPath
   let remove = isJust result || removeBuildFailures
@@ -304,14 +321,12 @@ interpretOutputToEvaluateEnums args out =
 -- | Collects all of the enum values that need calculating in an interface, runs
 -- the hook to evaluate them, and stores the result in the interface.  This
 -- won't recalculate enum data if it's already been calculated.
-internalEvaluateEnumsForInterface :: Interface -> Bool -> IO Interface
-internalEvaluateEnumsForInterface iface keepBuildFailures =
-  case interfaceEvaluatedEnumData iface of
-    Just _ -> return iface
-    Nothing -> internalEvaluateEnumsForInterface' iface keepBuildFailures
-
-internalEvaluateEnumsForInterface' :: Interface -> Bool -> IO Interface
-internalEvaluateEnumsForInterface' iface keepBuildFailures = do
+internalEvaluateEnumsForInterface ::
+     Interface
+  -> Maybe FilePath
+  -> Bool
+  -> IO (M.Map ExtName EvaluatedEnumData)
+internalEvaluateEnumsForInterface iface maybeCppDir keepBuildFailures = do
   let validateEnumTypes = interfaceValidateEnumTypes iface
 
       -- Collect all exports in the interface.
@@ -367,7 +382,7 @@ internalEvaluateEnumsForInterface' iface keepBuildFailures = do
         (namesToShow, namesToSkip) = splitAt 10 scopedEnumsWithAutoEntries
     unless (null scopedEnumsWithAutoEntries) $ do
       hPutStrLn stderr $
-        "internalEvaluateEnumsForInterface': Automatic evaluation of enum values is not " ++
+        "internalEvaluateEnumsForInterface': Automatic evaluation of enum values " ++
         "requires at least " ++ show Cpp2011 ++ ", but we are compiling for " ++
         show activeCppVersion ++ ", aborting.  Enums requesting evaluation are " ++
         show namesToShow ++
@@ -383,6 +398,7 @@ internalEvaluateEnumsForInterface' iface keepBuildFailures = do
         let hooks = interfaceHooks iface
             args = EnumEvaluatorArgs
                    { enumEvaluatorArgsInterface = iface
+                   , enumEvaluatorArgsPrependedIncludeDirs = maybeToList maybeCppDir
                    , enumEvaluatorArgsReqs = sumReqs
                    , enumEvaluatorArgsSizeofIdentifiers =
                        map ordIdentifier sizeofIdentifiersToEvaluate
@@ -487,12 +503,12 @@ internalEvaluateEnumsForInterface' iface keepBuildFailures = do
         pickNumericType bytes low high
 
       let result = EvaluatedEnumData
-            { evaluatedEnumType = numericType
+            { evaluatedEnumNumericType = numericType
             , evaluatedEnumValueMap = numMap
             }
       return (extName, result)
 
-  return iface { interfaceEvaluatedEnumData = Just evaluatedDataMap }
+  return evaluatedDataMap
 
 newtype OrdIdentifier = OrdIdentifier { ordIdentifier :: Identifier }
   deriving (Eq, Show)
@@ -500,45 +516,6 @@ newtype OrdIdentifier = OrdIdentifier { ordIdentifier :: Identifier }
 instance Ord OrdIdentifier where
   compare (OrdIdentifier i1) (OrdIdentifier i2) =
     compare (renderIdentifier i1) (renderIdentifier i2)
-
--- | Bound information about numeric types.
-data NumericTypeInfo = NumericTypeInfo
-  { numType :: Type
-  , numBytes :: Int
-  , numMinBound :: Integer
-  , numMaxBound :: Integer
-  }
-
--- | Numeric types usable to hold enum values.  These are ordered by decreasing
--- precedence (increasing word size).
-numericTypeInfo :: [NumericTypeInfo]
-numericTypeInfo =
-  [ mk intT (undefined :: CInt)
-  , mk uintT (undefined :: CUInt)
-  , mk longT (undefined :: CLong)
-  , mk ulongT (undefined :: CULong)
-  , mk llongT (undefined :: CLLong)
-  , mk ullongT (undefined :: CULLong)
-  ]
-  where mk :: forall a. (Bounded a, Integral a, Storable a) => Type -> a -> NumericTypeInfo
-        mk t _ = NumericTypeInfo
-                 { numType = t
-                 , numBytes = sizeOf (undefined :: a)
-                 , numMinBound = toInteger (minBound :: a)
-                 , numMaxBound = toInteger (maxBound :: a)
-                 }
-
-findNumericTypeInfo :: Type -> Maybe NumericTypeInfo
-findNumericTypeInfo t = listToMaybe $ filter (\i -> numType i == t) numericTypeInfo
-
--- | Selects the preferred numeric type for holding numeric values in the given
--- range.
-pickNumericType :: Int -> Integer -> Integer -> Maybe Type
-pickNumericType bytes low high =
-  fmap numType $ listToMaybe $ flip filter numericTypeInfo $ \info ->
-  numBytes info == bytes &&
-  numMinBound info <= low &&
-  numMaxBound info >= high
 
 isAuto :: EnumValue -> Bool
 isAuto (EnumValueAuto _) = True

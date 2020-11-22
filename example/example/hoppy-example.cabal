@@ -12,6 +12,7 @@ custom-setup
       base
     , Cabal
     , hoppy-runtime >=0.7 && <0.8
+    , hoppy-example-generator >=0.1 && <0.2
 
 library
   hs-source-dirs: src
@@ -26,11 +27,8 @@ library
     , UndecidableInstances
   build-depends:
       base
-    , hoppy-example-generator >=0.1 && <0.2
     , hoppy-example-cpp >= 0.1 && <0.2
     , hoppy-runtime >=0.7 && <0.8
-  build-tool-depends:
-      hoppy-example-generator:hoppy-example-generator
   default-language: Haskell2010
   ghc-options: -W -fwarn-incomplete-patterns -fwarn-unused-do-bind
   -- This causes us to link against libexample.so:

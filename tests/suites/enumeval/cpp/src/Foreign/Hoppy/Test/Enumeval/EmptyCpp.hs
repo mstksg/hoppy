@@ -15,18 +15,4 @@
 -- You should have received a copy of the GNU Affero General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-{-# LANGUAGE CPP #-}
-
-module Main (main) where
-
-import Foreign.Hoppy.Generator.Main (defaultMain')
-import qualified Foreign.Hoppy.Test.Interfaces.Basic as Basic
-import qualified Foreign.Hoppy.Test.Interfaces.Circular as Circular
-import qualified Foreign.Hoppy.Test.Interfaces.Stl as Stl
-
-main :: IO ()
-main = defaultMain'
-  [ Basic.interfaceResult
-  , Circular.interfaceResult
-  , Stl.interfaceResult
-  ]
+module Foreign.Hoppy.Test.Enumeval.EmptyCpp () where

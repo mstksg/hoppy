@@ -2,8 +2,85 @@
 
 ## Unreleased
 
+- [API change] Hoppy generators are now meant to be invoked as libraries rather
+  than as executables, as part of the normal build process for a set of
+  bindings.  Cabal doesn't properly support `custom-setup` depending on
+  executables from other packages (see the Cabal issue linked below); invoking
+  the dependency's code as a library is the recommended route instead.
+
+  See the subsection below this list for instructions on how to update your
+  code.
+
+  Qtah has migrated to calling its generator this way too; this is the way
+  forward, but the current interface for calling the generator as a library is
+  still pretending it's a command line, and could use some cleanup.
+
+  See "Support for `setup-tool-depends`" here:
+  https://github.com/haskell/cabal/issues/4648
+
+- [API change] CustomCompiler now has an additional `ccHeaderSearchPath` field.
+  It can default to an empty list.  This is to support the new
+  `prependIncludePath` method added to the `Compiler` typeclass.  The
+  `ccCompile` field has an extra argument as well: the compiler being invoked,
+  so that it has access to this search path.
+
 - Updated the example bindings to support Cabal Nix-style builds with v2-build.
-  This uses the `build-tool-depends` field which requires Cabal 2.0 or higher.
+  Also Hoppy tests are now runnable via `cabal v2-test`.  To support this, both
+  the example and the tests now call their generators as a library.
+
+- Added support for caching the results of enum evaluation, when it takes place
+  during generation of a C++ gateway package, so that generation of the Haskell
+  package can reuse the result and not have to run C++ compilation a second time
+  (issue #41, bug #45).
+
+  Bindings using `Hoppy.Foreign.Runtime.Setup` now cache enum results
+  automatically.
+
+- Hoppy's enum evaluation machinery now includes the sources directory of a C++
+  gateway package on the header search path automatically during its
+  compilation, so that bindings can reference enums declared in the C++ gateway
+  package itself (issue #45).
+
+- The generator now has additional `--clean-cpp` and `--clean-hs` options.
+  These both take an argument, like `--gen-cpp` and `--gen-hs`, but remove
+  generated files rather than creating them.
+
+### Converting your generators into libraries
+
+Previously, generator packages needed to contain an executable, and that
+executable was recommended to use a main function of:
+
+    import Foreign.Hoppy.Generator.Main (defaultMain)
+    import Foreign.Hoppy.Generator.Spec (Interface, interface)
+
+    interfaceResult :: Either String Interface
+    interfaceResult = interface ...
+
+    main = defaultMain interfaceResult
+
+The C++ and Haskell gateway packages would then have a custom Setup.hs that set
+`generatorExecutableName` to the name of this executable within `ProjectConfig`.
+
+Now, the definitions of the generator can stay the same, but the interface
+definitions need to be moved over to the library component of the generator, and
+the `interfaceResult` needs to be exported from an exposed module.  The
+executable can be kept if desired, for testing the generator out from the
+command line, though this is not a requirement.  It only needs to contain the
+`main` definition.
+
+The dummy module included in the example generator's library is no longer
+needed, since the library contains actual code now.
+
+The fields in `ProjectConfig` have changed as well, so to update the two gateway
+packages, remove the `generatorExecutableName` and `interfaceName` fields and
+add an `interfaceResult` field whose value is the result object exported from
+the library.  The gateway packages should now have a regular dependency on the
+generator package from their `setup-depends` section.  No dependency is
+necessary on the generator from the either of the gateway package's libraries
+anymore.  The gateway packages should still depend on `hoppy-runtime`, and the
+Haskell gateway package should still depend on the C++ gateway package.
+
+If in doubt, see the example bindings.
 
 ## hoppy-generator-0.7.1, hoppy-std-0.7.1 (2020-03-30)
 

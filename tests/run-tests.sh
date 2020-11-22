@@ -61,11 +61,11 @@ if [[ -n $doBuild ]]; then
     # Build the generator.  It includes all interfaces.
     announce "Building the generator."
     cd "$testsRoot/generator"
-    run cabal sandbox delete || true
-    run cabal sandbox init
-    run cabal install ../../{generator,std}
-    run cabal configure --ghc-options=-Werror
-    run cabal build
+    run cabal v1-sandbox delete || true
+    run cabal v1-sandbox init
+    run cabal v1-install ../../{generator,std}
+    run cabal v1-configure --ghc-options=-Werror
+    run cabal v1-build
 fi
 
 for suite in $suites; do
@@ -80,21 +80,21 @@ for suite in $suites; do
 
         # Build and run the Haskell half of the current test suite.
         cd "$testsRoot/hs/$suite"
-        run cabal sandbox delete || true
-        run cabal sandbox init
-        run cabal install ../../../runtime
+        run cabal v1-sandbox delete || true
+        run cabal v1-sandbox init
+        run cabal v1-install ../../../runtime
         run ../../generator/dist/build/generator/generator --interface "$suite" --gen-hs .
-        run cabal configure \
+        run cabal v1-configure \
             --ghc-options=-Werror --enable-tests --extra-lib-dirs="$testsRoot/cpp/$suite"
-        run cabal build --ghc-options=-Werror
-        LD_LIBRARY_PATH="$testsRoot/cpp/$suite" run cabal test
+        run cabal v1-build --ghc-options=-Werror
+        LD_LIBRARY_PATH="$testsRoot/cpp/$suite" run cabal v1-test
     fi
 
     # Clean up the test suite's outputs.
     if [[ -n $doClean ]]; then
         cd "$testsRoot/hs/$suite"
-        run cabal clean || true
-        run cabal sandbox delete || true
+        run cabal v1-clean || true
+        run cabal v1-sandbox delete || true
         run rm -f Foreign/Hoppy/Test/*.hs{,-boot}
 
         cd "$testsRoot/cpp/$suite"
@@ -105,7 +105,7 @@ done
 if [[ -n $doClean ]]; then
     announce "Cleaning the generator."
     cd "$testsRoot/generator"
-    cabal clean
-    cabal sandbox delete
+    cabal v1-clean
+    cabal v1-sandbox delete
 fi
 

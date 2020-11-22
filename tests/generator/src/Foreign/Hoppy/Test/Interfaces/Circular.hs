@@ -15,16 +15,18 @@
 -- You should have received a copy of the GNU Affero General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-module Main (main) where
+module Foreign.Hoppy.Test.Interfaces.Circular (interfaceResult) where
 
-import Foreign.Hoppy.Setup (ProjectConfig (..), cppMain)
-import qualified Foreign.Hoppy.Test.Interfaces.Basic as Basic
+import Foreign.Hoppy.Generator.Spec
+import Foreign.Hoppy.Test.Interfaces.Circular.Flob (flobModule)
+import Foreign.Hoppy.Test.Interfaces.Circular.Flub (flubModule)
 
-main =
-  cppMain
-  ProjectConfig
-  { interfaceResult = Basic.interfaceResult
-  , cppPackageName = "hoppy-tests-basic-cpp"
-  , cppSourcesDir = "cpp"
-  , hsSourcesDir = "src"
-  }
+{-# ANN module "HLint: ignore Use camelCase" #-}
+
+interfaceResult :: Either String Interface
+interfaceResult =
+  interface "circular" modules >>=
+  interfaceAddHaskellModuleBase ["Foreign", "Hoppy", "Test"]
+
+modules :: [Module]
+modules = [flobModule, flubModule]

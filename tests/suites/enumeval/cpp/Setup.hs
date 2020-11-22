@@ -15,19 +15,16 @@
 -- You should have received a copy of the GNU Affero General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
--- | C++ compiler specification for use with the test suite.
-module Foreign.Hoppy.Test.Interfaces.Compiler (testCompiler) where
+module Main (main) where
 
-import Foreign.Hoppy.Generator.Compiler (SimpleCompiler, defaultCompiler, prependArguments)
-import System.Environment (getEnv)
-import System.IO.Unsafe (unsafePerformIO)
+import Foreign.Hoppy.Setup (ProjectConfig (..), cppMain)
+import qualified Foreign.Hoppy.Test.Interfaces.Enumeval as Enumeval
 
--- | Creates a compiler that has the C++ files for a particular test suite on
--- its include path.  We need this for enum value computation.
-testCompiler :: SimpleCompiler
-testCompiler = prependArguments ["-I" ++ cppDirPath] defaultCompiler
-
--- | The path to the directory holding the current suite's C++ files.
-cppDirPath :: FilePath
-{-# NOINLINE cppDirPath #-}
-cppDirPath = unsafePerformIO $ getEnv "HOPPY_TEST_CPP_DIR"
+main =
+  cppMain
+  ProjectConfig
+  { interfaceResult = Enumeval.interfaceResult
+  , cppPackageName = "hoppy-tests-enumeval-cpp"
+  , cppSourcesDir = "cpp"
+  , hsSourcesDir = "src"
+  }

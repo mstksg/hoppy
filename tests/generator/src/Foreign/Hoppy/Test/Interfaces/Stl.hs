@@ -33,14 +33,12 @@ import qualified Foreign.Hoppy.Generator.Std.Set as Set
 import qualified Foreign.Hoppy.Generator.Std.UnorderedMap as UnorderedMap
 import qualified Foreign.Hoppy.Generator.Std.UnorderedSet as UnorderedSet
 import qualified Foreign.Hoppy.Generator.Std.Vector as Vector
-import Foreign.Hoppy.Test.Interfaces.Compiler (testCompiler)
 
 {-# ANN module "HLint: ignore Use camelCase" #-}
 
 interfaceResult :: Either String Interface
 interfaceResult =
   interface "stl" modules >>=
-  pure . interfaceSetCompiler testCompiler >>=
   interfaceAddHaskellModuleBase ["Foreign", "Hoppy", "Test"]
 
 modules :: [Module]

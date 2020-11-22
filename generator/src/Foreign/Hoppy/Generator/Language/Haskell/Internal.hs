@@ -58,11 +58,11 @@ newtype Generation = Generation
   }
 
 -- | Runs the C++ code generator against an interface.
-generate :: Interface -> Either ErrorMsg Generation
-generate iface = do
+generate :: Interface -> ComputedInterfaceData -> Either ErrorMsg Generation
+generate iface computed = do
   -- Build the partial generation of each module.
   modPartials <- forM (M.elems $ interfaceModules iface) $ \m ->
-    (,) m <$> execGenerator iface m (generateSource m)
+    (,) m <$> execGenerator iface computed m (generateSource m)
 
   -- Compute the strongly connected components.  If there is a nontrivial SCC,
   -- then there is a module import cycle that we'll have to break with hs-boot
@@ -85,7 +85,7 @@ generate iface = do
       let cycleModNames = S.fromList $ map (partialModuleHsName . snd) mps
       forM_ mps $ \(m, p) -> do
         -- Create a boot partial.
-        pBoot <- lift $ execGenerator iface m (generateBootSource m)
+        pBoot <- lift $ execGenerator iface computed m (generateBootSource m)
 
         -- Change the source and boot partials so that all imports of modules in
         -- this cycle are {-# SOURCE #-} imports.

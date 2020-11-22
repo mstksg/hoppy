@@ -18,13 +18,13 @@
 module Main (main) where
 
 import Foreign.Hoppy.Setup (ProjectConfig (..), hsMain)
+import qualified Foreign.Hoppy.Test.Interfaces.Stl as Stl
 
 main =
   hsMain
   ProjectConfig
-  { generatorExecutableName = "hoppy-tests-generator"
+  { interfaceResult = Stl.interfaceResult
   , cppPackageName = "hoppy-tests-stl-cpp"
   , cppSourcesDir = "cpp"
   , hsSourcesDir = "src"
-  , interfaceName = Just "stl"
   }

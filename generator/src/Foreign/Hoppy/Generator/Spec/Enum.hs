@@ -64,6 +64,13 @@ import Data.Function (on)
 import qualified Data.Map as M
 import Foreign.Hoppy.Generator.Common (butLast, capitalize, for)
 import Foreign.Hoppy.Generator.Spec.Base
+import Foreign.Hoppy.Generator.Spec.Computed (
+  EvaluatedEnumData,
+  evaluatedEnumNumericType,
+  evaluatedEnumValueMap,
+  getEvaluatedEnumData,
+  numType,
+  )
 import qualified Foreign.Hoppy.Generator.Language.Cpp as LC
 import qualified Foreign.Hoppy.Generator.Language.Haskell as LH
 import Foreign.Hoppy.Generator.Override (addOverrideMap, overriddenMapLookup, plainMap)
@@ -366,7 +373,8 @@ makeConversion e =
           makeConversionSpecHaskell
             (HsTyCon . UnQual . HsIdent <$> toHsEnumTypeName e)
             (Just $ do evaluatedData <- hsGetEvaluatedEnumData $ enumExtName e
-                       LH.cppTypeToHsTypeAndUse LH.HsCSide $ evaluatedEnumType evaluatedData)
+                       LH.cppTypeToHsTypeAndUse LH.HsCSide $
+                         numType $ evaluatedEnumNumericType evaluatedData)
             (CustomConversion $ do
                LH.addImports $ mconcat [hsImport1 "Prelude" "(.)",
                                         hsImportForPrelude,
@@ -393,7 +401,8 @@ sayHsExport mode enum =
     LH.SayExportDecls -> do
       hsTypeName <- toHsEnumTypeName enum
       evaluatedData <- hsGetEvaluatedEnumData $ enumExtName enum
-      numericType <- LH.cppTypeToHsTypeAndUse LH.HsCSide $ evaluatedEnumType evaluatedData
+      numericType <- LH.cppTypeToHsTypeAndUse LH.HsCSide $
+        numType $ evaluatedEnumNumericType evaluatedData
       let evaluatedValueMap = evaluatedEnumValueMap evaluatedData
       evaluatedValues <- forM (enumValueMapNames $ enumValues enum) $ \name ->
         case M.lookup name evaluatedValueMap of
@@ -491,7 +500,8 @@ sayHsExport mode enum =
     LH.SayExportBoot -> do
       hsTypeName <- toHsEnumTypeName enum
       evaluatedData <- hsGetEvaluatedEnumData $ enumExtName enum
-      numericType <- LH.cppTypeToHsTypeAndUse LH.HsCSide $ evaluatedEnumType evaluatedData
+      numericType <- LH.cppTypeToHsTypeAndUse LH.HsCSide $
+        numType $ evaluatedEnumNumericType evaluatedData
       LH.addImports $ mconcat [hsImportForPrelude, hsImportForRuntime]
       LH.addExport hsTypeName
       LH.ln
@@ -507,15 +517,15 @@ sayHsExport mode enum =
 -- | Reads evaluated data for the named enum from the C++ generator environment.
 cppGetEvaluatedEnumData :: HasCallStack => ExtName -> LC.Generator EvaluatedEnumData
 cppGetEvaluatedEnumData extName = do
-  iface <- LC.askInterface
-  return $ interfaceGetEvaluatedEnumData iface extName
+  computed <- LC.askComputedInterfaceData
+  return $ getEvaluatedEnumData computed extName
 
 -- | Reads evaluated data for the named enum from the Haskell generator
 -- environment.
 hsGetEvaluatedEnumData :: HasCallStack => ExtName -> LH.Generator EvaluatedEnumData
 hsGetEvaluatedEnumData extName = do
-  iface <- LH.askInterface
-  return $ interfaceGetEvaluatedEnumData iface extName
+  computed <- LH.askComputedInterfaceData
+  return $ getEvaluatedEnumData computed extName
 
 -- | Returns the Haskell name for an enum.
 --

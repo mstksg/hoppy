@@ -167,12 +167,8 @@ module Foreign.Hoppy.Generator.Spec.Base (
   hsWholeModuleImport, hsQualifiedImport, hsImport1, hsImport1', hsImports, hsImports',
   hsImportSetMakeSource,
   -- * Internal to Hoppy
-  EvaluatedEnumData (..),
-  EvaluatedEnumValueMap,
   interfaceAllExceptionClasses,
   interfaceSharedPtr,
-  interfaceEvaluatedEnumData,
-  interfaceGetEvaluatedEnumData,
   -- ** Haskell imports
   makeHsImportSet,
   getHsImportSet,
@@ -278,8 +274,6 @@ data Interface = Interface
   , interfaceHooks :: Hooks
     -- ^ Hooks allowing the interface to execute code at various points during
     -- the code generator's execution.  This defaults to 'defaultHooks'.
-  , interfaceEvaluatedEnumData :: Maybe (M.Map ExtName EvaluatedEnumData)
-    -- ^ Evaluated numeric types and values for all enums in the interface.
   , interfaceValidateEnumTypes :: Bool
     -- ^ Whether to validate manually-provided enum numeric types
     -- ('Foreign.Hoppy.Generator.Spec.Enum.enumNumericType') using a compiled
@@ -373,7 +367,6 @@ interface' ifName modules options = do
     , interfaceSharedPtr = (reqInclude $ includeStd "memory", "std::shared_ptr")
     , interfaceCompiler = Just $ SomeCompiler defaultCompiler
     , interfaceHooks = defaultHooks
-    , interfaceEvaluatedEnumData = Nothing
     , interfaceValidateEnumTypes = True
     }
 
@@ -501,18 +494,6 @@ interfaceSetValidateEnumTypes validate iface =
 interfaceModifyHooks :: (Hooks -> Hooks) -> Interface -> Interface
 interfaceModifyHooks f iface =
   iface { interfaceHooks = f $ interfaceHooks iface }
-
--- | Returns the map containing the calculated values for all entries in the
--- enum with the given 'ExtName'.  This requires hooks to have been run.
-interfaceGetEvaluatedEnumData :: HasCallStack => Interface -> ExtName -> EvaluatedEnumData
-interfaceGetEvaluatedEnumData iface extName =
-  case interfaceEvaluatedEnumData iface of
-    Nothing -> error $ "interfaceGetEvaluatedEnumData: Data have not been " ++
-               "evaluated for " ++ show iface ++ "."
-    Just enumMap -> case M.lookup extName enumMap of
-      Nothing -> error $ "interfaceGetEvaluatedEnumData: No data found for " ++
-                 show extName ++ " in " ++ show iface ++ "."
-      Just info -> info
 
 -- | An @#include@ directive in a C++ file.
 newtype Include = Include
@@ -1532,19 +1513,6 @@ makeConversionSpecHaskell hsType cType toCppFn fromCppFn =
   , conversionSpecHaskellToCppFn = toCppFn
   , conversionSpecHaskellFromCppFn = fromCppFn
   }
-
--- | Information about the enum that has been completed beyond what the
--- interface definition provides, possibly by building actual C++ code.
-data EvaluatedEnumData = EvaluatedEnumData
-  { evaluatedEnumType :: Type
-    -- ^ The numeric type that C++ uses to hold the enum's values, or an
-    -- equivalently-sized type.
-  , evaluatedEnumValueMap :: EvaluatedEnumValueMap
-    -- ^ Calculated values for all of the enum's entries.
-  }
-
--- | Contains the numeric values for each of the entries in a C++ enum.
-type EvaluatedEnumValueMap = M.Map [String] Integer
 
 -- | Each exception class has a unique exception ID.
 newtype ExceptionId = ExceptionId

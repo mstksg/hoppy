@@ -1,4 +1,4 @@
-name: hoppy-tests-stl-cpp
+name: hoppy-tests-enumeval-cpp
 version: 0.1.0
 license: AGPL-3
 author: Bryan Gardiner <bog@khumba.net>
@@ -9,7 +9,7 @@ cabal-version: >=1.10
 
 extra-source-files:
   Makefile
-  cpp/intbox.hpp
+  cpp/enums.hpp
 
 custom-setup
   setup-depends:
@@ -21,7 +21,7 @@ custom-setup
 library
   hs-source-dirs: src
   exposed-modules:
-      Foreign.Hoppy.Test.Stl.EmptyCpp
+      Foreign.Hoppy.Test.Enumeval.EmptyCpp
   build-depends:
       base
     , hoppy-runtime

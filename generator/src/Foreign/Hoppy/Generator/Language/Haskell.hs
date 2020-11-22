@@ -33,6 +33,7 @@ module Foreign.Hoppy.Generator.Language.Haskell (
   renderPartial,
   Env (..),
   askInterface,
+  askComputedInterfaceData,
   askModule,
   askModuleName,
   getModuleForExtName,
@@ -90,6 +91,7 @@ import qualified Data.Set as S
 import Data.Tuple (swap)
 import Foreign.Hoppy.Generator.Common
 import Foreign.Hoppy.Generator.Spec.Base
+import Foreign.Hoppy.Generator.Spec.Computed (ComputedInterfaceData)
 import {-# SOURCE #-} Foreign.Hoppy.Generator.Spec.Class (
   Class,
   ClassHaskellConversion,
@@ -242,6 +244,7 @@ type Generator = ReaderT Env (WriterT Output (Except ErrorMsg))
 -- | Context information for generating Haskell code.
 data Env = Env
   { envInterface :: Interface
+  , envComputedInterfaceData :: ComputedInterfaceData
   , envModule :: Module
   , envModuleName :: String
   }
@@ -249,6 +252,10 @@ data Env = Env
 -- | Returns the currently generating interface.
 askInterface :: Generator Interface
 askInterface = asks envInterface
+
+-- | Returns the computed data for the currently generating interface.
+askComputedInterfaceData :: Generator ComputedInterfaceData
+askComputedInterfaceData = asks envComputedInterfaceData
 
 -- | Returns the currently generating module.
 askModule :: Generator Module
@@ -317,21 +324,31 @@ instance Monoid Output where
 -- | Runs a generator action for the given interface and module name string.
 -- Returns an error message if an error occurred, otherwise the action's output
 -- together with its value.
-runGenerator :: Interface -> Module -> Generator a -> Either ErrorMsg (Partial, a)
-runGenerator iface m generator =
+runGenerator ::
+     Interface
+  -> ComputedInterfaceData
+  -> Module
+  -> Generator a
+  -> Either ErrorMsg (Partial, a)
+runGenerator iface computed m generator =
   let modName = getModuleName iface m
   in fmap (first (Partial modName) . swap) $
      runExcept $
      flip catchError (\msg -> throwError $ msg ++ ".") $
-     runWriterT $ runReaderT generator $ Env iface m modName
+     runWriterT $ runReaderT generator $ Env iface computed m modName
 
 -- | Runs a generator action and returns the its value.
-evalGenerator :: Interface -> Module -> Generator a -> Either ErrorMsg a
-evalGenerator iface m = fmap snd . runGenerator iface m
+evalGenerator :: Interface -> ComputedInterfaceData -> Module -> Generator a -> Either ErrorMsg a
+evalGenerator iface computed m = fmap snd . runGenerator iface computed m
 
 -- | Runs a generator action and returns its output.
-execGenerator :: Interface -> Module -> Generator a -> Either ErrorMsg Partial
-execGenerator iface m = fmap fst . runGenerator iface m
+execGenerator ::
+     Interface
+  -> ComputedInterfaceData
+  -> Module
+  -> Generator a
+  -> Either ErrorMsg Partial
+execGenerator iface computed m = fmap fst . runGenerator iface computed m
 
 -- | Converts a 'Partial' into a complete Haskell module.
 renderPartial :: Partial -> String

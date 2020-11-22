@@ -15,20 +15,54 @@
 -- You should have received a copy of the GNU Affero General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-module Foreign.Hoppy.Test.Interfaces.Circular (interfaceResult) where
+module Foreign.Hoppy.Test.Interfaces.Enumeval (interfaceResult) where
 
 import Foreign.Hoppy.Generator.Spec
-import Foreign.Hoppy.Test.Interfaces.Circular.Flob (flobModule)
-import Foreign.Hoppy.Test.Interfaces.Circular.Flub (flubModule)
-import Foreign.Hoppy.Test.Interfaces.Compiler (testCompiler)
+import Foreign.Hoppy.Generator.Types (intT)
 
 {-# ANN module "HLint: ignore Use camelCase" #-}
 
 interfaceResult :: Either String Interface
 interfaceResult =
-  interface "circular" modules >>=
-  pure . interfaceSetCompiler testCompiler >>=
+  interface "enumeval" modules >>=
   interfaceAddHaskellModuleBase ["Foreign", "Hoppy", "Test"]
 
 modules :: [Module]
-modules = [flobModule, flubModule]
+modules = [testModule]
+
+testModule :: Module
+testModule =
+  moduleModify' (makeModule "enumeval" "enumeval.hpp" "enumeval.cpp") $
+  moduleAddExports
+  [ toExport e_IceCream
+  , toExport e_Number
+  , toExport f_rankIceCream
+  ]
+
+enumsInclude :: Include
+enumsInclude = includeStd "enums.hpp"
+
+e_IceCream :: CppEnum
+e_IceCream =
+  addReqIncludes [enumsInclude] $
+  makeAutoEnum (ident "IceCream") Nothing Unscoped
+  [ "CHOCOLATE"
+  , "BUBBLEGUM"
+  , "BIRTHDAY_CAKE"
+  ]
+
+e_Number :: CppEnum
+e_Number =
+  addReqIncludes [enumsInclude] $
+  makeAutoEnum (ident "Number") Nothing Scoped
+  [ "one"
+  , "oneAndAHalf"
+  , "Two"
+  , "THREE"
+  , "four_fiveSixSEVEN"
+  ]
+
+f_rankIceCream :: Function
+f_rankIceCream =
+  addReqIncludes [enumsInclude] $
+  makeFn (ident "rankIceCream") Nothing Pure [enumT e_IceCream] intT
