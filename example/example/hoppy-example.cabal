@@ -11,7 +11,7 @@ custom-setup
   setup-depends:
       base
     , Cabal
-    , hoppy-runtime >=0.7 && <0.8
+    , hoppy-runtime >=0.8 && <0.9
     , hoppy-example-generator >=0.1 && <0.2
 
 library
@@ -28,7 +28,7 @@ library
   build-depends:
       base
     , hoppy-example-cpp >= 0.1 && <0.2
-    , hoppy-runtime >=0.7 && <0.8
+    , hoppy-runtime >=0.8 && <0.9
   default-language: Haskell2010
   ghc-options: -W -fwarn-incomplete-patterns -fwarn-unused-do-bind
   -- This causes us to link against libexample.so:
@@ -52,5 +52,5 @@ test-suite hoppy-example-tests
   build-depends:
       base
     , hoppy-example
-    , hoppy-runtime >=0.7 && <0.8
+    , hoppy-runtime >=0.8 && <0.9
     , HUnit

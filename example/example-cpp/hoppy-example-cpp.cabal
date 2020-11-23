@@ -16,7 +16,7 @@ custom-setup
   setup-depends:
       base
     , Cabal
-    , hoppy-runtime >=0.7 && <0.8
+    , hoppy-runtime >=0.8 && <0.9
     , hoppy-example-generator >=0.1 && <0.2
 
 library
@@ -25,6 +25,6 @@ library
       Foreign.Hoppy.Example.Internal.EmptyCpp
   build-depends:
       base
-    , hoppy-runtime >=0.7 && <0.8
+    , hoppy-runtime >=0.8 && <0.9
   default-language: Haskell2010
   ghc-options: -W -fwarn-incomplete-patterns -fwarn-unused-do-bind
