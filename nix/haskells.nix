@@ -21,17 +21,21 @@
 { ... }@nixpkgsArgs:
 with import ./nixpkgs.nix nixpkgsArgs;
 let
+  blacklistedHaskells = [
+    # ghc844 on Nixpkgs unstable channel (2020-03-29) fails to build haskell-src:
+    #
+    #   Warning: haskell-src.cabal:0:0: Unsupported cabal-version. See
+    #   https://github.com/haskell/cabal/issues/4899.
+    #   CallStack (from HasCallStack):
+    #     die', called at libraries/Cabal/Cabal/Distribution/PackageDescription/Parsec.hs:110:13
+    #         in Cabal-2.2.0.1:Distribution.PackageDescription.Parsec
+    #     <snip>
+    #   Setup: Failed parsing "./haskell-src.cabal".
+    "ghc844"
 
-  # ghc844 on Nixpkgs unstable channel (2020-03-29) fails to build haskell-src:
-  #
-  #   Warning: haskell-src.cabal:0:0: Unsupported cabal-version. See
-  #   https://github.com/haskell/cabal/issues/4899.
-  #   CallStack (from HasCallStack):
-  #     die', called at libraries/Cabal/Cabal/Distribution/PackageDescription/Parsec.hs:110:13
-  #         in Cabal-2.2.0.1:Distribution.PackageDescription.Parsec
-  #     <snip>
-  #   Setup: Failed parsing "./haskell-src.cabal".
-  blacklistedHaskells = [ "ghc844" ];
+    # syb is broken here as of 2021-01-25.
+    "ghc901"
+  ];
 
   isBlacklisted = name: builtins.elem name blacklistedHaskells;
 
