@@ -14,17 +14,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-{ mkDerivation, base, stdenv, lib
+{ mkDerivation, base, Cabal, containers, directory, filepath
+, hoppy-generator, lib
 , forceParallelBuilding ? false
 }:
 mkDerivation {
   pname = "hoppy-runtime";
   version = "0.8.0";
   src = ./.;
-  libraryHaskellDepends = [ base ];
+  libraryHaskellDepends = [
+    base Cabal containers directory filepath hoppy-generator
+  ];
   homepage = "http://khumba.net/projects/hoppy";
   description = "C++ FFI generator - Runtime support";
-  license = stdenv.lib.licenses.asl20;
+  license = lib.licenses.asl20;
 
   preConfigure =
     if forceParallelBuilding

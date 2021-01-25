@@ -15,7 +15,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-{ mkDerivation, stdenv, lib
+{ mkDerivation, lib
 , base, bytestring, containers, directory, filepath, haskell-src, mtl
 , process, temporary, text
 , forceParallelBuilding ? false
@@ -30,7 +30,7 @@ mkDerivation {
   ];
   homepage = "http://khumba.net/projects/hoppy";
   description = "C++ FFI generator - Code generator";
-  license = stdenv.lib.licenses.agpl3Plus;
+  license = lib.licenses.agpl3Plus;
 
   preConfigure =
     if forceParallelBuilding

@@ -14,8 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-{ mkDerivation, base, filepath, haskell-src, hoppy-generator
-, stdenv, lib
+{ mkDerivation, base, filepath, haskell-src, hoppy-generator, lib
 , forceParallelBuilding ? false
 }:
 mkDerivation {
@@ -27,7 +26,7 @@ mkDerivation {
   ];
   homepage = "http://khumba.net/projects/hoppy";
   description = "C++ FFI generator - Standard library bindings";
-  license = stdenv.lib.licenses.asl20;
+  license = lib.licenses.asl20;
 
   preConfigure =
     if forceParallelBuilding

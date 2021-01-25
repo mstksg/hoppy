@@ -43,7 +43,7 @@ let
       # case is derived from the one in hackage-packages.nix in Nixpkgs.
       haskell-src = jailbreak (
         let ver = (builtins.parseDrvName hsuper.haskell-src.name).version; in
-        if builtins.compareVersions ver "1.0.3.1" >= 0
+        if builtins.compareVersions ver "1.0.3.1" > 0
         then hsuper.haskell-src
         else hsuper.callPackage
           ({ stdenv, mkDerivation, array, base, happy, pretty, syb }:
@@ -51,6 +51,8 @@ let
               pname = "haskell-src";
               version = "1.0.3.1";
               sha256 = "0cjigvshk4b8wqdk0v0hz9ag1kyjjsmqsy4a1m3n28ac008cg746";
+              revision = "2";
+              editedCabalFile = "1qrhcyr0y7j8la3970pg80w3h3pprsp3nisgg1l41wfsr2m7smnf";
               libraryHaskellDepends = [ array base pretty syb ];
               libraryToolDepends = [ happy ];
               description = "Support for manipulating Haskell source code";
