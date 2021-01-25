@@ -24,6 +24,11 @@
   `ccCompile` field has an extra argument as well: the compiler being invoked,
   so that it has access to this search path.
 
+- [API change] The enum numeric type info types and functions have moved from
+  `Foreign.Hoppy.Generator.Hook` to `Foreign.Hoppy.Generator.Spec.Computed`.
+  Unless you're explicitly using `NumericTypeInfo`, this probably doesn't affect
+  you.
+
 - Updated the example bindings to support Cabal Nix-style builds with v2-build.
   Also Hoppy tests are now runnable via `cabal v2-test`.  To support this, both
   the example and the tests now call their generators as a library.
@@ -44,6 +49,10 @@
 - The generator now has additional `--clean-cpp` and `--clean-hs` options.
   These both take an argument, like `--gen-cpp` and `--gen-hs`, but remove
   generated files rather than creating them.
+
+- The minimum Cabal version for all packages has been bumped to 1.24, as
+  required for `custom-setup` stanzas.  This was already a requirement, but the
+  `cabal-version` was out of date and said 1.10.
 
 ### Converting your generators into libraries
 
