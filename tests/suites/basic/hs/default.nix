@@ -16,25 +16,22 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 { mkDerivation, base, Cabal, containers, hoppy-runtime
-, hoppy-tests-basic-cpp, hoppy-tests-generator, HUnit, stdenv
+, hoppy-tests-basic-cpp, hoppy-tests-generator, HUnit, lib
 }:
 mkDerivation {
   pname = "hoppy-tests-basic";
   version = "0.1.0";
   src = ./.;
-  setupHaskellDepends = [ base Cabal hoppy-runtime ];
+  setupHaskellDepends = [
+    base Cabal hoppy-runtime hoppy-tests-generator
+  ];
   libraryHaskellDepends = [
-    base hoppy-runtime hoppy-tests-basic-cpp hoppy-tests-generator
+    base containers hoppy-runtime hoppy-tests-basic-cpp
   ];
   # librarySystemDepends = [ hoppy-tests-basic ];
   testHaskellDepends = [ base containers hoppy-runtime HUnit ];
   doHaddock = false;
-  license = stdenv.lib.licenses.agpl3Plus;
+  license = lib.licenses.agpl3Plus;
 
   enableSharedExecutables = true;
-
-  # Tell the generator where the C++ files are for this package.
-  preConfigure = ''
-    export HOPPY_TEST_CPP_DIR="${hoppy-tests-basic-cpp}/include/hoppy-tests-basic-cpp"
-  '';
 }

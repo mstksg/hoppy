@@ -27,7 +27,7 @@
 #   have to add it ourselves.
 
 { mkDerivation, base, Cabal, hoppy-example-cpp
-, hoppy-example-generator, hoppy-runtime, HUnit, stdenv
+, hoppy-example-generator, hoppy-runtime, HUnit, lib
 }:
 mkDerivation {
   pname = "hoppy-example";
@@ -35,14 +35,16 @@ mkDerivation {
   src = ./.;
   isLibrary = true;
   isExecutable = true;
-  setupHaskellDepends = [ base Cabal hoppy-runtime ];
+  setupHaskellDepends = [
+    base Cabal hoppy-example-generator hoppy-runtime
+  ];
   libraryHaskellDepends = [
-    base hoppy-example-cpp hoppy-example-generator hoppy-runtime
+    base hoppy-example-cpp hoppy-runtime
   ];
   # librarySystemDepends = [ example ];  (We don't want this.)
   executableHaskellDepends = [ base ];
   testHaskellDepends = [ base hoppy-runtime HUnit ];
-  license = stdenv.lib.licenses.asl20;
+  license = lib.licenses.asl20;
 
   enableSharedExecutables = true;  # Must add this ourselves.
 }

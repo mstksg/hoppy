@@ -14,8 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-{ mkDerivation, base, haskell-src, hoppy-generator, hoppy-std
-, stdenv
+{ mkDerivation, base, hoppy-generator, hoppy-std, lib
 }:
 mkDerivation {
   pname = "hoppy-example-generator";
@@ -23,10 +22,8 @@ mkDerivation {
   src = ./.;
   isLibrary = true;
   isExecutable = true;
-  libraryHaskellDepends = [ base ];
-  executableHaskellDepends = [
-    base haskell-src hoppy-generator hoppy-std
-  ];
+  libraryHaskellDepends = [ base hoppy-generator hoppy-std ];
+  executableHaskellDepends = [ base hoppy-generator ];
   doHaddock = false;
-  license = stdenv.lib.licenses.asl20;
+  license = lib.licenses.asl20;
 }

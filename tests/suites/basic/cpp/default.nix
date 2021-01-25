@@ -15,27 +15,17 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-{ mkDerivation, base, Cabal, hoppy-runtime, hoppy-tests-generator, stdenv
+{ mkDerivation, base, Cabal, hoppy-runtime, hoppy-tests-generator, lib
 }:
 mkDerivation {
   pname = "hoppy-tests-basic-cpp";
   version = "0.1.0";
   src = ./.;
-  setupHaskellDepends = [ base Cabal hoppy-runtime ];
-  libraryHaskellDepends = [
-    base hoppy-runtime hoppy-tests-generator
+  setupHaskellDepends = [
+    base Cabal hoppy-runtime hoppy-tests-generator
   ];
-  license = stdenv.lib.licenses.agpl3Plus;
-
-  # Tell the generator where the C++ files are for this package.
-  preConfigure = ''
-    export HOPPY_TEST_CPP_DIR="$PWD/cpp"
-  '';
-
-  # Install the C++ sources so that the hs/ package can use them for its
-  # compiler call.
-  postInstall = ''
-    mkdir -p $out/include/hoppy-tests-basic-cpp
-    cp cpp/*.hpp $out/include/hoppy-tests-basic-cpp
-  '';
+  libraryHaskellDepends = [
+    base hoppy-runtime
+  ];
+  license = lib.licenses.agpl3Plus;
 }

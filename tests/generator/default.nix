@@ -16,18 +16,15 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 { mkDerivation, base, filepath, haskell-src, hoppy-generator
-, hoppy-std, stdenv
+, hoppy-std, lib
 }:
 mkDerivation {
   pname = "hoppy-tests-generator";
   version = "0.1.0";
   src = ./.;
-  isLibrary = true;
-  isExecutable = true;
-  libraryHaskellDepends = [ base ];
-  executableHaskellDepends = [
+  libraryHaskellDepends = [
     base filepath haskell-src hoppy-generator hoppy-std
   ];
   doHaddock = false;
-  license = stdenv.lib.licenses.agpl3Plus;
+  license = lib.licenses.agpl3Plus;
 }

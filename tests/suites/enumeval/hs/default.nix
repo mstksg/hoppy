@@ -15,26 +15,23 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-{ mkDerivation, base, Cabal, containers, hoppy-runtime
-, hoppy-tests-enumeval-cpp, hoppy-tests-generator, HUnit, stdenv
+{ mkDerivation, base, Cabal, hoppy-runtime
+, hoppy-tests-enumeval-cpp, hoppy-tests-generator, HUnit, lib
 }:
 mkDerivation {
   pname = "hoppy-tests-enumeval";
   version = "0.1.0";
   src = ./.;
-  setupHaskellDepends = [ base Cabal hoppy-runtime ];
+  setupHaskellDepends = [
+    base Cabal hoppy-runtime hoppy-tests-generator
+  ];
   libraryHaskellDepends = [
-    base hoppy-runtime hoppy-tests-enumeval-cpp hoppy-tests-generator
+    base hoppy-runtime hoppy-tests-enumeval-cpp
   ];
   # librarySystemDepends = [ hoppy-tests-enumeval ];
-  testHaskellDepends = [ base containers hoppy-runtime HUnit ];
+  testHaskellDepends = [ base hoppy-runtime HUnit ];
   doHaddock = false;
-  license = stdenv.lib.licenses.agpl3Plus;
+  license = lib.licenses.agpl3Plus;
 
   enableSharedExecutables = true;
-
-  # Tell the generator where the C++ files are for this package.
-  preConfigure = ''
-    export HOPPY_TEST_CPP_DIR="${hoppy-tests-enumeval-cpp}/include/hoppy-tests-enumeval-cpp"
-  '';
 }
