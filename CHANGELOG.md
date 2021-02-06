@@ -1,6 +1,8 @@
 # Hoppy Changelog
 
-## Unreleased - 0.8.0
+## Unreleased - 0.8.1
+
+## *-0.8.0 (2021-02-06)
 
 - [API change] Hoppy generators are now meant to be invoked as libraries rather
   than as executables, as part of the normal build process for a set of
