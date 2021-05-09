@@ -46,7 +46,7 @@ let
         if builtins.compareVersions ver "1.0.3.1" > 0
         then hsuper.haskell-src
         else hsuper.callPackage
-          ({ stdenv, mkDerivation, array, base, happy, pretty, syb }:
+          ({ mkDerivation, array, base, happy, lib, pretty, syb }:
             mkDerivation {
               pname = "haskell-src";
               version = "1.0.3.1";
@@ -56,7 +56,7 @@ let
               libraryHaskellDepends = [ array base pretty syb ];
               libraryToolDepends = [ happy ];
               description = "Support for manipulating Haskell source code";
-              license = stdenv.lib.licenses.bsd3;
+              license = lib.licenses.bsd3;
             }
           ) {}
       );
