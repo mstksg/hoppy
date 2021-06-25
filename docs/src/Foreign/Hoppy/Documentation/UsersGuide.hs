@@ -1363,15 +1363,17 @@ work with them; this may leak C++ objects.
 Catching a wildcard (i.e. @catch (...)@) is supported, but no information is
 available about the caught value.
 
-Implementation-wise, an in-flight C++ exception in Haskell always owns the
-object (which is on the heap).  An exception coming from C++ into Haskell (it's
-a heap temporary) will be given to the garbage collector.  Hence, for ease of
-use, caught exceptions should always be garbage-collected.  Also, when throwing
-from Haskell, throwing will always take ownership of the object.  If 'throwCpp'
-gets a non-GCed object, then it will be given to the garbage collector; and then
-the exception will be thrown as a Haskell exception.  If the exception
-propagates out to a callback and back into C++, then a temporary non-GCed copy
-will be passed over the gateway, and rethrown as a value object on the C++ side.
+Implementation-wise, in-flight C++ exceptions in Haskell are always owned by the
+throwing machinery, and the exception object always lives on the C++ heap.  An
+exception being thrown from C++ into Haskell (a heap temporary) will be given to
+the garbage collector, for ease of use, so do not delete it manually.
+
+In the other direction, when throwing a C++ exception from Haskell, throwing
+again takes ownership of the object.  If 'throwCpp' gets a non-GCed object, then
+it will be given to the garbage collector; and then the exception will be thrown
+as a Haskell exception.  If the exception propagates out to a callback and back
+into C++, then a temporary non-GCed copy will be passed over the gateway, and
+rethrown as a value object on the C++ side.
 
 In the above strategy, when throwing an exception from Haskell that propagates
 to C++, it is wasteful to make the thrown object GCed, just to have to create a
