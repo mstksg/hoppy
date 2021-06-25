@@ -812,7 +812,7 @@ automatically be converted to a @String@.  For example, given a function:
 And a method binding:
 
 @
-'makeFn' "reverse" Nothing 'Nonpure' ['objT' c_string] $ 'objT' c_string
+'makeFn' \"reverse\" Nothing 'Nonpure' ['objT' c_string] $ 'objT' c_string
 @
 
 We get the following Haskell function and instance:
@@ -1073,9 +1073,9 @@ defined as follows:
 alignment :: 'CppEnum'
 alignment =
   'makeAutoEnum' ('ident' \"Alignment\") Nothing 'EnumUnscoped'
-  [ "LeftAlign"
-  , "CenterAlign"
-  , "RightAlign"
+  [ \"LeftAlign\"
+  , \"CenterAlign\"
+  , \"RightAlign\"
   ]
 @
 
