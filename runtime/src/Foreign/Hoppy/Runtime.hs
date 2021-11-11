@@ -41,6 +41,7 @@ module Foreign.Hoppy.Runtime (
   -- * Containers
   HasContents (..),
   FromContents (..),
+  fromContentsToGc,
   -- * Internal
   CCallback (..),
   freeHaskellFunPtrFunPtr,
@@ -53,6 +54,7 @@ module Foreign.Hoppy.Runtime (
   ) where
 
 import Control.Exception (Exception, bracket, catch, throwIO)
+import Control.Monad ((<=<))
 import Data.Int (Int8, Int16, Int32, Int64)
 import qualified Data.Map as M
 import Data.Map (Map)
@@ -528,7 +530,32 @@ class HasContents c e | c -> e where
 -- resulting collection to a const pointer.
 class FromContents c e | c -> e where
   -- | Creates and returns a new container holding the given elements.
+  --
+  -- The new container is not managed by the garbage collector.  If this is
+  -- desired, use 'fromContentsToGc'.
   fromContents :: [e] -> IO c
+
+-- | Creates and returns a new container holding the given elements, like
+-- 'fromContents', and additionally assigns ownership to the garbage collector.
+--
+-- This function is useful if the object being created is only needed as a
+-- temporary for passing into another function, for example:
+--
+-- > processBlobs $ fromContentsToGc [Blob 1, Blob 2] :: IO BlobContainer
+--
+-- In this example, @processBlobs@ inspects all of the blobs but does not take
+-- ownership of the container, so the Haskell code has to release the container
+-- itself.  This is done via the garbage collector.
+--
+-- In a simple case like this, we can also write it a bit more efficiently like
+-- below, since we don't truly need the garbage collector:
+--
+-- > withScopedPtr (fromContents [Blob 1, Blob 2] :: IO BlobContainer) processBlobs
+--
+-- In this second example, the container is freed immediately when
+-- @processBlobs@ returns.
+fromContentsToGc :: (Deletable c, FromContents c e) => [e] -> IO c
+fromContentsToGc = toGc <=< fromContents
 
 -- | Internal type that represents a pointer to a C++ callback object (callback
 -- impl object, specifically).
