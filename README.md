@@ -5,7 +5,7 @@ making binding to C++ easy.
 
 Homepage: http://khumba.net/projects/hoppy
 
-Copyright 2015-2021 Bryan Gardiner <bog@khumba.net>
+Copyright 2015-2022 Bryan Gardiner <bog@khumba.net>
 
 A range of successive copyright years may be written as XXXX-YYYY as an
 abbreviation for listing all of the years from XXXX to YYYY inclusive,

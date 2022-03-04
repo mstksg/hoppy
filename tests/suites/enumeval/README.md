@@ -10,7 +10,7 @@ on enums declared within the C++ gateway package.
 
 This file is part of Hoppy.
 
-Copyright 2015-2021 Bryan Gardiner <bog@khumba.net>
+Copyright 2015-2022 Bryan Gardiner <bog@khumba.net>
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as published by
