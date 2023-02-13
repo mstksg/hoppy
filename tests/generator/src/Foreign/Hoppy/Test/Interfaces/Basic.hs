@@ -111,6 +111,7 @@ testModule =
   , toExport f_isFalse
   , toExport f_sizeOfBool
   , toExport f_sizeOfChar
+  , toExport f_sizeOfUChar
   , toExport f_sizeOfShort
   , toExport f_sizeOfInt
   , toExport f_sizeOfLong
@@ -121,6 +122,10 @@ testModule =
   , toExport f_sizeOfSize
   , toExport f_sizeOfSSize
     -- Numeric type passing tests.
+  , toExport f_doubleChar
+  , toExport f_doubleUChar
+  , toExport f_doubleChar16T
+  , toExport f_doubleChar32T
   , toExport f_doubleInt
   , toExport f_doubleLong
   , toExport f_doubleFloat
@@ -513,6 +518,11 @@ f_sizeOfChar =
   addReqIncludes [includeStd "functions.hpp"] $
   makeFn (ident "sizeOfChar") Nothing Pure np sizeT
 
+f_sizeOfUChar :: Function
+f_sizeOfUChar =
+  addReqIncludes [includeStd "functions.hpp"] $
+  makeFn (ident "sizeOfUChar") Nothing Pure np sizeT
+
 f_sizeOfShort :: Function
 f_sizeOfShort =
   addReqIncludes [includeStd "functions.hpp"] $
@@ -557,6 +567,26 @@ f_sizeOfSSize :: Function
 f_sizeOfSSize =
   addReqIncludes [includeStd "functions.hpp"] $
   makeFn (ident "sizeOfSSize") Nothing Pure np sizeT
+
+f_doubleChar :: Function
+f_doubleChar =
+  addReqIncludes [includeStd "functions.hpp"] $
+  makeFn (ident "doubleChar") Nothing Pure [charT] charT
+
+f_doubleUChar :: Function
+f_doubleUChar =
+  addReqIncludes [includeStd "functions.hpp"] $
+  makeFn (ident "doubleUChar") Nothing Pure [ucharT] ucharT
+
+f_doubleChar16T :: Function
+f_doubleChar16T =
+  addReqIncludes [includeStd "functions.hpp"] $
+  makeFn (ident "doubleChar16T") Nothing Pure [char16T] char16T
+
+f_doubleChar32T :: Function
+f_doubleChar32T =
+  addReqIncludes [includeStd "functions.hpp"] $
+  makeFn (ident "doubleChar32T") Nothing Pure [char32T] char32T
 
 f_doubleInt :: Function
 f_doubleInt =

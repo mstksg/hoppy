@@ -36,6 +36,7 @@ import Foreign.C (
   CPtrdiff,
   CShort,
   CSize,
+  CUChar,
   )
 import Foreign.ForeignPtr (ForeignPtr, castForeignPtr, withForeignPtr)
 import Foreign.Hoppy.Runtime (
@@ -433,6 +434,7 @@ primitiveTypeSizeTests =
   , "boolT true->false conversion" ~: isFalse True >>= (@?= False)
   , "boolT false->true conversion" ~: isFalse False >>= (@?= True)
   , "charT" ~: fromIntegral sizeOfChar @?= sizeOf (undefined :: CChar)
+  , "ucharT" ~: fromIntegral sizeOfUChar @?= sizeOf (undefined :: CUChar)
   , "shortT" ~: fromIntegral sizeOfShort @?= sizeOf (undefined :: CShort)
   , "intT" ~: fromIntegral sizeOfInt @?= sizeOf (undefined :: CInt)
   , "longT" ~: fromIntegral sizeOfLong @?= sizeOf (undefined :: CLong)
@@ -447,7 +449,11 @@ primitiveTypeSizeTests =
 numericTypePassingTests :: Test
 numericTypePassingTests =
   "numeric type passing" ~: TestList
-  [ "intT" ~: doubleInt 5 @?= 10
+  [ "charT" ~: doubleChar 63 @?= 126
+  , "ucharT" ~: doubleUChar 126 @?= 252
+  , "char16T" ~: doubleChar16T 32767 @?= 65534
+  , "char32T" ~: doubleChar32T 2147483647 @?= 4294967294
+  , "intT" ~: doubleInt 5 @?= 10
   , "longT" ~: doubleLong (-5) @?= -10
   , "floatT" ~: doubleFloat 0.5 @?= 1
   , "doubleT" ~: doubleDouble 1867 @?= 3734

@@ -2,6 +2,10 @@
 
 ## Unreleased - 0.8.1
 
+- Added types `char8_t`, `char16_t`, `char32_t`.
+
+- Added `Cpp2020` value for `CppVersion` enum.
+
 - runtime: Bump to allow Cabal-3.4.
 
 ## *-0.8.0 (2021-02-06)

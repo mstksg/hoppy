@@ -172,6 +172,10 @@ size_t sizeOfChar() {
     return sizeof(char);
 }
 
+size_t sizeOfUChar() {
+    return sizeof(unsigned char);
+}
+
 size_t sizeOfShort() {
     return sizeof(short);
 }
@@ -208,6 +212,22 @@ size_t sizeOfSSize() {
     return sizeof(ssize_t);
 }
 
+char doubleChar(char x) {
+    return x * 2;
+}
+
+unsigned char doubleUChar(unsigned char x) {
+    return x * 2;
+}
+
+char16_t doubleChar16T(char16_t x) {
+    return x * 2;
+}
+
+char32_t doubleChar32T(char32_t x) {
+    return x * 2;
+}
+
 int doubleInt(int x) {
     return x * 2;
 }
@@ -239,7 +259,6 @@ uint16_t doubleUInt16(uint16_t x) {
 uint64_t doubleUInt64(uint64_t x) {
     return x * 2;
 }
-
 
 bool* getBoolPtr() {
     static bool data = false;

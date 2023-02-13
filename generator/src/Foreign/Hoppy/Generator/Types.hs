@@ -46,6 +46,9 @@ module Foreign.Hoppy.Generator.Types (
   floatT',
   doubleT,
   doubleT',
+  char8T,
+  char16T,
+  char32T,
   int8T,
   int16T,
   int32T,
@@ -71,6 +74,7 @@ module Foreign.Hoppy.Generator.Types (
   ) where
 
 import {-# SOURCE #-} qualified Foreign.Hoppy.Generator.Language.Haskell as LH
+--import {-# SOURCE #-} qualified Foreign.Hoppy.Generator.Language.Cpp as LC
 import {-# SOURCE #-} Foreign.Hoppy.Generator.Spec.Callback (callbackT)
 import {-# SOURCE #-} Foreign.Hoppy.Generator.Spec.Class (Class)
 import {-# SOURCE #-} Foreign.Hoppy.Generator.Spec.Enum (enumT)
@@ -247,6 +251,51 @@ doubleT' =
       return $ HsTyCon $ UnQual $ HsIdent "Foreign.C.CDouble")
   Nothing BinaryCompatible BinaryCompatible
 
+-- | C++ @char8_t@, Haskell 'Data.Word.Word8'.
+--
+-- Requires C++20.
+char8T :: Type
+char8T =
+  makeNumericTypeWithCppConversion "char8_t" mempty
+  (do LH.addImports hsImportForWord
+      return $ HsTyCon $ UnQual $ HsIdent "HoppyDW.Word8")
+  Nothing  -- No Haskell-side conversion necessary.
+  BinaryCompatible
+  BinaryCompatible
+  (\cppSpec -> cppSpec { conversionSpecCppConversionType = return $ Just word8T })
+
+-- | C++ @char16_t@, Haskell 'Data.Word.Word16'.
+--
+-- This C++ type is the same as @uint_least16_t@ and so it must be at least 16
+-- bits on the C++ side, but may be larger.  Values passed to Haskell will be
+-- shortened to 16 bits.
+char16T :: Type
+char16T =
+  makeNumericTypeWithCppConversion "char16_t"
+  (reqInclude $ includeStd "uchar.h")  -- Only needed pre-C++11, really.
+  (do LH.addImports hsImportForWord
+      return $ HsTyCon $ UnQual $ HsIdent "HoppyDW.Word16")
+  Nothing  -- No Haskell-side conversion necessary.
+  BinaryCompatible
+  BinaryCompatible
+  (\cppSpec -> cppSpec { conversionSpecCppConversionType = return $ Just word16T })
+
+-- | C++ @char32_t@, Haskell 'Data.Word.Word32'.
+--
+-- This C++ type is the same as @uint_least32_t@ and so it must be at least 32
+-- bits on the C++ side, but may be larger.  Values passed to Haskell will be
+-- shortened to 32 bits.
+char32T :: Type
+char32T =
+  makeNumericTypeWithCppConversion "char32_t"
+  (reqInclude $ includeStd "uchar.h")  -- Only needed pre-C++11, really.
+  (do LH.addImports hsImportForWord
+      return $ HsTyCon $ UnQual $ HsIdent "HoppyDW.Word32")
+  Nothing  -- No Haskell-side conversion necessary.
+  BinaryCompatible
+  BinaryCompatible
+  (\cppSpec -> cppSpec { conversionSpecCppConversionType = return $ Just word32T })
+
 -- | C++ @int8_t@, Haskell 'Data.Int.Int8'.
 int8T :: Type
 int8T =
@@ -360,9 +409,44 @@ makeNumericType ::
      -- value.  See 'conversionSpecHaskellFromCppFn'.
   -> Type
 makeNumericType cppName cppReqs hsTypeGen hsCTypeGen convertToCpp convertFromCpp =
+  makeNumericTypeWithCppConversion
+  cppName cppReqs hsTypeGen hsCTypeGen convertToCpp convertFromCpp id
+
+-- | Builds a new numeric type definition, like 'makeNumericType', but allows
+-- for adding additional behaviour to the 'ConversionSpecCpp'.
+makeNumericTypeWithCppConversion ::
+     String
+     -- ^ The name of the C++ type.
+  -> Reqs
+     -- ^ Includes necessary to use the C++ type.
+  -> LH.Generator HsType
+     -- ^ Generator for rendering the Haskell type to be used, along with any
+     -- required imports.  See 'conversionSpecHaskellHsType'.
+  -> Maybe (LH.Generator HsType)
+     -- ^ If there is a Haskell type distinct from the previous argument to be
+     -- used for passing over the FFI boundary, then provide it here.  See
+     -- 'conversionSpecHaskellCType'.
+  -> ConversionMethod (LH.Generator ())
+     -- ^ Method to use to convert a Haskell value to a value to be passed over
+     -- the FFI.  See 'conversionSpecHaskellToCppFn'.
+  -> ConversionMethod (LH.Generator ())
+     -- ^ Method to use to convert a value received over the FFI into a Haskell
+     -- value.  See 'conversionSpecHaskellFromCppFn'.
+  -> (ConversionSpecCpp -> ConversionSpecCpp)
+     -- ^ Function to add additional conversion behaviour to the C++ side of the
+     -- type.
+  -> Type
+makeNumericTypeWithCppConversion cppName
+                                 cppReqs
+                                 hsTypeGen
+                                 hsCTypeGen
+                                 convertToCpp
+                                 convertFromCpp
+                                 modifyCppConversion =
   Internal_TManual spec
   where spec =
-          (makeConversionSpec cppName $ makeConversionSpecCpp cppName $ return cppReqs)
+          (makeConversionSpec cppName $ modifyCppConversion $
+           makeConversionSpecCpp cppName $ return cppReqs)
           { conversionSpecHaskell =
               Just $ makeConversionSpecHaskell
                 hsTypeGen

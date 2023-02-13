@@ -18,6 +18,8 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+#include <uchar.h>
+
 #include <basic.hpp>
 #include <enum.hpp>
 #include <intbox.hpp>
@@ -82,6 +84,7 @@ bool isTrue(bool x);
 bool isFalse(bool x);
 size_t sizeOfBool();
 size_t sizeOfChar();
+size_t sizeOfUChar();
 size_t sizeOfShort();
 size_t sizeOfInt();
 size_t sizeOfLong();
@@ -93,6 +96,11 @@ size_t sizeOfSize();
 size_t sizeOfSSize();
 
 // Numeric type passing tests.
+char doubleChar(char x);
+unsigned char doubleUChar(unsigned char x);
+// TODO Add a char8_t test, but check whether depending on C++20 is acceptable.
+char16_t doubleChar16T(char16_t x);
+char32_t doubleChar32T(char32_t x);
 int doubleInt(int);
 long doubleLong(long);
 float doubleFloat(float);

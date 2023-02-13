@@ -72,6 +72,7 @@ data CppVersion =
     Cpp1998
   | Cpp2011
   | Cpp2014
+  | Cpp2020
   deriving (Bounded, Enum, Eq, Ord, Show)
 
 -- | The 'CppVersion' chosen when one is not explicitly requested.  This is
@@ -97,5 +98,6 @@ activeCppVersion = unsafePerformIO $ do
     Just "c++98" -> return Cpp1998
     Just "c++11" -> return Cpp2011
     Just "c++14" -> return Cpp2014
+    Just "c++20" -> return Cpp2020
     Just str -> do hPutStrLn stderr $ "Warning: Invalid HOPPY_CPP_STD value " ++ show str ++ "."
                    return defaultCppVersion
