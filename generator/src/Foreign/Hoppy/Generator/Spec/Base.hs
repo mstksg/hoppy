@@ -1102,7 +1102,7 @@ class (HasAddendum a, HasExtNames a, HasReqs a, Typeable a, Show a) => Exportabl
   getExportExceptionClass :: a -> Maybe Class
   getExportExceptionClass _ = Nothing
 
--- | Specifies some C++ object (function or class) to give access to.
+-- | Specifies some C++ declaration (function, class, etc.) to give access to.
 data Export = forall a. Exportable a => Export a
 
 instance HasAddendum Export where
@@ -1301,6 +1301,9 @@ data ConversionMethod c =
 -- | The root data type for specifying how conversions happen between C++ and foreign
 -- values.
 --
+-- Prefer 'makeConversionSpec' to using this data constructor directly, then
+-- override the record to specify conversions for foreign languages.
+--
 -- The @Cpp@ component of this data structure specifies a C++ type, and
 -- conversions between it and something that can be marshalled over a C FFI
 -- layer, if such a conversion is possible in each direction.
@@ -1341,7 +1344,8 @@ makeConversionSpec name cppSpec =
 -- | For a 'ConversionSpec', defines the C++ type and conversions to and from a
 -- C FFI layer.
 --
--- Prefer 'makeConversionSpecCpp' to using this data constructor directly.
+-- Prefer 'makeConversionSpecCpp' to using this data constructor directly, then
+-- override the record to specify additional conversion properties.
 --
 -- 'conversionSpecCppName' specifies the C++ type of the conversion.  This will
 -- be the type that is passed over the C FFI as well, unless
@@ -1385,7 +1389,8 @@ data ConversionSpecCpp = ConversionSpecCpp
     -- convert a value passed over the FFI from the C FFI type (see
     -- 'conversionSpecCppConversionType') to the C++ type
     -- (i.e. 'conversionSpecCppName').  When the former is absent, this is
-    -- always fine.
+    -- always fine.  "Implicitly" here means in the sense of a C++ implicit
+    -- conversion, not necessarily binary compatibility.
     --
     -- When present, this provides custom conversion behaviour for receiving a
     -- value passed into C++ over the FFI.  The function should generate C++
@@ -1414,6 +1419,8 @@ data ConversionSpecCpp = ConversionSpecCpp
     -- /out of/ C++ through the FFI.  This powers the @ConversionSpec@ being
     -- used as 'Foreign.Hoppy.Generator.Spec.Function.Function' return values
     -- and 'Foreign.Hoppy.Generator.Spec.Callback.Callback' arguments.
+    --
+    -- Arguments are the same as with 'conversionSpecCppConversionToCppExpr'.
   }
 
 -- | Builds a 'ConversionSpecCpp' with a C++ type, with no conversions defined.

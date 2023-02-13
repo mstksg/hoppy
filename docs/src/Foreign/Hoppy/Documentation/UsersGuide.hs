@@ -350,13 +350,24 @@ c_string =
 -}
 {- $getting-started-types
 
-Let's take a break from @std::string@ for a moment and talk about how we
-represent data types in Hoppy.
+Let's take a break from @std::string@ and talk about how we represent data types
+in Hoppy.
 
 All C++ types are represented with the 'Type' data type, values of which are in
 the "Foreign.Hoppy.Generator.Types" module.  This includes primitive numeric
 types, object types, function types, pointers and references, @void@, the const
-qualifier, etc.
+qualifier, etc.  'Type's tell Hoppy how to perform conversions when Haskell code
+calls C++ code or vice versa.
+
+The association between C++ types and 'Type's is not necessarily one-to-one.
+For a single C++ type, it is perfectly okay to use 'Type's that specify
+different conversions in different situations.  A simple example would be two
+different functions that return pointers to objects of a particular class, but
+one function transfers ownership to the caller, so using 'toGcT' would make
+sense.  A more complicated example would be a function that returns an object
+pointer, where in one situation you want to pass the pointer back to Haskell
+directly, and in another situation you want the object converted to a Haskell
+record.
 
 A Hoppy 'Type' value has a corresponding C++ type, and also what we refer to as
 a C type, and possibly a Haskell type.  The C++ type is, of course, whatever C++
