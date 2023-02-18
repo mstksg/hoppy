@@ -22,7 +22,7 @@ library
     , TypeSynonymInstances
     , UndecidableInstances
   build-depends:
-      base >=4.9 && <5
+      base >=4.10 && <5
     , containers >=0.5 && <0.7
     , hoppy-runtime
     , hoppy-tests-basic-cpp
@@ -44,7 +44,7 @@ test-suite tests-basic
   ghc-options: -W -fwarn-incomplete-patterns -fwarn-unused-do-bind -dynamic
   extra-libraries: hoppy-tests-basic
   build-depends:
-      base >=4.9 && <5
+      base >=4.10 && <5
     , hoppy-runtime
     , hoppy-tests-basic
     , HUnit

@@ -22,7 +22,7 @@ library
     , TypeSynonymInstances
     , UndecidableInstances
   build-depends:
-      base >=4.7 && <5
+      base >=4.10 && <5
     , hoppy-runtime
     , hoppy-tests-stl-cpp
   hs-source-dirs: src
@@ -40,7 +40,7 @@ test-suite tests-stl
   ghc-options: -W -fwarn-incomplete-patterns -fwarn-unused-do-bind -dynamic
   extra-libraries: hoppy-tests-stl
   build-depends:
-      base >=4.7 && <5
+      base >=4.10 && <5
     , hoppy-runtime
     , hoppy-tests-stl
     , HUnit

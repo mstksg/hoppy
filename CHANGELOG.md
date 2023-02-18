@@ -8,6 +8,10 @@
 
 - runtime: Bump to allow Cabal-3.4.
 
+- Bumped to require base >=4.10 (GHC 8.2.1, released July 2017).  This has been
+  an implicit requirement for a long time due to the use of `CBool`, but now
+  it's explicit.
+
 ## *-0.8.0 (2021-02-06)
 
 - [API change] Hoppy generators are now meant to be invoked as libraries rather

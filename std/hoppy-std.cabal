@@ -40,7 +40,7 @@ library
       Foreign.Hoppy.Generator.Std.Internal
     , Paths_hoppy_std
   build-depends:
-      base >=4.7 && <5
+      base >=4.10 && <5
     , filepath >=1.0 && <1.5
     , haskell-src >=1.0 && <1.1
     , hoppy-generator >=0.8 && <0.9
