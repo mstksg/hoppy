@@ -526,7 +526,7 @@ sayHsExportFn mode extName foreignName purity params retType exceptionHandlers =
                                 "Internal error, an exception support module is not available")
                     exceptionSupportModule
                   LH.addImports $ mconcat [hsImport1 "Prelude" "($)", hsImportForRuntime]
-                  return "HoppyFHR.internalHandleExceptions exceptionDb' $"
+                  return "HoppyFHR.internalHandleExceptions exceptionDb' $ "
           else return ""
 
         let callWords = exceptionHandling : hsFnImportedName : map (' ':) convertedArgNames

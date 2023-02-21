@@ -53,11 +53,11 @@ instance Monad m => Functor (ConsumeT s m) where
   fmap = liftM
 
 instance Monad m => Applicative (ConsumeT s m) where
-  pure = return
+  pure = ConsumeT . pure
   (<*>) = ap
 
 instance Monad m => Monad (ConsumeT s m) where
-  return = ConsumeT . return
+  return = pure
   m >>= f = ConsumeT $ getConsumeT . f =<< getConsumeT m
 
 instance MonadTrans (ConsumeT s) where
