@@ -24,7 +24,7 @@ mkDerivation {
   libraryHaskellDepends = [
     base filepath haskell-src hoppy-generator
   ];
-  homepage = "http://khumba.net/projects/hoppy";
+  homepage = "https://khumba.net/projects/hoppy";
   description = "C++ FFI generator - Standard library bindings";
   license = lib.licenses.asl20;
 

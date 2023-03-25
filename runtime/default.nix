@@ -25,7 +25,7 @@ mkDerivation {
   libraryHaskellDepends = [
     base Cabal containers directory filepath hoppy-generator
   ];
-  homepage = "http://khumba.net/projects/hoppy";
+  homepage = "https://khumba.net/projects/hoppy";
   description = "C++ FFI generator - Runtime support";
   license = lib.licenses.asl20;
 

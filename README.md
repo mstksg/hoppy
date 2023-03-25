@@ -3,7 +3,7 @@
 Hoppy brings all the fun of pointers and manual memory management to Haskell,
 making binding to C++ easy.
 
-Homepage: http://khumba.net/projects/hoppy
+Homepage: https://khumba.net/projects/hoppy
 
 Copyright 2015-2023 Bryan Gardiner <bog@khumba.net>
 

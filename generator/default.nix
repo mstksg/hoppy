@@ -28,7 +28,7 @@ mkDerivation {
     base bytestring containers directory filepath haskell-src mtl process
     temporary text
   ];
-  homepage = "http://khumba.net/projects/hoppy";
+  homepage = "https://khumba.net/projects/hoppy";
   description = "C++ FFI generator - Code generator";
   license = lib.licenses.agpl3Plus;
 
