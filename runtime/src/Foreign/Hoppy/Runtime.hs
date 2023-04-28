@@ -498,13 +498,13 @@ data ExceptionClassInfo = ExceptionClassInfo
 -- | Containers whose contents can be convered to a list.
 --
 -- For a container @Cont@ holding values with C-side type @Foo@ and Haskell-side
--- type @Bar@, if the container uses 'Foreign.Hoppy.Generator.Std.ConvertPtr'
+-- type @Bar@, if the container uses @Foreign.Hoppy.Generator.Std.ConvertPtr@
 -- then the following instances are recommended:
 --
 -- > instance HasContents ContConst FooConst
 -- > instance HasContents Cont Foo
 --
--- If the container uses 'Foreign.Hoppy.Generator.Std.ConvertValue' then the
+-- If the container uses @Foreign.Hoppy.Generator.Std.ConvertValue@ then the
 -- following instances are recommended:
 --
 -- > instance HasContents ContConst Bar
