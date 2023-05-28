@@ -28,6 +28,9 @@ module Foreign.Hoppy.Generator.Types (
   fnT,
   fnT',
   -- * Numeric types
+
+  -- NOTE!  When adding a new type here, consider whether a new instance of
+  -- CppDefault is needed in Foreign.Hoppy.Runtime as well.
   boolT,
   boolT',
   charT,
@@ -60,6 +63,8 @@ module Foreign.Hoppy.Generator.Types (
   ptrdiffT,
   sizeT,
   ssizeT,
+  -- NOTE!  See the start of this export section.
+
   -- ** Custom numeric types
   makeNumericType,
   convertByCoercingIntegral,
