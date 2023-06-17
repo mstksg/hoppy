@@ -31,5 +31,4 @@ main =
   , cppPackageName = "hoppy-tests-circular-cpp"
   , cppPackagedSourcesLocation = Just "cpp"  -- tests/suites/circular/cpp/cpp
   , cppGeneratedSourcesLocation = GenerateInAutogenDir "cpp"  -- .../autogen/cpp
-  , hsGeneratedSourcesLocation = GenerateInAutogenDir ""
   }

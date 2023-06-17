@@ -181,18 +181,9 @@ data ProjectConfig = ProjectConfig
     --
     -- This is passed to the C++ package's makefile in the environment variable
     -- @HOPPY_CPP_GEN_DIR@.
-
-  , hsGeneratedSourcesLocation :: GenerateLocation
-    -- ^ Specifies the directory where Haskell sources will be generated.
   }
 
--- | Where to generate sources for the C++ and Haskell binding packages.
---
--- Haskell bindings should always use @'GenerateInAutogenDir' ""@ unless there
--- is a strong reason to do otherwise.  Other considerations affect where a
--- project might want to generate their C++ bindings.
---
--- TODO Force @GenerateInAutogenDir ""@ for Haskell?
+-- | Where to generate sources for binding packages.
 data GenerateLocation =
   GenerateInAutogenDir FilePath
   -- ^ Generate sources in the package's autogen directory provided by Cabal.
@@ -201,10 +192,11 @@ data GenerateLocation =
   -- Sources are generated below the given @FilePath@ if nonempty, otherwise
   -- sources are generated directly in the autogen directory.
   | GenerateInSourcesDir FilePath
-  -- ^ Generate sources in the package's source directory.
+  -- ^ Generate sources in the package's root source directory, i.e. the
+  -- directory with the @.cabal@ file.
   --
   -- Sources are generated below the given @FilePath@ if nonempty, otherwise
-  -- sources are generated directly in the source directory.
+  -- sources are generated directly in the root directory.
 
 -- | The name of the file we'll use to hold the enum evaluation cache.
 enumEvalCacheFileName :: FilePath
@@ -314,14 +306,13 @@ getAutogenDir verbosity localBuildInfo = do
       ["Expected one library ComponentLocalBuildInfo, found ",
        show $ length libCLBIs, "."]
 
-getAutogenAndGenDir :: (ProjectConfig -> GenerateLocation)
-                    -> ProjectConfig
+getAutogenAndGenDir :: GenerateLocation
                     -> Verbosity
                     -> LocalBuildInfo
                     -> IO (FilePath, FilePath)
-getAutogenAndGenDir genLocSelector project verbosity localBuildInfo = do
+getAutogenAndGenDir genLoc verbosity localBuildInfo = do
   autogenDir <- getAutogenDir verbosity localBuildInfo
-  case genLocSelector project of
+  case genLoc of
     GenerateInAutogenDir subpath ->
       return (autogenDir, autogenDir </> subpath)
     GenerateInSourcesDir subpath -> do
@@ -330,11 +321,11 @@ getAutogenAndGenDir genLocSelector project verbosity localBuildInfo = do
 
 getAutogenAndCppGenDir :: ProjectConfig -> Verbosity -> LocalBuildInfo -> IO (FilePath, FilePath)
 getAutogenAndCppGenDir project verbosity localBuildInfo =
-  getAutogenAndGenDir cppGeneratedSourcesLocation project verbosity localBuildInfo
+  getAutogenAndGenDir (cppGeneratedSourcesLocation project) verbosity localBuildInfo
 
-getAutogenAndHsGenDir :: ProjectConfig -> Verbosity -> LocalBuildInfo -> IO (FilePath, FilePath)
-getAutogenAndHsGenDir project verbosity localBuildInfo =
-  getAutogenAndGenDir hsGeneratedSourcesLocation project verbosity localBuildInfo
+getAutogenAndHsGenDir :: Verbosity -> LocalBuildInfo -> IO (FilePath, FilePath)
+getAutogenAndHsGenDir verbosity localBuildInfo =
+  getAutogenAndGenDir (GenerateInAutogenDir "") verbosity localBuildInfo
 
 getCppDirEnvVars :: ProjectConfig -> Verbosity -> LocalBuildInfo -> IO [String]
 getCppDirEnvVars project verbosity localBuildInfo = do
@@ -519,11 +510,6 @@ hsUserHooks project =
   , preInst = \_ _ -> addLibDir  -- Not sure if necessary, but doesn't hurt.
   , preReg = \_ _ -> addLibDir  -- Necessary.
   , preRepl = \_ _ -> addLibDir -- Necessary.
-
-  , cleanHook = \pkgDesc z hooks flags -> do
-      cleanHook simpleUserHooks pkgDesc z hooks flags
-      let verbosity = fromFlagOrDefault normal $ cleanVerbosity flags
-      hsClean project verbosity
   }
 
 hsCppLibDirFile :: FilePath
@@ -574,7 +560,7 @@ hsConfigure project verbosity localBuildInfo = do
           writeFile hsCppLibDirFile libDir
 
         generateSources iface libDir = do
-          (_, hsGenDir) <- getAutogenAndHsGenDir project verbosity localBuildInfo
+          (_, hsGenDir) <- getAutogenAndHsGenDir verbosity localBuildInfo
           createDirectoryIfMissing True hsGenDir
           _ <- run [iface]
                    [ "--enum-eval-cache-mode", "must-exist"
@@ -587,16 +573,3 @@ addLibDir :: IO HookedBuildInfo
 addLibDir = do
   libDir <- readFile hsCppLibDirFile
   return (Just emptyBuildInfo {extraLibDirs = [libDir]}, [])
-
-hsClean :: ProjectConfig -> Verbosity -> IO ()
-hsClean project verbosity = do
-  iface <- getInterface project verbosity
-  -- We can remove generated sources if we wrote them to the source directory.
-  -- We don't have access to the autogen directory from this hook though.
-  -- Although, Cabal ought to remove the autogen directory already when
-  -- cleaning...
-  case hsGeneratedSourcesLocation project of
-    GenerateInAutogenDir _ -> return ()
-    GenerateInSourcesDir subpath -> do
-      _ <- run [iface] ["--clean-hs", subpath]
-      return ()

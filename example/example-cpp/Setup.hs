@@ -30,5 +30,4 @@ main =
   , cppPackageName = "hoppy-example-cpp"
   , cppPackagedSourcesLocation = Just "cpp"  -- example-cpp/cpp
   , cppGeneratedSourcesLocation = GenerateInAutogenDir "cpp"  -- .../autogen/cpp
-  , hsGeneratedSourcesLocation = GenerateInAutogenDir ""
   }

@@ -31,5 +31,4 @@ main =
   , cppPackageName = "hoppy-tests-basic-cpp"
   , cppPackagedSourcesLocation = Just "cpp"  -- tests/suites/basic/cpp/cpp
   , cppGeneratedSourcesLocation = GenerateInAutogenDir "cpp"  -- .../autogen/cpp
-  , hsGeneratedSourcesLocation = GenerateInAutogenDir ""
   }

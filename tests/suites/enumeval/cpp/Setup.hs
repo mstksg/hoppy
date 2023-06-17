@@ -31,5 +31,4 @@ main =
   , cppPackageName = "hoppy-tests-enumeval-cpp"
   , cppPackagedSourcesLocation = Just "cpp"  -- tests/enumeval/basic/cpp/cpp
   , cppGeneratedSourcesLocation = GenerateInAutogenDir "cpp"  -- .../autogen/cpp
-  , hsGeneratedSourcesLocation = GenerateInAutogenDir ""
   }
