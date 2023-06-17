@@ -17,7 +17,11 @@
 
 module Main (main) where
 
-import Foreign.Hoppy.Setup (ProjectConfig (..), hsMain)
+import Foreign.Hoppy.Setup (
+  ProjectConfig (..),
+  GenerateLocation (GenerateInAutogenDir),
+  hsMain,
+  )
 import qualified Foreign.Hoppy.Test.Interfaces.Enumeval as Enumeval
 
 main =
@@ -25,6 +29,7 @@ main =
   ProjectConfig
   { interfaceResult = Enumeval.interfaceResult
   , cppPackageName = "hoppy-tests-enumeval-cpp"
-  , cppSourcesDir = "cpp"
-  , hsSourcesDir = "src"
+  , cppPackagedSourcesLocation = Just "cpp"  -- tests/enumeval/basic/cpp/cpp
+  , cppGeneratedSourcesLocation = GenerateInAutogenDir "cpp"  -- .../autogen/cpp
+  , hsGeneratedSourcesLocation = GenerateInAutogenDir ""
   }

@@ -16,7 +16,11 @@
 
 module Main (main) where
 
-import Foreign.Hoppy.Setup (ProjectConfig (..), hsMain)
+import Foreign.Hoppy.Setup (
+  ProjectConfig (..),
+  GenerateLocation (GenerateInAutogenDir),
+  hsMain,
+  )
 import qualified Foreign.Hoppy.Example.Generator as Generator
 
 main =
@@ -24,6 +28,7 @@ main =
   ProjectConfig
   { interfaceResult = Generator.interfaceResult
   , cppPackageName = "hoppy-example-cpp"
-  , cppSourcesDir = "cpp"
-  , hsSourcesDir = "src"
+  , cppPackagedSourcesLocation = Just "cpp"  -- example-cpp/cpp
+  , cppGeneratedSourcesLocation = GenerateInAutogenDir "cpp"  -- .../autogen/cpp
+  , hsGeneratedSourcesLocation = GenerateInAutogenDir ""
   }

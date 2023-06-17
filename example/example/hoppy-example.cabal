@@ -15,8 +15,10 @@ custom-setup
     , hoppy-example-generator >=0.1 && <0.2
 
 library
-  hs-source-dirs: src
   exposed-modules:
+      Foreign.Hoppy.Example.Std
+    , Foreign.Hoppy.Example.Utils
+  autogen-modules:
       Foreign.Hoppy.Example.Std
     , Foreign.Hoppy.Example.Utils
   other-extensions:

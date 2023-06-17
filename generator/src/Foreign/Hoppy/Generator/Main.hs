@@ -409,14 +409,15 @@ processArgs stateVar args =
           mapM_ putStrLn $ M.keys $ Haskell.generatedFiles gen
           (ListHsFiles:) <$> processArgs stateVar rest
 
-    "--gen-cpp":baseDir:rest -> do
+    "--gen-cpp":baseDir:cppPackagedSourcesDir:rest -> do
       baseDirExists <- doesDirectoryExist baseDir
       unless baseDirExists $ do
         hPutStrLn stderr $
           "--gen-cpp: Please create this directory so that I can generate files in it: " ++
           baseDir
         exitFailure
-      genResult <- withCurrentCache stateVar $ getGeneratedCpp $ Just baseDir
+      genResult <- withCurrentCache stateVar $ getGeneratedCpp $
+        if null cppPackagedSourcesDir then Nothing else Just cppPackagedSourcesDir
       case genResult of
         Left errorMsg -> do
           hPutStrLn stderr $ "--gen-cpp: Failed to generate: " ++ errorMsg

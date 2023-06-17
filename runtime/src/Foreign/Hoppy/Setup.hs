@@ -37,23 +37,26 @@
 --
 -- main =
 --   cppMain $
---   ProjectConfig
+--   'ProjectConfig'
 --   { generatorExecutableName = \"foobar-generator\"
 --   , cppPackageName = \"foobar-cpp\"
---   , cppSourcesDir = \"cpp\"
---   , hsSourcesDir = \"src\"
+--   , cppPackagedSourcesLocation = Nothing
+--   , cppSourcesDir = 'GenerateInAutogenDir' \"\"
+--   , hsSourcesDir = 'GenerateInAutogenDir' \"\"
 --   }
 -- @
 --
 -- The Haskell gateway uses the same code, except calling 'hsMain' instead of
--- 'cppMain'.  This causes C++ sources to be generated in @foobar-cpp\/cpp@ and
--- (assuming the Haskell gateway is at @foobar\/@) the Haskell sources to be
--- generated in @foobar\/src@.
+-- 'cppMain'.  This causes all (C++, Haskell) generated sources to be placed in
+-- the \"autogen\" directories provided by Cabal, which keeps the source
+-- directory clean.  See the documentation of the fields of 'ProjectConfig' for
+-- more information on how to set up your project's build process.
 --
 -- The gateway packages need to set @build-type: Custom@ in their @.cabal@ files
 -- to use these setup files.
 module Foreign.Hoppy.Setup (
   ProjectConfig (..),
+  GenerateLocation (..),
   cppMain,
   cppUserHooks,
   hsMain,
@@ -75,6 +78,7 @@ import Distribution.PackageDescription (
   extraLibDirs,
   )
 import Distribution.Simple (defaultMainWithHooks, simpleUserHooks)
+import Distribution.Simple.BuildPaths (autogenComponentModulesDir)
 import Distribution.Simple.LocalBuildInfo (
   LocalBuildInfo,
   absoluteInstallDirs,
@@ -137,10 +141,15 @@ import Distribution.Simple.Utils (die')
 import Distribution.Simple.Utils (die)
 #endif
 import Distribution.Simple.Utils (installOrdinaryFile)
+import Distribution.Types.ComponentName (ComponentName (CLibName))
+#if MIN_VERSION_Cabal(3,0,0)
+import Distribution.Types.LibraryName (LibraryName (LMainLibName))
+#endif
+import Distribution.Types.LocalBuildInfo (componentNameCLBIs)
 import Distribution.Verbosity (Verbosity, normal)
 import Foreign.Hoppy.Generator.Main (run)
 import Foreign.Hoppy.Generator.Spec (Interface)
-import System.Directory (createDirectoryIfMissing, doesFileExist)
+import System.Directory (createDirectoryIfMissing, doesFileExist, getCurrentDirectory)
 import System.FilePath ((</>), takeDirectory)
 
 -- | Configuration parameters for a project using Hoppy.
@@ -149,15 +158,53 @@ data ProjectConfig = ProjectConfig
     -- ^ The interface to run the generator with.  This result is returned from
     -- @Foreign.Hoppy.Generator.Spec.interface@ and some may have failed; the
     -- string is a message indicating the problem.
+
   , cppPackageName :: String
     -- ^ The name of the C++ gateway package.
-  , cppSourcesDir :: FilePath
-    -- ^ The directory into which to generate C++ sources, under the C++ gateway
-    -- package root.
-  , hsSourcesDir :: FilePath
-    -- ^ The directory into which to generate Haskell sources, under the Haskell
-    -- gateway package root.
+
+  , cppPackagedSourcesLocation :: Maybe FilePath
+    -- ^ If the C++ gateway package includes C++ files needed for compliation
+    -- (either sources or headers), then this should point to the base directory
+    -- holding these files, relative to the root of the project.  The project
+    -- root itself may be specified with @Just ""@.
+    --
+    -- When present, this is passed to the C++ package's makefile in the
+    -- environment variable @HOPPY_PKG_CPP_DIR@.  A value of @Just ""@ is passed
+    -- as @HOPPY_PKG_CPP_DIR=.@.
+    --
+    -- This is also added automatically as a system include path (i.e. @gcc -I@)
+    -- for the C++ compiler when compiling the test program for enum
+    -- autodetection.
+
+  , cppGeneratedSourcesLocation :: GenerateLocation
+    -- ^ Specifies the directory where C++ sources will be generated.
+    --
+    -- This is passed to the C++ package's makefile in the environment variable
+    -- @HOPPY_CPP_GEN_DIR@.
+
+  , hsGeneratedSourcesLocation :: GenerateLocation
+    -- ^ Specifies the directory where Haskell sources will be generated.
   }
+
+-- | Where to generate sources for the C++ and Haskell binding packages.
+--
+-- Haskell bindings should always use @'GenerateInAutogenDir' ""@ unless there
+-- is a strong reason to do otherwise.  Other considerations affect where a
+-- project might want to generate their C++ bindings.
+--
+-- TODO Force @GenerateInAutogenDir ""@ for Haskell?
+data GenerateLocation =
+  GenerateInAutogenDir FilePath
+  -- ^ Generate sources in the package's autogen directory provided by Cabal.
+  -- This is preferrable as it keeps the source directory clean.
+  --
+  -- Sources are generated below the given @FilePath@ if nonempty, otherwise
+  -- sources are generated directly in the autogen directory.
+  | GenerateInSourcesDir FilePath
+  -- ^ Generate sources in the package's source directory.
+  --
+  -- Sources are generated below the given @FilePath@ if nonempty, otherwise
+  -- sources are generated directly in the source directory.
 
 -- | The name of the file we'll use to hold the enum evaluation cache.
 enumEvalCacheFileName :: FilePath
@@ -212,25 +259,25 @@ cppUserHooks project =
   , buildHook = \pkgDesc localBuildInfo hooks flags -> do
       buildHook simpleUserHooks pkgDesc localBuildInfo hooks flags
       let verbosity = fromFlagOrDefault normal $ buildVerbosity flags
-      cppBuild verbosity localBuildInfo
+      cppBuild project verbosity localBuildInfo
 
   , copyHook = \pkgDesc localBuildInfo hooks flags -> do
       copyHook simpleUserHooks pkgDesc localBuildInfo hooks flags
       let verbosity = fromFlagOrDefault normal $ copyVerbosity flags
           dest = fromFlagOrDefault NoCopyDest $ copyDest flags
-      cppInstall verbosity pkgDesc localBuildInfo dest
+      cppInstall project verbosity pkgDesc localBuildInfo dest
 
   , instHook = \pkgDesc localBuildInfo hooks flags -> do
       instHook simpleUserHooks pkgDesc localBuildInfo hooks flags
       let verbosity = fromFlagOrDefault normal $ installVerbosity flags
           dest = maybe NoCopyDest CopyTo $
                  flagToMaybe $ installDistPref flags
-      cppInstall verbosity pkgDesc localBuildInfo dest
+      cppInstall project verbosity pkgDesc localBuildInfo dest
 
   , regHook = \pkgDesc localBuildInfo hooks flags -> do
       regHook simpleUserHooks pkgDesc localBuildInfo hooks flags
       let verbosity = fromFlagOrDefault normal $ regVerbosity flags
-      cppRegister verbosity localBuildInfo flags
+      cppRegister project verbosity localBuildInfo flags
 
   , cleanHook = \pkgDesc z hooks flags -> do
       cleanHook simpleUserHooks pkgDesc z hooks flags
@@ -241,17 +288,80 @@ cppUserHooks project =
 makeProgram :: Program
 makeProgram = simpleProgram "make"
 
+defaultLibComponentName :: ComponentName
+defaultLibComponentName =
+#if MIN_VERSION_Cabal(3,0,0)
+  CLibName LMainLibName
+#else
+  CLibName
+#endif
+
+-- | Locates the autogen directory for the library component.
+getAutogenDir :: Verbosity -> LocalBuildInfo -> IO FilePath
+getAutogenDir verbosity localBuildInfo = do
+  let libCLBIs = componentNameCLBIs localBuildInfo defaultLibComponentName
+#if MIN_VERSION_Cabal(2,0,0)
+      dieFn = die' verbosity
+#else
+      dieFn = die
+#endif
+
+  case libCLBIs of
+    [libCLBI] -> return $ autogenComponentModulesDir localBuildInfo libCLBI
+    _ ->
+      -- TODO Show interface name, and "C++" or "Haskell"?
+      dieFn $ concat
+      ["Expected one library ComponentLocalBuildInfo, found ",
+       show $ length libCLBIs, "."]
+
+getAutogenAndGenDir :: (ProjectConfig -> GenerateLocation)
+                    -> ProjectConfig
+                    -> Verbosity
+                    -> LocalBuildInfo
+                    -> IO (FilePath, FilePath)
+getAutogenAndGenDir genLocSelector project verbosity localBuildInfo = do
+  autogenDir <- getAutogenDir verbosity localBuildInfo
+  case genLocSelector project of
+    GenerateInAutogenDir subpath ->
+      return (autogenDir, autogenDir </> subpath)
+    GenerateInSourcesDir subpath -> do
+      curDir <- getCurrentDirectory
+      return (autogenDir, curDir </> subpath)
+
+getAutogenAndCppGenDir :: ProjectConfig -> Verbosity -> LocalBuildInfo -> IO (FilePath, FilePath)
+getAutogenAndCppGenDir project verbosity localBuildInfo =
+  getAutogenAndGenDir cppGeneratedSourcesLocation project verbosity localBuildInfo
+
+getAutogenAndHsGenDir :: ProjectConfig -> Verbosity -> LocalBuildInfo -> IO (FilePath, FilePath)
+getAutogenAndHsGenDir project verbosity localBuildInfo =
+  getAutogenAndGenDir hsGeneratedSourcesLocation project verbosity localBuildInfo
+
+getCppDirEnvVars :: ProjectConfig -> Verbosity -> LocalBuildInfo -> IO [String]
+getCppDirEnvVars project verbosity localBuildInfo = do
+  (autogenDir, cppGenDir) <- getAutogenAndCppGenDir project verbosity localBuildInfo
+  return $
+    [ "HOPPY_AUTOGEN_DIR=" ++ autogenDir
+    , "HOPPY_CPP_GEN_DIR=" ++ cppGenDir
+    ] ++
+    (case cppPackagedSourcesLocation project of
+      Just "" -> ["HOPPY_PKG_CPP_DIR=."]
+      Just subpath -> ["HOPPY_PKG_CPP_DIR=" ++ subpath]
+      Nothing -> [])
+
 cppConfigure :: ProjectConfig -> Verbosity -> LocalBuildInfo -> IO ()
 cppConfigure project verbosity localBuildInfo = do
   -- Invoke the generator to create C++ code.
-  let sourcesDir = cppSourcesDir project
+  (_, cppGenDir) <- getAutogenAndCppGenDir project verbosity localBuildInfo
+  cppPackagedSourcesDir <- case cppPackagedSourcesLocation project of
+    Nothing -> return ""
+    Just subpath -> fmap (</> subpath) getCurrentDirectory
   iface <- getInterface project verbosity
-  createDirectoryIfMissing True sourcesDir
+  createDirectoryIfMissing True cppGenDir
   createDirectoryIfMissing True $ buildDir localBuildInfo
   _ <- run [iface]
            [ "--enum-eval-cache-mode", "refresh"
            , "--enum-eval-cache-path", buildDir localBuildInfo </> enumEvalCacheFileName
-           , "--gen-cpp", sourcesDir
+           , "--gen-cpp", cppGenDir, cppPackagedSourcesDir
            ]
 
   -- When there is a configure script, then run it.
@@ -267,8 +377,8 @@ cppConfigure project verbosity localBuildInfo = do
                    then Just $ simpleConfiguredProgram "configure" $ FoundOnSystem "./configure"
                    else Nothing
 
-cppBuild :: Verbosity -> LocalBuildInfo -> IO ()
-cppBuild verbosity localBuildInfo = do
+cppBuild :: ProjectConfig -> Verbosity -> LocalBuildInfo -> IO ()
+cppBuild project verbosity localBuildInfo = do
   hasMakefile <- doesFileExist "Makefile"
   unless hasMakefile $
 #if MIN_VERSION_Cabal(2,0,0)
@@ -277,11 +387,19 @@ cppBuild verbosity localBuildInfo = do
     die
 #endif
     "No Makefile found."
-  let programDb = withPrograms localBuildInfo
-  runDbProgram verbosity makeProgram programDb []
 
-cppInstall :: Verbosity -> PackageDescription -> LocalBuildInfo -> CopyDest -> IO ()
-cppInstall verbosity pkgDesc localBuildInfo dest = do
+  cppDirEnvVars <- getCppDirEnvVars project verbosity localBuildInfo
+
+  let programDb = withPrograms localBuildInfo
+  runDbProgram verbosity makeProgram programDb cppDirEnvVars
+
+cppInstall :: ProjectConfig
+           -> Verbosity
+           -> PackageDescription
+           -> LocalBuildInfo
+           -> CopyDest
+           -> IO ()
+cppInstall project verbosity pkgDesc localBuildInfo dest = do
   hasMakefile <- doesFileExist "Makefile"
   unless hasMakefile $
 #if MIN_VERSION_Cabal(2,0,0)
@@ -293,7 +411,9 @@ cppInstall verbosity pkgDesc localBuildInfo dest = do
   let programDb = withPrograms localBuildInfo
       libDir = libdir $ absoluteInstallDirs pkgDesc localBuildInfo dest
   createDirectoryIfMissing True libDir
-  runDbProgram verbosity makeProgram programDb ["install", "libdir=" ++ libDir]
+  cppDirEnvVars <- getCppDirEnvVars project verbosity localBuildInfo
+  runDbProgram verbosity makeProgram programDb $
+    ["install", "libdir=" ++ libDir] ++ cppDirEnvVars
 
   -- We're doing an old-style install, so copy the enum eval cache file from the
   -- build directory to the library directory where the Haskell side of the
@@ -305,8 +425,8 @@ cppInstall verbosity pkgDesc localBuildInfo dest = do
                         enumEvalCacheFilePath
                         (libDir </> enumEvalCacheFileName)
 
-cppRegister :: Verbosity -> LocalBuildInfo -> RegisterFlags -> IO ()
-cppRegister verbosity localBuildInfo flags = do
+cppRegister :: ProjectConfig -> Verbosity -> LocalBuildInfo -> RegisterFlags -> IO ()
+cppRegister project verbosity localBuildInfo flags = do
   hasMakefile <- doesFileExist "Makefile"
   unless hasMakefile $
 #if MIN_VERSION_Cabal(2,0,0)
@@ -319,12 +439,22 @@ cppRegister verbosity localBuildInfo flags = do
     let programDb = withPrograms localBuildInfo
         libDir = buildDir localBuildInfo
     createDirectoryIfMissing True libDir
-    runDbProgram verbosity makeProgram programDb ["install", "libdir=" ++ libDir]
+    cppDirEnvVars <- getCppDirEnvVars project verbosity localBuildInfo
+    runDbProgram verbosity makeProgram programDb $
+      ["install", "libdir=" ++ libDir] ++ cppDirEnvVars
 
 cppClean :: ProjectConfig -> Verbosity -> IO ()
 cppClean project verbosity = do
   iface <- getInterface project verbosity
-  _ <- run [iface] ["--clean-cpp", cppSourcesDir project]
+  -- We can remove generated sources if we wrote them to the source directory.
+  -- We don't have access to the autogen directory from this hook though.
+  -- Although, Cabal ought to remove the autogen directory already when
+  -- cleaning...
+  case cppGeneratedSourcesLocation project of
+    GenerateInAutogenDir _ -> return ()
+    GenerateInSourcesDir subpath -> do
+      _ <- run [iface] ["--clean-cpp", subpath]
+      return ()
 
   hasMakefile <- doesFileExist "Makefile"
   unless hasMakefile $
@@ -335,7 +465,7 @@ cppClean project verbosity = do
 #endif
     "No Makefile found."
   make <- findSystemProgram verbosity "make"
-  runProgram verbosity make ["clean"]
+  runProgram verbosity make ["clean"]  -- No Hoppy directories passed in here!
 
 findSystemProgram :: Verbosity -> FilePath -> IO ConfiguredProgram
 findSystemProgram verbosity basename = do
@@ -444,12 +574,12 @@ hsConfigure project verbosity localBuildInfo = do
           writeFile hsCppLibDirFile libDir
 
         generateSources iface libDir = do
-          let sourcesDir = hsSourcesDir project
-          createDirectoryIfMissing True sourcesDir
+          (_, hsGenDir) <- getAutogenAndHsGenDir project verbosity localBuildInfo
+          createDirectoryIfMissing True hsGenDir
           _ <- run [iface]
                    [ "--enum-eval-cache-mode", "must-exist"
                    , "--enum-eval-cache-path", libDir </> enumEvalCacheFileName
-                   , "--gen-hs", sourcesDir
+                   , "--gen-hs", hsGenDir
                    ]
           return ()
 
@@ -461,5 +591,12 @@ addLibDir = do
 hsClean :: ProjectConfig -> Verbosity -> IO ()
 hsClean project verbosity = do
   iface <- getInterface project verbosity
-  _ <- run [iface] ["--clean-hs", hsSourcesDir project]
-  return ()
+  -- We can remove generated sources if we wrote them to the source directory.
+  -- We don't have access to the autogen directory from this hook though.
+  -- Although, Cabal ought to remove the autogen directory already when
+  -- cleaning...
+  case hsGeneratedSourcesLocation project of
+    GenerateInAutogenDir _ -> return ()
+    GenerateInSourcesDir subpath -> do
+      _ <- run [iface] ["--clean-hs", subpath]
+      return ()
