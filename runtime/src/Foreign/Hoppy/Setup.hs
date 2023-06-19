@@ -172,11 +172,12 @@ data ProjectConfig = ProjectConfig
     -- ^ If the C++ gateway package includes C++ files needed for compliation
     -- (either sources or headers), then this should point to the base directory
     -- holding these files, relative to the root of the project.  The project
-    -- root itself may be specified with @Just ""@.
+    -- root itself may be specified with @Just \"\"@.
     --
     -- When present, this is passed to the C++ package's makefile in the
-    -- environment variable @HOPPY_PKG_CPP_DIR@.  A value of @Just ""@ is passed
-    -- as @HOPPY_PKG_CPP_DIR=.@.
+    -- environment variable @HOPPY_PKG_CPP_DIR@.  A value of @Just \"\"@ is
+    -- passed with @HOPPY_PKG_CPP_DIR@ set to the base directory of the Cabal
+    -- package (equivalent to @Just \".\"@).
     --
     -- This is also added automatically as a system include path (i.e. @gcc -I@)
     -- for the C++ compiler when compiling the test program for enum
@@ -450,7 +451,10 @@ cppClean project verbosity = do
   case cppGeneratedSourcesLocation project of
     GenerateInAutogenDir _ -> return ()
     GenerateInSourcesDir subpath -> do
-      _ <- run [iface] ["--clean-cpp", subpath]
+      cppPackagedSourcesDir <- case cppPackagedSourcesLocation project of
+        Nothing -> return ""
+        Just subpath -> fmap (</> subpath) getCurrentDirectory
+      _ <- run [iface] ["--clean-cpp", subpath, cppPackagedSourcesDir]
       return ()
 
   hasMakefile <- doesFileExist "Makefile"
