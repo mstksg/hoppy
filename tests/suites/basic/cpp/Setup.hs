@@ -17,7 +17,11 @@
 
 module Main (main) where
 
-import Foreign.Hoppy.Setup (ProjectConfig (..), cppMain)
+import Foreign.Hoppy.Setup (
+  ProjectConfig (..),
+  GenerateLocation (GenerateInAutogenDir),
+  cppMain,
+  )
 import qualified Foreign.Hoppy.Test.Interfaces.Basic as Basic
 
 main =
@@ -25,6 +29,6 @@ main =
   ProjectConfig
   { interfaceResult = Basic.interfaceResult
   , cppPackageName = "hoppy-tests-basic-cpp"
-  , cppSourcesDir = "cpp"
-  , hsSourcesDir = "src"
+  , cppPackagedSourcesLocation = Just "cpp"  -- tests/suites/basic/cpp/cpp
+  , cppGeneratedSourcesLocation = GenerateInAutogenDir "cpp"  -- .../autogen/cpp
   }

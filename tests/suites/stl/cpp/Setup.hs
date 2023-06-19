@@ -17,7 +17,11 @@
 
 module Main (main) where
 
-import Foreign.Hoppy.Setup (ProjectConfig (..), cppMain)
+import Foreign.Hoppy.Setup (
+  ProjectConfig (..),
+  GenerateLocation (GenerateInAutogenDir),
+  cppMain,
+  )
 import qualified Foreign.Hoppy.Test.Interfaces.Stl as Stl
 
 main =
@@ -25,6 +29,6 @@ main =
   ProjectConfig
   { interfaceResult = Stl.interfaceResult
   , cppPackageName = "hoppy-tests-stl-cpp"
-  , cppSourcesDir = "cpp"
-  , hsSourcesDir = "src"
+  , cppPackagedSourcesLocation = Just "cpp"  -- tests/suites/stl/cpp/cpp
+  , cppGeneratedSourcesLocation = GenerateInAutogenDir "cpp"  -- .../autogen/cpp
   }

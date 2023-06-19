@@ -16,14 +16,23 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 CXXFLAGS += -std=c++11 -fPIC -Icpp
+ifneq ($(strip $(HOPPY_CPP_GEN_DIR)),)
+CXXFLAGS += -I$(HOPPY_CPP_GEN_DIR)
+endif
 
 .PHONY: clean install
 
-cpp/libhoppy-tests-circular.so: cpp/flob.o cpp/flobm.o cpp/flub.o cpp/flubm.o
+$(HOPPY_CPP_GEN_DIR)/libhoppy-tests-circular.so: \
+	$(HOPPY_CPP_GEN_DIR)/flob.o \
+	$(HOPPY_CPP_GEN_DIR)/flobm.o \
+	$(HOPPY_CPP_GEN_DIR)/flub.o \
+	$(HOPPY_CPP_GEN_DIR)/flubm.o
 	$(CXX) $(CXXFLAGS) -shared -o $@ $^
 
+$(HOPPY_CPP_GEN_DIR)/%.cpp: cpp/%.cpp
+	cp $^ $@
+
 clean:
-	-rm cpp/flobm.cpp cpp/flobm.hpp cpp/flubm.cpp cpp/flubm.hpp cpp/*.o cpp/*.so
 
 install:
-	install -t "$(libdir)" cpp/libhoppy-tests-circular.so
+	install -t "$(libdir)" $(HOPPY_CPP_GEN_DIR)/libhoppy-tests-circular.so

@@ -324,6 +324,9 @@ interpretOutputToEvaluateEnums args out =
 internalEvaluateEnumsForInterface ::
      Interface
   -> Maybe FilePath
+     -- ^ A optional directory to add to the compiler's header search path.
+     -- This is meant to be the directory holding C++ files included in the C++
+     -- package.
   -> Bool
   -> IO (M.Map ExtName EvaluatedEnumData)
 internalEvaluateEnumsForInterface iface maybeCppDir keepBuildFailures = do

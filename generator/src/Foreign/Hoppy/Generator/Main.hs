@@ -79,8 +79,6 @@ data Action =
     -- ^ Generates Haskell bindings for an interface in the given location.
   | CleanCpp FilePath
     -- ^ Removes the generated files in C++ bindings.
-  | CleanHs FilePath
-    -- ^ Removes the generated files in Haskell bindings.
   | KeepTempOutputsOnFailure
     -- ^ Instructs the generator to keep on disk any temporary programs or files
     -- created, in case of failure.
@@ -409,29 +407,30 @@ processArgs stateVar args =
           mapM_ putStrLn $ M.keys $ Haskell.generatedFiles gen
           (ListHsFiles:) <$> processArgs stateVar rest
 
-    "--gen-cpp":baseDir:rest -> do
-      baseDirExists <- doesDirectoryExist baseDir
-      unless baseDirExists $ do
+    "--gen-cpp":genDir:cppPackagedSourcesDir:rest -> do
+      genDirExists <- doesDirectoryExist genDir
+      unless genDirExists $ do
         hPutStrLn stderr $
           "--gen-cpp: Please create this directory so that I can generate files in it: " ++
-          baseDir
+          genDir
         exitFailure
-      genResult <- withCurrentCache stateVar $ getGeneratedCpp $ Just baseDir
+      genResult <- withCurrentCache stateVar $ getGeneratedCpp $
+        if null cppPackagedSourcesDir then Nothing else Just cppPackagedSourcesDir
       case genResult of
         Left errorMsg -> do
           hPutStrLn stderr $ "--gen-cpp: Failed to generate: " ++ errorMsg
           exitFailure
         Right gen -> do
           forM_ (M.toList $ Cpp.generatedFiles gen) $
-            uncurry $ writeGeneratedFile baseDir
-          (GenCpp baseDir:) <$> processArgs stateVar rest
+            uncurry $ writeGeneratedFile genDir
+          (GenCpp genDir:) <$> processArgs stateVar rest
 
-    "--gen-hs":baseDir:rest -> do
-      baseDirExists <- doesDirectoryExist baseDir
-      unless baseDirExists $ do
+    "--gen-hs":genDir:rest -> do
+      genDirExists <- doesDirectoryExist genDir
+      unless genDirExists $ do
         hPutStrLn stderr $
           "--gen-hs: Please create this directory so that I can generate files in it: " ++
-          baseDir
+          genDir
         exitFailure
       genResult <- withCurrentCache stateVar getGeneratedHaskell
       case genResult of
@@ -440,13 +439,14 @@ processArgs stateVar args =
           exitFailure
         Right gen -> do
           forM_ (M.toList $ Haskell.generatedFiles gen) $ \(subpath, contents) ->
-            writeGeneratedFile baseDir subpath contents
-          (GenHaskell baseDir:) <$> processArgs stateVar rest
+            writeGeneratedFile genDir subpath contents
+          (GenHaskell genDir:) <$> processArgs stateVar rest
 
-    "--clean-cpp":baseDir:rest -> do
-      baseDirExists <- doesDirectoryExist baseDir
-      when baseDirExists $ do
-        genResult <- withCurrentCache stateVar $ getGeneratedCpp $ Just baseDir
+    "--clean-cpp":genDir:cppPackagedSourcesDir:rest -> do
+      genDirExists <- doesDirectoryExist genDir
+      when genDirExists $ do
+        genResult <- withCurrentCache stateVar $ getGeneratedCpp $
+          if null cppPackagedSourcesDir then Nothing else Just cppPackagedSourcesDir
         case genResult of
           Left errorMsg -> do
             hPutStrLn stderr $ "--clean-cpp: Failed to evaluate interface: " ++ errorMsg
@@ -454,22 +454,8 @@ processArgs stateVar args =
           Right gen -> do
             -- TODO Remove empty directories.
             forM_ (M.keys $ Cpp.generatedFiles gen) $ \path ->
-              removeFile $ baseDir </> path
-      (CleanCpp baseDir:) <$> processArgs stateVar rest
-
-    "--clean-hs":baseDir:rest -> do
-      baseDirExists <- doesDirectoryExist baseDir
-      when baseDirExists $ do
-        genResult <- withCurrentCache stateVar $ getGeneratedHaskell
-        case genResult of
-          Left errorMsg -> do
-            hPutStrLn stderr $ "--clean-hs: Failed to evaluate interface: " ++ errorMsg
-            exitFailure
-          Right gen -> do
-            -- TODO Remove empty directories.
-            forM_ (M.keys $ Haskell.generatedFiles gen) $ \path ->
-              removeFile $ baseDir </> path
-      (CleanHs baseDir:) <$> processArgs stateVar rest
+              removeFile $ genDir </> path
+      (CleanCpp genDir:) <$> processArgs stateVar rest
 
     "--dump-ext-names":rest -> do
       withCurrentCache stateVar $ \_ iface cache -> do

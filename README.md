@@ -15,6 +15,8 @@ The `LICENSE` file contains information about Hoppy's license.
 
 ## Using
 
+Hoppy requires GHC 8.2 or newer.
+
 If you just want to install Hoppy to use it as a dependency of another project,
 then all you need to do is build and install the Cabal package in `runtime/`.
 

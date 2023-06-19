@@ -16,15 +16,24 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 CXXFLAGS += -std=c++11 -fPIC -Icpp
+ifneq ($(strip $(HOPPY_CPP_GEN_DIR)),)
+CXXFLAGS += -I$(HOPPY_CPP_GEN_DIR)
+endif
 
 .PHONY: clean install
 
-cpp/libhoppy-tests-basic.so: \
-	cpp/basic.o cpp/constants.o cpp/functions.o cpp/ptrctr.o cpp/undeletable.o
+$(HOPPY_CPP_GEN_DIR)/libhoppy-tests-basic.so: \
+	$(HOPPY_CPP_GEN_DIR)/basic.o \
+	$(HOPPY_CPP_GEN_DIR)/constants.o \
+	$(HOPPY_CPP_GEN_DIR)/functions.o \
+	$(HOPPY_CPP_GEN_DIR)/ptrctr.o \
+	$(HOPPY_CPP_GEN_DIR)/undeletable.o
 	$(CXX) $(CXXFLAGS) -shared -o $@ $^
 
+$(HOPPY_CPP_GEN_DIR)/%.cpp: cpp/%.cpp
+	cp $^ $@
+
 clean:
-	-rm cpp/basic.cpp cpp/basic.hpp cpp/*.o cpp/*.so
 
 install:
-	install -t "$(libdir)" cpp/libhoppy-tests-basic.so
+	install -t "$(libdir)" $(HOPPY_CPP_GEN_DIR)/libhoppy-tests-basic.so

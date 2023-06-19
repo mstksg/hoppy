@@ -18,27 +18,8 @@
 # Backup files.
 *~
 
-# Build output - general.
-*.o
-*.so
+# Build output.
 dist
 dist-newstyle
 dist-sandbox-*
 .cabal-sandbox
-
-# Build outputs - specific.
-/example/example-cpp/cpp/gen_*
-/example/example/src/Foreign/Hoppy/Example/Std.hs
-/example/example/src/Foreign/Hoppy/Example/Utils.hs
-/tests/suites/basic/cpp/cpp/basic.*
-/tests/suites/basic/hs/src/Foreign/Hoppy/Test/Basic.hs
-/tests/suites/circular/cpp/cpp/flobm.*
-/tests/suites/circular/cpp/cpp/flubm.*
-/tests/suites/circular/hs/src/Foreign/Hoppy/Test/Flob.hs*
-/tests/suites/circular/hs/src/Foreign/Hoppy/Test/Flub.hs*
-/tests/suites/enumeval/cpp/cpp/enumeval.*
-/tests/suites/enumeval/hs/src/Foreign/Hoppy/Test/Enumeval.hs
-/tests/suites/stl/cpp/cpp/std.*
-/tests/suites/stl/cpp/cpp/stl.*
-/tests/suites/stl/hs/src/Foreign/Hoppy/Test/Std.hs
-/tests/suites/stl/hs/src/Foreign/Hoppy/Test/Stl.hs

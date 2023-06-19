@@ -5,7 +5,7 @@ author: Bryan Gardiner <bog@khumba.net>
 maintainer: Bryan Gardiner <bog@khumba.net>
 copyright: Copyright 2015-2023 Bryan Gardiner
 build-type: Custom
-cabal-version: >=1.10
+cabal-version: 2.0
 
 custom-setup
   setup-depends:
@@ -25,7 +25,6 @@ library
       base >=4.10 && <5
     , hoppy-runtime
     , hoppy-tests-stl-cpp
-  hs-source-dirs: src
   exposed-modules:
       Foreign.Hoppy.Test.Std
     , Foreign.Hoppy.Test.Stl

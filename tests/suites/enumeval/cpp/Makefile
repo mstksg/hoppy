@@ -16,14 +16,21 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 CXXFLAGS += -std=c++11 -fPIC -Icpp
+ifneq ($(strip $(HOPPY_CPP_GEN_DIR)),)
+CXXFLAGS += -I$(HOPPY_CPP_GEN_DIR)
+endif
 
 .PHONY: clean install
 
-cpp/libhoppy-tests-enumeval.so: cpp/enums.o cpp/enumeval.o
+$(HOPPY_CPP_GEN_DIR)/libhoppy-tests-enumeval.so: \
+	$(HOPPY_CPP_GEN_DIR)/enums.o \
+	$(HOPPY_CPP_GEN_DIR)/enumeval.o
 	$(CXX) -shared -o $@ $^
 
+$(HOPPY_CPP_GEN_DIR)/%.cpp: cpp/%.cpp
+	cp $^ $@
+
 clean:
-	-rm cpp/enumeval.cpp cpp/enumeval.hpp cpp/*.o cpp/*.so
 
 install:
-	install -t "$(libdir)" cpp/libhoppy-tests-enumeval.so
+	install -t "$(libdir)" $(HOPPY_CPP_GEN_DIR)/libhoppy-tests-enumeval.so

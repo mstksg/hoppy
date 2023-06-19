@@ -1,6 +1,20 @@
 # Hoppy Changelog
 
-## Unreleased - 0.8.1
+## Unreleased - 0.9.0
+
+- [API change] Added support for producing generated sources in Cabal's autogen
+  directories, so that builds don't dirty the source trees of packages.  This
+  allows cleaner gitignores, and also parallel v2-style builds using different
+  compilers.
+
+  This is up to binding authors to configure, and is now the recommended default,
+  but old-style compilation can still be done for the C++ gateway if required.
+  The generated Haskell sources are now always produced in the autogen directory
+  as Cabal handles this transparently.
+
+  All of this is configured by the `ProjectConfig` record in the module
+  `Foreign.Hoppy.Setup`.  See the module and record documentation for info on how
+  to use the autogen directory.
 
 - Added types `char8_t`, `char16_t`, `char32_t`.
 
@@ -14,6 +28,56 @@
 
 - Dependency bumps and minor code fixes to support Cabal 3.8 and GHC 9.2, 9.4
   (issue #47).
+
+### Autogen migration
+
+Manual updates to your projects are required, to account for the new support for
+Cabal's autogen directories in Hoppy.  If your `Setup.hs` files previously
+contained the following,
+
+    ProjectConfig
+    { ...
+    , cppSourcesDir = "cpp"
+    , hsSourcesDir = "src"
+    }
+
+then to keep building your C++ package in the source tree as before, replace
+this with:
+
+    ProjectConfig
+    { ...
+    , cppPackagedSourcesLocation = "cpp"
+    , cppGeneratedSourcesLocation = GeneratedInSourcesDir "cpp"
+    }
+
+Switching your C++ build to use the autogen directory will require updating your
+makefile.  Additional paths are now passed into the makefile via environment
+variables, for these two new fields in `ProjectConfig`.  See these fields'
+documentation, as well as the example makefile at
+`example/example-cpp/Makefile`, for more info.  In general, Hoppy passes the
+path to the autogen directory into your makefile, and you can make use of that
+however you like to do your build.
+
+Haskell sources are now written to the autogen directory and injected
+automatically into Cabal's `autogen-modules` when needed.
+
+Any users of a custom `Setup.hs` that invokes the generator's command line
+manually should note that some commands have changed.  The commands `--gen-cpp`
+and `--clean-cpp` now require two arguments, not one.  The syntax is now:
+
+    --gen-cpp <genDir> <cppPackagedSourcesDir>
+    --clean-cpp <genDir> <cppPackagedSourcesDir>
+
+The first parameter is the directory to write generated sources into,
+i.e. `cppGeneratedSourcesLocation`.  The second parameter is the optional base
+directory holding shipped C++ sources relative to the Cabal project root,
+i.e. `cppPackagedSourcesLocation`; an empty string here is interpreted as not
+having packaged sources, and a nonempty string as having sources.  See the
+implementation of `Foreign.Hoppy.Setup` if in doubt about how to call these
+commands now.
+
+The command `--clean-hs` has been removed, as Hoppy no longer dirties the
+Haskell package's source tree.
 
 ## *-0.8.0 (2021-02-06)
 

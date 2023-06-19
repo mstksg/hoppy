@@ -17,7 +17,11 @@
 
 module Main (main) where
 
-import Foreign.Hoppy.Setup (ProjectConfig (..), hsMain)
+import Foreign.Hoppy.Setup (
+  ProjectConfig (..),
+  GenerateLocation (GenerateInAutogenDir),
+  hsMain,
+  )
 import qualified Foreign.Hoppy.Test.Interfaces.Circular as Circular
 
 main =
@@ -25,6 +29,6 @@ main =
   ProjectConfig
   { interfaceResult = Circular.interfaceResult
   , cppPackageName = "hoppy-tests-circular-cpp"
-  , cppSourcesDir = "cpp"
-  , hsSourcesDir = "src"
+  , cppPackagedSourcesLocation = Just "cpp"  -- tests/suites/circular/cpp/cpp
+  , cppGeneratedSourcesLocation = GenerateInAutogenDir "cpp"  -- .../autogen/cpp
   }

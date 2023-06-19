@@ -20,7 +20,7 @@
 }:
 mkDerivation {
   pname = "hoppy-runtime";
-  version = "0.8.1";
+  version = "0.9.0";
   src = ./.;
   libraryHaskellDepends = [
     base Cabal containers directory filepath hoppy-generator
