@@ -1,6 +1,6 @@
 # Hoppy Changelog
 
-## Unreleased - 0.8.1
+## Unreleased - 0.9.0
 
 - [API change] Added support for producing generated sources in Cabal's autogen
   directories, so that builds don't dirty the source trees of packages.  This
