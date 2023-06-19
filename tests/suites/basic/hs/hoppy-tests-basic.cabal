@@ -30,8 +30,6 @@ library
   exposed-modules:
       Foreign.Hoppy.Test.Basic
     , Foreign.Hoppy.Test.Basic.HsBox
-  autogen-modules:
-      Foreign.Hoppy.Test.Basic
   default-language: Haskell2010
   ghc-options: -W -fwarn-incomplete-patterns -fwarn-unused-do-bind
   extra-libraries: hoppy-tests-basic

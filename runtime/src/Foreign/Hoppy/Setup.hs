@@ -65,7 +65,9 @@ module Foreign.Hoppy.Setup (
 
 import Control.Monad (unless, when)
 import Data.List (isInfixOf)
+import qualified Data.Map as M
 import Distribution.InstalledPackageInfo (libraryDirs)
+import qualified Distribution.ModuleName as ModuleName
 #if MIN_VERSION_Cabal(2,0,0)
 import Distribution.Package (mkPackageName)
 #else
@@ -74,6 +76,7 @@ import Distribution.Package (PackageName (PackageName))
 import Distribution.PackageDescription (
   HookedBuildInfo,
   PackageDescription,
+  autogenModules,
   emptyBuildInfo,
   extraLibDirs,
   )
@@ -117,6 +120,8 @@ import Distribution.Simple.Setup (
   installVerbosity,
   regInPlace,
   regVerbosity,
+  replVerbosity,
+  testVerbosity,
   )
 import Distribution.Simple.UserHooks (
   UserHooks (
@@ -147,8 +152,9 @@ import Distribution.Types.LibraryName (LibraryName (LMainLibName))
 #endif
 import Distribution.Types.LocalBuildInfo (componentNameCLBIs)
 import Distribution.Verbosity (Verbosity, normal)
+import Foreign.Hoppy.Generator.Language.Haskell (getModuleName)
 import Foreign.Hoppy.Generator.Main (run)
-import Foreign.Hoppy.Generator.Spec (Interface)
+import Foreign.Hoppy.Generator.Spec (Interface, interfaceModules)
 import System.Directory (createDirectoryIfMissing, doesFileExist, getCurrentDirectory)
 import System.FilePath ((</>), takeDirectory)
 
@@ -504,12 +510,12 @@ hsUserHooks project =
       let verbosity = fromFlagOrDefault normal $ configVerbosity flags
       hsConfigure project verbosity localBuildInfo
 
-  , preBuild = \_ _ -> addLibDir
-  , preTest = \_ _ -> addLibDir
-  , preCopy = \_ _ -> addLibDir  -- Not sure if necessary, but doesn't hurt.
-  , preInst = \_ _ -> addLibDir  -- Not sure if necessary, but doesn't hurt.
-  , preReg = \_ _ -> addLibDir  -- Necessary.
-  , preRepl = \_ _ -> addLibDir -- Necessary.
+  , preBuild = \_ flags -> hsPreHook project (fromFlagOrDefault normal $ buildVerbosity flags)
+  , preTest = \_ flags -> hsPreHook project (fromFlagOrDefault normal $ testVerbosity flags)
+  , preCopy = \_ flags -> hsPreHook project (fromFlagOrDefault normal $ copyVerbosity flags)
+  , preInst = \_ flags -> hsPreHook project (fromFlagOrDefault normal $ installVerbosity flags)
+  , preReg = \_ flags -> hsPreHook project (fromFlagOrDefault normal $ regVerbosity flags)
+  , preRepl = \_ flags -> hsPreHook project (fromFlagOrDefault normal $ replVerbosity flags)
   }
 
 hsCppLibDirFile :: FilePath
@@ -569,7 +575,17 @@ hsConfigure project verbosity localBuildInfo = do
                    ]
           return ()
 
-addLibDir :: IO HookedBuildInfo
-addLibDir = do
+hsPreHook :: ProjectConfig -> Verbosity -> IO HookedBuildInfo
+hsPreHook project verbosity = do
+  iface <- getInterface project verbosity
+  let moduleNames =
+        map (ModuleName.fromString . getModuleName iface) $
+        M.elems (interfaceModules iface)
+
   libDir <- readFile hsCppLibDirFile
-  return (Just emptyBuildInfo {extraLibDirs = [libDir]}, [])
+
+  return (Just emptyBuildInfo
+          { autogenModules = moduleNames
+          , extraLibDirs = [libDir]
+          }
+         , [])

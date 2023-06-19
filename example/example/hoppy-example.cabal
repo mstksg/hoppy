@@ -18,9 +18,6 @@ library
   exposed-modules:
       Foreign.Hoppy.Example.Std
     , Foreign.Hoppy.Example.Utils
-  autogen-modules:
-      Foreign.Hoppy.Example.Std
-    , Foreign.Hoppy.Example.Utils
   other-extensions:
       FlexibleInstances
     , MultiParamTypeClasses
