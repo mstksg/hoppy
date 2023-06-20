@@ -28,6 +28,9 @@ library
   exposed-modules:
       Foreign.Hoppy.Test.Std
     , Foreign.Hoppy.Test.Stl
+  autogen-modules:
+      Foreign.Hoppy.Test.Std
+    , Foreign.Hoppy.Test.Stl
   default-language: Haskell2010
   ghc-options: -W -fwarn-incomplete-patterns -fwarn-unused-do-bind
   extra-libraries: hoppy-tests-stl

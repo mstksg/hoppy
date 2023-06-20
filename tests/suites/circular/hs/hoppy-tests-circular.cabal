@@ -28,6 +28,9 @@ library
   exposed-modules:
       Foreign.Hoppy.Test.Flob
     , Foreign.Hoppy.Test.Flub
+  autogen-modules:
+      Foreign.Hoppy.Test.Flob
+    , Foreign.Hoppy.Test.Flub
   default-language: Haskell2010
   ghc-options: -W -fwarn-incomplete-patterns -fwarn-unused-do-bind
   extra-libraries: hoppy-tests-circular
