@@ -1,6 +1,6 @@
 # This file is part of Hoppy.
 #
-# Copyright 2015-2024 Bryan Gardiner <bog@khumba.net>
+# Copyright 2015-2023 Bryan Gardiner <bog@khumba.net>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
@@ -36,23 +36,15 @@ let
   # Load all of the Haskell package sets we'll build against.
   haskells = import ./haskells.nix nixpkgsArgs;
 
-  prefixName = prefix: drv: drv.overrideAttrs (oldAttrs:
-    (x: if x ? name then x // { name = prefix + x.name; } else x)
-      ((x: if x ? pname then x // { pname = prefix + x.pname; } else x)
-        oldAttrs)
-  );
-
 in
 
 # Include all tests:
 lib.foldl (x: y: x // y) {}
   (lib.mapAttrsToList
      (setName: hpkgs:
-        let pkgs = import ./tests-set-1.nix haskell.lib hpkgs;
-            prefix = "${setName}-";
-        in
+        let pkgs = import ./tests-set-1.nix haskell.lib hpkgs; in
         lib.mapAttrs'
-          (pkgName: pkg: lib.nameValuePair "${prefix}${pkgName}" (prefixName prefix pkg))
+          (pkgName: pkg: lib.nameValuePair "${setName}-${pkgName}" pkg)
           pkgs)
      haskells)
 
