@@ -1,6 +1,6 @@
 # This file is part of Hoppy.
 #
-# Copyright 2015-2023 Bryan Gardiner <bog@khumba.net>
+# Copyright 2015-2024 Bryan Gardiner <bog@khumba.net>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
@@ -39,12 +39,21 @@ let
   # The Hoppy packages we want to build.
   packageNames = [ "hoppy-generator" "hoppy-std" "hoppy-runtime" "hoppy-docs" ];
 
+  prefixName = prefix: drv: drv.overrideAttrs (oldAttrs:
+    (x: if x ? name then x // { name = prefix + x.name; } else x)
+      ((x: if x ? pname then x // { pname = prefix + x.pname; } else x)
+        oldAttrs)
+  );
+
 in
 
 lib.foldl (x: y: x // y) {}
   (lib.mapAttrsToList
      (setName: hpkgs:
-        builtins.listToAttrs
-        (map (pkgName: lib.nameValuePair "${setName}-${pkgName}" hpkgs.${pkgName})
-             packageNames))
+        let prefix = "${setName}-";
+        in builtins.listToAttrs
+            (map (pkgName:
+                   lib.nameValuePair "${prefix}${pkgName}"
+                     (prefixName prefix hpkgs.${pkgName}))
+                 packageNames))
      haskells)
