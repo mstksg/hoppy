@@ -13,7 +13,8 @@ A range of successive copyright years may be written as XXXX-YYYY as an
 abbreviation for listing all of the years from XXXX to YYYY inclusive,
 individually.
 
-The `LICENSE` file contains information about Hoppy's license.
+The `LICENSE` file contains information about Hoppy's license.  Hoppy uses two
+licenses, for different parts of the project.
 
 ## Using
 
