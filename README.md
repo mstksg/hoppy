@@ -5,7 +5,9 @@ making binding to C++ easy.
 
 Homepage: https://khumba.net/projects/hoppy
 
-Copyright 2015-2023 Bryan Gardiner <bog@khumba.net>
+User's Guide: https://hackage.haskell.org/package/hoppy-docs/docs/Foreign-Hoppy-Documentation-UsersGuide.html
+
+Copyright 2015-2024 Bryan Gardiner <bog@khumba.net>
 
 A range of successive copyright years may be written as XXXX-YYYY as an
 abbreviation for listing all of the years from XXXX to YYYY inclusive,
@@ -44,7 +46,8 @@ information about using Hoppy with it.
 
 There is a user's guide written using Haddock at
 `docs/src/Foreign/Hoppy/Documentation/UsersGuide.hs`.  You can read it as is, or
-browse the HTML files in `docs/dist/doc` after building.
+browse the HTML files in `docs/dist/doc` after building, or read it prerendered
+on Hackage at the link at the top of this file.
 
 ## Developing
 
