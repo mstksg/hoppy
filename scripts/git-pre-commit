@@ -2,7 +2,7 @@
 
 # This file is part of Hoppy.
 #
-# Copyright 2015-2023 Bryan Gardiner <bog@khumba.net>
+# Copyright 2015-2024 Bryan Gardiner <bog@khumba.net>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
@@ -82,7 +82,7 @@ fi
 legalResult=0
 
 licenseCabalForFile() {
-    if [[ $file = std/* ]] || [[ $file = runtime/* ]] || [[ $file = example/* ]]; then
+    if [[ $file = std/* ]] || [[ $file = runtime/* ]] || [[ $file = examples/* ]]; then
         echo Apache-2.0
     else
         echo AGPL-3
@@ -102,7 +102,7 @@ while read file; do
             grep -q 'Copyright 2' "$file" && \
                 ! grep -q 'Copyright 2[^<]*$' "$file" && \
                 case "$file" in
-                    std/*|runtime/*|example/*)
+                    std/*|runtime/*|examples/*)
                         grep -qF 'Licensed under the Apache License, Version 2.0' "$file";;
                     *)
                         grep -qF 'GNU Affero General Public License' "$file" && \
@@ -126,7 +126,7 @@ while read file; do
             head -10 "$file" | grep -q Copyright && \
                 (! head -20 "$file" | grep -q 'Copyright[^<]\+$') && \
                 case "$file" in
-                    std/*|runtime/*|example/*)
+                    std/*|runtime/*|examples/*)
                         head -20 "$file" |
                             grep -qF 'Licensed under the Apache License, Version 2.0' && \
                             grep -q 'license =.*\basl20;' "$file";;
@@ -142,7 +142,7 @@ while read file; do
             head -10 "$file" | grep -q Copyright && \
                 (! head -20 "$file" | grep -q 'Copyright[^<]\+$') && \
                 case "$file" in
-                    std/*|runtime/*|example/*)
+                    std/*|runtime/*|examples/*)
                         head -20 "$file" | \
                             grep -qF 'Licensed under the Apache License, Version 2.0';;
                     *)

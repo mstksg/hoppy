@@ -1,6 +1,6 @@
 -- This file is part of Hoppy.
 --
--- Copyright 2015-2023 Bryan Gardiner <bog@khumba.net>
+-- Copyright 2015-2024 Bryan Gardiner <bog@khumba.net>
 --
 -- This program is free software: you can redistribute it and/or modify
 -- it under the terms of the GNU Affero General Public License as published by
@@ -154,15 +154,15 @@ This section provides a gentle introduction to working with Hoppy.
 {- $getting-started-project-setup
 
 To set up a new Hoppy project, it's recommended to start with the template
-project in the @example\/@ directory.  You can find this in the Hoppy source
-repository:
+project in the @examples\/three-package-example\/@ directory.  You can find this
+in the Hoppy source repository:
 
-<https://gitlab.com/khumba/hoppy/tree/master/example>
+<https://gitlab.com/khumba/hoppy/tree/master/examples/three-package-example>
 
-This is a minimal project that defines a C++ function to reverse a @std::string@,
-exposes that to Haskell via a library, and provides a demo program that uses the
-library.  The @example\/install.sh@ script simply compiles and installs the
-generator, C++, and Haskell packages in turn.
+This is a minimal project that defines a C++ function to reverse a
+@std::string@, exposes that to Haskell via a library, and provides a demo
+program that uses the library.  The @install.sh@ script simply compiles and
+installs the generator, C++, and Haskell packages in turn.
 
 The generator package specifies the C++ interface to be exposed, using the
 functions and data types described in the rest of this section.
@@ -174,8 +174,8 @@ beyond what's provided by third-party libraries.  For this example, we add a
 writing a binding for an existing third-party library, we might not need to
 provide any C++ code ourselves here.  When building this package, Hoppy
 generates some C++ code and then relies on a Makefile we provide for linking it
-together with any code we provided (see @example\/example-cpp\/Makefile@).  If
-you are relying on a system library, you can link to it in the Makefile.
+together with any code we provided (see @example-cpp\/Makefile@).  If you are
+relying on a system library, you can link to it in the Makefile.
 
 The Haskell package is even more empty than the C++ one.  It contains a similar
 @Setup.hs@ to invoke Hoppy.  Nothing else is included in the package's library,

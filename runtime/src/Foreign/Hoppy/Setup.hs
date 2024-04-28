@@ -1,6 +1,6 @@
 -- This file is part of Hoppy.
 --
--- Copyright 2015-2023 Bryan Gardiner <bog@khumba.net>
+-- Copyright 2015-2024 Bryan Gardiner <bog@khumba.net>
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
 -- you may not use this file except in compliance with the License.
@@ -57,6 +57,8 @@
 module Foreign.Hoppy.Setup (
   ProjectConfig (..),
   GenerateLocation (..),
+  combinedMain,
+  combinedUserHooks,
   cppMain,
   cppUserHooks,
   hsMain,
@@ -167,6 +169,10 @@ data ProjectConfig = ProjectConfig
 
   , cppPackageName :: String
     -- ^ The name of the C++ gateway package.
+    --
+    -- When using separate Cabal packages for the C++ and Haskell gateway
+    -- packages, this must be nonempty.  When using a single combined gateway
+    -- package with 'combinedMain', this must be empty.
 
   , cppPackagedSourcesLocation :: Maybe FilePath
     -- ^ If the C++ gateway package includes C++ files needed for compliation
@@ -221,6 +227,69 @@ getInterface project verbosity = case interfaceResult project of
 #endif
     "Error initializing interface: " ++ errorMsg
   Right iface -> return iface
+
+-- | A @main@ implementation to be used in the @Setup.hs@ of a single Hoppy
+-- binding package that combined both the C++ and Haskell gateway code in one
+-- package.
+--
+-- @combinedMain project = 'defaultMainWithHooks' $ 'combinedUserHooks' project@
+combinedMain :: ProjectConfig -> IO ()
+combinedMain project = defaultMainWithHooks $ combinedUserHooks project
+
+-- | Cabal user hooks for a combined gateway package.  When overriding
+-- overriding fields in the result, be sure to call the previous hook.
+--
+-- The following hooks are defined:
+--
+-- - 'postConf': Runs the generator to generate C++ and Haskell sources.
+combinedUserHooks :: ProjectConfig -> IO ()
+combinedUserHooks project =
+  simpleUserHooks
+  { postConf = \args flags pkgDesc localBuildInfo -> do
+      let verbosity = fromFlagOrDefault normal $ configVerbosity flags
+
+      when (not $ null $ cppPackageName project) $
+        die' verbosity $
+        "combinedMain expects an empty cppPackageName, found \"" ++
+        cppPackageName project ++ "\"."
+
+      iface <- case interfaceResult project of
+        Left errorMsg ->
+          die' verbosity $
+          "Error initializing interface: " ++ errorMsg
+        Right iface -> return iface
+
+      genCpp project verbosity localBuildInfo iface
+      genHs verbosity localBuildInfo iface
+      postConf simpleUserHooks args flags pkgDesc localBuildInfo
+  }
+
+  where genCpp :: ProjectConfig -> Verbosity -> LocalBuildInfo -> Interface -> IO ()
+        genCpp project verbosity localBuildInfo iface = do
+          (_, cppGenDir) <-
+            getAutogenAndCppGenDir project verbosity localBuildInfo
+          cppPackagedSourcesDir <- case cppPackagedSourcesLocation project of
+            Nothing -> return ""
+            Just subpath -> fmap (</> subpath) getCurrentDirectory
+          createDirectoryIfMissing True cppGenDir
+          createDirectoryIfMissing True $ buildDir localBuildInfo
+          _ <- run [iface]
+                   [ "--enum-eval-cache-mode", "refresh"
+                   , "--enum-eval-cache-path", buildDir localBuildInfo </> enumEvalCacheFileName
+                   , "--gen-cpp", cppGenDir, cppPackagedSourcesDir
+                   ]
+          return ()
+
+        genHs :: Verbosity -> LocalBuildInfo -> Interface -> IO ()
+        genHs verbosity localBuildInfo iface = do
+          (_, hsGenDir) <- getAutogenAndHsGenDir verbosity localBuildInfo
+          createDirectoryIfMissing True hsGenDir
+          _ <- run [iface]
+                   [ "--enum-eval-cache-mode", "must-exist"
+                   , "--enum-eval-cache-path", buildDir localBuildInfo </> enumEvalCacheFileName
+                   , "--gen-hs", hsGenDir
+                   ]
+          return ()
 
 -- | A @main@ implementation to be used in the @Setup.hs@ of a C++ gateway
 -- package.
