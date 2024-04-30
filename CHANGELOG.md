@@ -16,6 +16,12 @@
   `Foreign.Hoppy.Setup`.  See the module and record documentation for info on how
   to use the autogen directory.
 
+  For explicit callers of `Foreign.Hoppy.Generator.Main.run`, the command
+  `--gen-cpp` has changed from taking a single argument (the directory holding
+  C++ sources in the C++ binding package, as well as the directory to generate
+  C++ sources into), to taking two arguments: first the directory to generate
+  C++ sources in, and then the directory holding existing prepackaged sources.
+
 - A second example binding has been added, equivalent to existing one, but
   consisting of a single Cabal package rather than three.  This uses Cabal's
   built-in support for compiling C++ code (via `cxx-sources`), and works well

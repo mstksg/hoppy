@@ -1,6 +1,6 @@
 -- This file is part of Hoppy.
 --
--- Copyright 2015-2023 Bryan Gardiner <bog@khumba.net>
+-- Copyright 2015-2024 Bryan Gardiner <bog@khumba.net>
 --
 -- This program is free software: you can redistribute it and/or modify
 -- it under the terms of the GNU Affero General Public License as published by
@@ -346,7 +346,8 @@ usage stateVar = do
     , "  --list-interfaces           Lists the interfaces compiled into this binary."
     , "  --list-cpp-files            Lists generated file paths in C++ bindings."
     , "  --list-hs-files             Lists generated file paths in Haskell bindings."
-    , "  --gen-cpp <outdir>          Generate C++ bindings in a directory."
+    , "  --gen-cpp <outdir> <cppdir> Generate C++ bindings in outdir, using bundled"
+    , "                              sources in cppdir."
     , "  --gen-hs <outdir>           Generate Haskell bindings under the given"
     , "                              top-level source directory."
     , "  --clean-cpp <outdir>        Removes generated file paths in C++ bindings."
