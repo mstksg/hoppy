@@ -59,4 +59,4 @@ Patches are welcome!  Please enable the pre-commit hook at
 
 Also please try to fix warnings that your changes introduce, check that the unit
 tests in the `tests/` directory pass, and follow local style, or the
-[style guide](https://gitlab.com/khumba/haskell-style/blob/master/haskell-style.md).
+[style guide](https://git.sr.ht/~khumba/haskell-style/tree/master/item/haskell-style.md).

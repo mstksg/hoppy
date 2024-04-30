@@ -157,7 +157,7 @@ To set up a new Hoppy project, it's recommended to start with the template
 project in the @examples\/three-package-example\/@ directory.  You can find this
 in the Hoppy source repository:
 
-<https://gitlab.com/khumba/hoppy/tree/master/examples/three-package-example>
+<https://git.sr.ht/~khumba/hoppy/tree/master/item/examples/three-package-example>
 
 This is a minimal project that defines a C++ function to reverse a
 @std::string@, exposes that to Haskell via a library, and provides a demo
