@@ -242,7 +242,7 @@ combinedMain project = defaultMainWithHooks $ combinedUserHooks project
 -- The following hooks are defined:
 --
 -- - 'postConf': Runs the generator to generate C++ and Haskell sources.
-combinedUserHooks :: ProjectConfig -> IO ()
+combinedUserHooks :: ProjectConfig -> UserHooks
 combinedUserHooks project =
   simpleUserHooks
   { postConf = \args flags pkgDesc localBuildInfo -> do
