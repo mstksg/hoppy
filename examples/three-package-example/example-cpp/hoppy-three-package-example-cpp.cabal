@@ -1,4 +1,4 @@
-name: hoppy-example-cpp
+name: hoppy-three-package-example-cpp
 version: 0.1.0
 license: Apache-2.0
 author: Bryan Gardiner <bog@khumba.net>
@@ -17,7 +17,7 @@ custom-setup
       base
     , Cabal
     , hoppy-runtime >=0.9 && <0.10
-    , hoppy-example-generator >=0.1 && <0.2
+    , hoppy-three-package-example-generator >=0.1 && <0.2
 
 library
   hs-source-dirs: src

@@ -18,30 +18,30 @@
 #
 # - A generated librarySystemDepends on 'example' (from "extra-libraries:
 #   example" to depend on libexample.so) is incorrect to declare here;
-#   libexample.so is provided through hoppy-example-cpp.  So it's simply
-#   removed.
+#   libexample.so is provided through hoppy-three-package-example-cpp.  So it's
+#   simply removed.
 #
 # - We have to turn on 'enableSharedExecutables'.  Executables built using Hoppy
 #   require this.  In the Cabal file, there's no nicer way to achieve this than
 #   doing "ghc-options: -dynamic", but this isn't detected by cabal2nix, so we
 #   have to add it ourselves.
 
-{ mkDerivation, base, Cabal, hoppy-example-cpp
-, hoppy-example-generator, hoppy-runtime, HUnit, lib
+{ mkDerivation, base, Cabal, hoppy-three-package-example-cpp
+, hoppy-three-package-example-generator, hoppy-runtime, HUnit, lib
 }:
 mkDerivation {
-  pname = "hoppy-example";
+  pname = "hoppy-three-package-example";
   version = "0.1.0";
   src = ./.;
   isLibrary = true;
   isExecutable = true;
   setupHaskellDepends = [
-    base Cabal hoppy-example-generator hoppy-runtime
+    base Cabal hoppy-three-package-example-generator hoppy-runtime
   ];
   libraryHaskellDepends = [
-    base hoppy-example-cpp hoppy-runtime
+    base hoppy-three-package-example-cpp hoppy-runtime
   ];
-  # librarySystemDepends = [ example ];  (We don't want this.)
+  # librarySystemDepends = [ three-package-example ];  (We don't want this.)
   executableHaskellDepends = [ base ];
   testHaskellDepends = [ base hoppy-runtime HUnit ];
   license = lib.licenses.asl20;

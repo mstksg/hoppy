@@ -17,7 +17,7 @@
 { mkDerivation, base, hoppy-generator, hoppy-std, lib
 }:
 mkDerivation {
-  pname = "hoppy-example-generator";
+  pname = "hoppy-three-package-example-generator";
   version = "0.1.0";
   src = ./.;
   isLibrary = true;

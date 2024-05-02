@@ -27,7 +27,7 @@ main =
   hsMain
   ProjectConfig
   { interfaceResult = Generator.interfaceResult
-  , cppPackageName = "hoppy-example-cpp"
+  , cppPackageName = "hoppy-three-package-example-cpp"
   , cppPackagedSourcesLocation = Just "cpp"  -- example-cpp/cpp
   , cppGeneratedSourcesLocation = GenerateInAutogenDir "cpp"  -- .../autogen/cpp
   }

@@ -14,14 +14,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-{ mkDerivation, base, Cabal, hoppy-example-generator, hoppy-runtime, lib
+{ mkDerivation, base, Cabal, lib
+, hoppy-three-package-example-generator, hoppy-runtime
 }:
 mkDerivation {
-  pname = "hoppy-example-cpp";
+  pname = "hoppy-three-package-example-cpp";
   version = "0.1.0";
   src = ./.;
   setupHaskellDepends = [
-    base Cabal hoppy-example-generator hoppy-runtime
+    base Cabal hoppy-three-package-example-generator hoppy-runtime
   ];
   libraryHaskellDepends = [
     base hoppy-runtime

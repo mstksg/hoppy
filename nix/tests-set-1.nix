@@ -1,6 +1,6 @@
 # This file is part of Hoppy.
 #
-# Copyright 2015-2023 Bryan Gardiner <bog@khumba.net>
+# Copyright 2015-2024 Bryan Gardiner <bog@khumba.net>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
@@ -49,11 +49,12 @@ rec {
 
   # Build the Hoppy example package as part of the test suite:
 
-  hoppy-example-generator = callPackage ../example/example-generator {};
+  hoppy-three-package-example-generator =
+    callPackage ../examples/three-package-example/example-generator {};
 
-  hoppy-example-cpp = callPackage ../example/example-cpp
-    { inherit hoppy-example-generator; };
+  hoppy-three-package-example-cpp = callPackage ../examples/three-package-example/example-cpp
+    { inherit hoppy-three-package-example-generator; };
 
-  hoppy-example = callPackage ../example/example
-    { inherit hoppy-example-generator hoppy-example-cpp; };
+  hoppy-three-package-example = callPackage ../examples/three-package-example/example
+    { inherit hoppy-three-package-example-generator hoppy-three-package-example-cpp; };
 }

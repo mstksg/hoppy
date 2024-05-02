@@ -1,4 +1,4 @@
-name: hoppy-example-generator
+name: hoppy-three-package-example-generator
 version: 0.1.0
 license: Apache-2.0
 author: Bryan Gardiner <bog@khumba.net>
@@ -23,7 +23,7 @@ executable hoppy-example-generator
   main-is: Main.hs
   build-depends:
       base
-    , hoppy-example-generator
+    , hoppy-three-package-example-generator
     , hoppy-generator >=0.9 && <0.10
   default-language: Haskell2010
   ghc-options: -W -fwarn-incomplete-patterns -fwarn-unused-do-bind

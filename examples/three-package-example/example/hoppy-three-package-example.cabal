@@ -1,4 +1,4 @@
-name: hoppy-example
+name: hoppy-three-package-example
 version: 0.1.0
 license: Apache-2.0
 author: Bryan Gardiner <bog@khumba.net>
@@ -12,7 +12,7 @@ custom-setup
       base
     , Cabal
     , hoppy-runtime >=0.9 && <0.10
-    , hoppy-example-generator >=0.1 && <0.2
+    , hoppy-three-package-example-generator >=0.1 && <0.2
 
 library
   exposed-modules:
@@ -36,7 +36,7 @@ library
 
   build-depends:
       base
-    , hoppy-example-cpp >= 0.1 && <0.2
+    , hoppy-three-package-example-cpp >= 0.1 && <0.2
     , hoppy-runtime >=0.9 && <0.10
 
   default-language: Haskell2010
@@ -44,16 +44,16 @@ library
   -- This causes us to link against libexample.so:
   extra-libraries: example
 
-executable hoppy-example
+executable hoppy-three-package-example
   hs-source-dirs: src-exe
   main-is: Main.hs
   build-depends:
       base
-    , hoppy-example
+    , hoppy-three-package-example
   default-language: Haskell2010
   ghc-options: -W -fwarn-incomplete-patterns -fwarn-unused-do-bind -dynamic
 
-test-suite hoppy-example-tests
+test-suite hoppy-three-package-example-tests
   type: exitcode-stdio-1.0
   hs-source-dirs: tests
   main-is: Main.hs
@@ -61,6 +61,6 @@ test-suite hoppy-example-tests
   ghc-options: -W -fwarn-incomplete-patterns -fwarn-unused-do-bind -dynamic
   build-depends:
       base
-    , hoppy-example
+    , hoppy-three-package-example
     , hoppy-runtime >=0.9 && <0.10
     , HUnit
