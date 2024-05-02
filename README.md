@@ -16,6 +16,18 @@ individually.
 The `LICENSE` file contains information about Hoppy's license.  Hoppy uses two
 licenses, for different parts of the project.
 
+## Moved to Sourcehut
+
+**As of May 2024, Hoppy development has moved from Gitlab to Sourcehut.**
+Further development will continue here:
+
+https://sr.ht/~khumba/hoppy/
+
+The Gitlab project will be archived but kept alive for historical reference, as
+there isn't currently a viable migration tool for issues:
+
+https://gitlab.com/khumba/hoppy
+
 ## Using
 
 Hoppy requires GHC 8.2 or newer.
