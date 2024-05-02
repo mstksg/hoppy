@@ -96,6 +96,7 @@ import Distribution.Simple.PackageIndex (lookupPackageName)
 import Distribution.Simple.Program (
   runDbProgram,
   runProgram,
+  simpleProgram,
   )
 import Distribution.Simple.Program.Find (
   ProgramSearchPathEntry (ProgramSearchPathDefault),
@@ -106,7 +107,6 @@ import Distribution.Simple.Program.Types (
   Program,
   ProgramLocation (FoundOnSystem),
   simpleConfiguredProgram,
-  simpleProgram,
   )
 import Distribution.Simple.Setup (
   CopyDest (CopyTo, NoCopyDest),
