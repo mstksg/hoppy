@@ -5,6 +5,8 @@ making binding to C++ easy.
 
 Homepage: https://khumba.net/projects/hoppy
 
+Sourcehut project: https://sr.ht/~khumba/hoppy/
+
 User's Guide: https://hackage.haskell.org/package/hoppy-docs/docs/Foreign-Hoppy-Documentation-UsersGuide.html
 
 Copyright 2015-2024 Bryan Gardiner <bog@khumba.net>
@@ -23,8 +25,8 @@ Further development will continue here:
 
 https://sr.ht/~khumba/hoppy/
 
-The Gitlab project will be archived but kept alive for historical reference, as
-there isn't currently a viable migration tool for issues:
+The Gitlab project will be archived and may be removed at some point in the
+future:
 
 https://gitlab.com/khumba/hoppy
 
