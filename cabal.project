@@ -21,6 +21,8 @@ packages:
     runtime
     docs
     examples/one-package-example
+    examples/two-package-example/example-generator
+    examples/two-package-example/example
     examples/three-package-example/example-generator
     examples/three-package-example/example-cpp
     examples/three-package-example/example

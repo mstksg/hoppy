@@ -5,7 +5,13 @@ Hoppy.
 
 `one-package-example`: This directory contains a bare-bones example showing how
 to write bindings with a single Cabal package, making use of Cabal's
-`cxx-sources` feature.
+`cxx-sources` feature.  This is the most compact way, but requires embedding all
+binding definitions within a single `Setup.hs` file, so it is probably not the
+most ergonomic for most projects.
+
+`two-package-example`: This is the recommended template for most projects.  This
+directory contains example bindings where the binding definitions are split off
+into a separate generator package.
 
 `three-package-example`: This directory contains an example that is split into
 three separate Cabal packages: the generator, the C++ side of the bindings, and

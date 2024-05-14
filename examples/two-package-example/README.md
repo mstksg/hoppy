@@ -1,17 +1,16 @@
-# Hoppy example program
+# Hoppy two-package example program
 
 This is a small project that demonstrates use of Hoppy in interfacing with C++
-code.  `example-cpp/cpp/utils.cpp` contains a function that reverses a string.
-`example-generator` defines a Hoppy generator for it, and `example-cpp` and
-`example` are the C++ and Haskell sides of the bindings, respectively.
+code.  The `example` subdirectory is the wrapper package itself.
+`example/cpp/utils.cpp` contains a function that reverses a string, and building
+this package links to the C++ standard library (or whatever other libraries you
+need to).  The binding definitions are split off into a separate package in the
+`example-generator` directory, for maintainability.  This way, binding
+definitions can be split into multiple Haskell modules freely.
 
-Run `cabal v2-{build,run} hoppy-three-package-example` to build and run this
+Run `cabal v2-{build,run} hoppy-two-package-example` to build and run this
 project.  (This can also be run from the root of the Hoppy repository, if you
 have the full Hoppy repository available.)
-
-Alternatively, build scripts that use the old Cabal v1-style commands are
-available.  Run `install.sh` to build, test, and install each of these in turn.
-`clean.sh` removes build outputs.
 
 ----
 
