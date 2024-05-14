@@ -22,7 +22,10 @@
   C++ sources into), to taking two arguments: first the directory to generate
   C++ sources in, and then the directory holding existing prepackaged sources.
 
-- A second example binding has been added, equivalent to existing one, but
+- Support has been added for writing bindings contained entirely in a single
+  Cabal package (issue #28).
+
+  A second example binding has been added, equivalent to existing one, but
   consisting of a single Cabal package rather than three.  This uses Cabal's
   built-in support for compiling C++ code (via `cxx-sources`), and works well
   when the C++ code to be exposed is simple to build against, and the binding
