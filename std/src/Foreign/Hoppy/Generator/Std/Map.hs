@@ -120,6 +120,7 @@ instantiate' mapName k v userReqs opts =
       reqs = mconcat
              [ userReqs
              , reqInclude $ includeHelper "map.hpp"
+             , reqInclude $ includeHelper "iterator.hpp"
              , reqInclude $ includeStd "map"
              ]
       iteratorName = mapName ++ "Iterator"
