@@ -158,7 +158,8 @@ instantiate' mapName k v userReqs opts =
         , mkMethod' "erase" "eraseRange" [objT iterator, objT iterator] voidT
         , mkMethod' "find" "find" [k] $ toGcT $ objT iterator
         , mkConstMethod' "find" "findConst" [k] $ toGcT $ objT constIterator
-          -- TODO insert
+        , makeFnMethod (ident2 "hoppy" "map" "simpleInsert") "simpleInsert" MNormal Nonpure
+          [refT $ objT map', constT k, constT v] $ boolT
           -- lower_bound: find is good enough.
         , mkConstMethod' "max_size" "maxSize" np sizeT
         , mkConstMethod "size" np sizeT

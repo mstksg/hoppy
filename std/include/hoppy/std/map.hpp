@@ -37,6 +37,11 @@ const V& getIteratorValue(const typename std::map<K, V>::const_iterator& iterato
     return iterator->second;
 }
 
+template <typename K, typename V>
+bool simpleInsert(typename std::map<K,V>& map, const K key, const V val) {
+  return map.emplace(key, val).second;
+}
+
 }  // namespace map
 }  // namespace hoppy
 
