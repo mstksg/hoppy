@@ -285,10 +285,9 @@ instantiate' mapName k v userReqs opts =
               sayLn "fromContents values' = do"
               indent $ do
                 mapNew <- toHsClassEntityName map' "new"
-                mapAt <- toHsClassEntityName map' "at"
+                mapInsert <- toHsClassEntityName map' "simpleInsert"
                 saysLn ["map' <- ", mapNew]
-                saysLn ["HoppyP.mapM_ (\\(k, v) -> HoppyP.flip HoppyFHR.assign v =<< ",
-                        mapAt, " map' k) values'"]
+                saysLn ["HoppyP.mapM_ (\\(k, v) -> ", mapInsert, " map' k v) values'"]
                 sayLn "HoppyP.return map'"
 
   in Contents
